@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 /// <reference types="unplugin-icons/types/solid" />
+/// <reference types="chrome-types" />
 
 interface FileSystemDirectoryHandle {
   entries(): AsyncIterableIterator<

@@ -9,18 +9,39 @@ import {
   loadDirectoryHandle,
   type FSEntry,
 } from "../lib/fs.ts";
+import {
+  fetchFileByUrl,
+  checkFileAccess,
+  dirOfUrl,
+  fileNameFromUrl,
+  resolveUrl,
+  displayPathFromUrl,
+  isFileUrl,
+  createUrlReadFile,
+} from "../lib/url-source.ts";
 import { convertAdoc, getIncludePaths } from "../lib/asciidoc.ts";
 import { FileWatcher } from "../lib/watcher.ts";
 import { Toolbar } from "./Toolbar.tsx";
 import { FileTree } from "./FileTree.tsx";
 import { Preview } from "./Preview.tsx";
 import { EmptyState } from "./EmptyState.tsx";
+import { FileAccessWarning } from "./FileAccessWarning.tsx";
+import { getStoredTheme, applyTheme } from "../newtab.tsx";
+
+// --- URL Mode helpers ---
+
+/** Get the ?url= parameter from the current page URL */
+function getUrlParam(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("url");
+}
+
+// --- Folder Mode helpers ---
 
 /** Get file path from URL hash. Hash format: #/path/to/file.adoc */
 function getPathFromHash(): string | null {
   const hash = window.location.hash;
   if (!hash || hash === "#") return null;
-  // Strip leading #/ or #
   return hash.replace(/^#\/?/, "");
 }
 
@@ -33,13 +54,16 @@ function setHashFromPath(path: string | null) {
     }
   } else {
     if (window.location.hash) {
-      history.pushState(null, "", window.location.pathname);
+      history.pushState(null, "", window.location.pathname + window.location.search);
     }
   }
 }
 
 /** Recursively find an FSEntry by its path in the tree */
-function findEntryByPath(entries: FSEntry[], targetPath: string): FSEntry | null {
+function findEntryByPath(
+  entries: FSEntry[],
+  targetPath: string,
+): FSEntry | null {
   for (const entry of entries) {
     if (entry.path === targetPath) return entry;
     if (entry.children) {
@@ -51,27 +75,149 @@ function findEntryByPath(entries: FSEntry[], targetPath: string): FSEntry | null
 }
 
 export function App() {
+  // Determine the operating mode on mount
+  const sourceUrl = getUrlParam();
+  const isUrlMode = !!sourceUrl;
+
+  // Shared state
+  const [html, setHtml] = createSignal("");
+  const [loading, setLoading] = createSignal(false);
+  const [autoRefresh, setAutoRefresh] = createSignal(true);
+  const [tocVisible, setTocVisible] = createSignal(true);
+  const [darkMode, setDarkMode] = createSignal(
+    document.documentElement.classList.contains("dark")
+  );
+
+  function toggleDarkMode() {
+    const next = !darkMode();
+    setDarkMode(next);
+    applyTheme(next ? "dark" : "light");
+  }
+
+  // Folder mode state
   const [rootHandle, setRootHandle] =
     createSignal<FileSystemDirectoryHandle | null>(null);
   const [tree, setTree] = createSignal<FSEntry[]>([]);
   const [selectedFile, setSelectedFile] = createSignal<FSEntry | null>(null);
-  const [html, setHtml] = createSignal("");
-  const [loading, setLoading] = createSignal(false);
-  const [autoRefresh, setAutoRefresh] = createSignal(true);
   const [sidebarWidth, setSidebarWidth] = createSignal(280);
   const [sidebarVisible, setSidebarVisible] = createSignal(true);
-  const [tocVisible, setTocVisible] = createSignal(true);
   const [rootName, setRootName] = createSignal("");
 
+  // URL mode state
+  const [urlFileName, setUrlFileName] = createSignal("");
+  const [urlError, setUrlError] = createSignal<string | null>(null);
+  const [fileAccessDenied, setFileAccessDenied] = createSignal(false);
+
+  // File watcher (folder mode only)
   const watcher = new FileWatcher(() => {
     const file = selectedFile();
     if (file) loadFileContent(file);
   });
 
-  onCleanup(() => watcher.destroy());
+  // URL mode auto-refresh
+  let urlRefreshInterval: ReturnType<typeof setInterval> | null = null;
+  let lastUrlContentHash = "";
 
-  // Try to restore saved directory handle on mount
-  (async () => {
+  onCleanup(() => {
+    watcher.destroy();
+    if (urlRefreshInterval) clearInterval(urlRefreshInterval);
+  });
+
+  // --- Initialization ---
+
+  if (isUrlMode) {
+    // URL Mode: fetch and render the file from the URL
+    initUrlMode(sourceUrl!);
+  } else {
+    // Folder Mode: try to restore saved directory handle
+    initFolderMode();
+  }
+
+  async function initUrlMode(url: string) {
+    setUrlFileName(fileNameFromUrl(url));
+
+    // Check file:// access if needed
+    if (isFileUrl(url)) {
+      const allowed = await checkFileAccess();
+      if (!allowed) {
+        setFileAccessDenied(true);
+        return;
+      }
+    }
+
+    await loadUrlContent(url);
+
+    // Start auto-refresh polling for URL mode
+    startUrlRefresh(url);
+  }
+
+  async function loadUrlContent(url: string) {
+    setLoading(true);
+    setUrlError(null);
+
+    try {
+      const content = await fetchFileByUrl(url);
+      lastUrlContentHash = simpleHash(content);
+
+      const baseUrl = dirOfUrl(url);
+      // Extract a relative-like path for convertAdoc
+      const filePath = fileNameFromUrl(url);
+      const readFile = createUrlReadFile(baseUrl);
+
+      const result = await convertAdoc({
+        filePath,
+        fileContent: content,
+        readFile,
+      });
+
+      setHtml(result);
+    } catch (e) {
+      console.error("Failed to load URL:", e);
+      setUrlError(`Failed to load file: ${e}`);
+      setHtml(
+        `<div class="error">Error loading file: ${e}</div>`,
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function startUrlRefresh(url: string) {
+    if (urlRefreshInterval) clearInterval(urlRefreshInterval);
+    urlRefreshInterval = setInterval(async () => {
+      if (!autoRefresh()) return;
+      try {
+        const content = await fetchFileByUrl(url);
+        const hash = simpleHash(content);
+        if (hash !== lastUrlContentHash) {
+          lastUrlContentHash = hash;
+          // Content changed — re-render
+          const baseUrl = dirOfUrl(url);
+          const filePath = fileNameFromUrl(url);
+          const readFile = createUrlReadFile(baseUrl);
+          const result = await convertAdoc({
+            filePath,
+            fileContent: content,
+            readFile,
+          });
+          setHtml(result);
+        }
+      } catch {
+        // Silently ignore polling errors
+      }
+    }, 2000);
+  }
+
+  function simpleHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str.charCodeAt(i);
+      hash = ((hash << 5) - hash + ch) | 0;
+    }
+    return hash.toString(36);
+  }
+
+  async function initFolderMode() {
     const saved = await loadDirectoryHandle();
     if (saved) {
       try {
@@ -95,15 +241,16 @@ export function App() {
         // Permission denied or handle invalid
       }
     }
-  })();
+  }
 
-  // Handle browser back/forward navigation
+  // Handle browser back/forward navigation (folder mode)
   function onPopState() {
+    if (isUrlMode) return;
     const hashPath = getPathFromHash();
     if (hashPath) {
       const entry = findEntryByPath(tree(), hashPath);
       if (entry && entry.kind === "file") {
-        loadFileContent(entry, false); // don't push to history
+        loadFileContent(entry, false);
       }
     }
   }
@@ -111,8 +258,9 @@ export function App() {
   window.addEventListener("popstate", onPopState);
   onCleanup(() => window.removeEventListener("popstate", onPopState));
 
-  // Toggle auto-refresh
+  // Toggle auto-refresh (folder mode watcher)
   createEffect(() => {
+    if (isUrlMode) return;
     if (autoRefresh()) {
       watcher.start();
     } else {
@@ -147,7 +295,6 @@ export function App() {
     setSelectedFile(entry);
     setLoading(true);
 
-    // Update URL hash
     if (pushHistory) {
       setHashFromPath(entry.path);
     }
@@ -191,10 +338,19 @@ export function App() {
 
   /**
    * Navigate to a file by its path (from xref link clicks).
-   * The path may not be in the tree if it wasn't an .adoc file picked up by readTree,
-   * so we also try resolving directly via the filesystem handle.
    */
   async function handleNavigate(targetPath: string) {
+    if (isUrlMode) {
+      // In URL mode, resolve relative to the source URL and redirect
+      const baseUrl = dirOfUrl(sourceUrl!);
+      const targetUrl = resolveUrl(baseUrl, targetPath);
+      // Navigate to the viewer with the new URL
+      const viewerUrl =
+        window.location.pathname + "?url=" + encodeURIComponent(targetUrl);
+      window.location.href = viewerUrl;
+      return;
+    }
+
     const root = rootHandle();
     if (!root) return;
 
@@ -209,7 +365,6 @@ export function App() {
     try {
       const fileHandle = await resolveFileByPath(root, targetPath);
       if (fileHandle) {
-        // Create a synthetic FSEntry
         const name = targetPath.includes("/")
           ? targetPath.substring(targetPath.lastIndexOf("/") + 1)
           : targetPath;
@@ -230,10 +385,22 @@ export function App() {
   }
 
   function handleExportPdf() {
+    // Ensure TOC is visible for printing (it gets styled as a static block via @media print)
+    const toc = document.querySelector<HTMLElement>("#toc");
+    const tocWasHidden = toc && toc.style.display === "none";
+    if (toc && tocWasHidden) {
+      toc.style.display = "";
+    }
+
     window.print();
+
+    // Restore TOC visibility state after printing
+    if (toc && tocWasHidden) {
+      toc.style.display = "none";
+    }
   }
 
-  // Sidebar resize logic
+  // Sidebar resize logic (folder mode only)
   let resizing = false;
 
   function onResizeStart(e: MouseEvent) {
@@ -256,24 +423,36 @@ export function App() {
     window.addEventListener("mouseup", onUp);
   }
 
+  // --- Derived state for toolbar ---
+  const toolbarRootName = () => (isUrlMode ? "" : rootName());
+  const toolbarFileName = () =>
+    isUrlMode ? urlFileName() : (selectedFile()?.name ?? null);
+  const toolbarFilePath = () =>
+    isUrlMode
+      ? displayPathFromUrl(sourceUrl!)
+      : (selectedFile()?.path ?? null);
+  const hasFile = () => isUrlMode ? !!html() : !!selectedFile();
+
   return (
     <div class="app">
       <Toolbar
-        rootName={rootName()}
-        fileName={selectedFile()?.name ?? null}
-        filePath={selectedFile()?.path ?? null}
+        rootName={toolbarRootName()}
+        fileName={toolbarFileName()}
+        filePath={toolbarFilePath()}
         autoRefresh={autoRefresh()}
         onToggleAutoRefresh={() => setAutoRefresh((v) => !v)}
         sidebarVisible={sidebarVisible()}
         tocVisible={tocVisible()}
+        darkMode={darkMode()}
         onToggleSidebar={() => setSidebarVisible((v) => !v)}
         onToggleToc={() => setTocVisible((v) => !v)}
+        onToggleDarkMode={toggleDarkMode}
         onOpenFolder={handleOpenFolder}
         onExportPdf={handleExportPdf}
-        hasFile={!!selectedFile()}
+        hasFile={hasFile()}
       />
       <div class="main">
-        <Show when={rootHandle() && sidebarVisible()}>
+        <Show when={!isUrlMode && rootHandle() && sidebarVisible()}>
           <aside class="sidebar" style={{ width: `${sidebarWidth()}px` }}>
             <FileTree
               entries={tree()}
@@ -284,14 +463,29 @@ export function App() {
           <div class="resize-handle" onMouseDown={onResizeStart} />
         </Show>
         <div class="content">
-          <Show when={selectedFile()} fallback={<EmptyState hasRoot={!!rootHandle()} onOpenFolder={handleOpenFolder} />}>
-            <Preview
-              html={html()}
-              loading={loading()}
-              tocVisible={tocVisible()}
-              currentFilePath={selectedFile()?.path ?? null}
-              onNavigate={handleNavigate}
-            />
+          <Show
+            when={!fileAccessDenied()}
+            fallback={<FileAccessWarning url={sourceUrl!} />}
+          >
+            <Show
+              when={isUrlMode ? html() : selectedFile()}
+              fallback={
+                <EmptyState
+                  hasRoot={!!rootHandle()}
+                  onOpenFolder={handleOpenFolder}
+                />
+              }
+            >
+              <Preview
+                html={html()}
+                loading={loading()}
+                tocVisible={tocVisible()}
+                currentFilePath={
+                  isUrlMode ? urlFileName() : (selectedFile()?.path ?? null)
+                }
+                onNavigate={handleNavigate}
+              />
+            </Show>
           </Show>
         </div>
       </div>

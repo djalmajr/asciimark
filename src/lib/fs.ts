@@ -1,4 +1,5 @@
 // File System Access API wrapper
+import { isAdocFile } from "./utils.ts";
 
 export interface FSEntry {
   name: string;
@@ -6,12 +7,6 @@ export interface FSEntry {
   path: string;
   handle: FileSystemFileHandle | FileSystemDirectoryHandle;
   children?: FSEntry[];
-}
-
-const ADOC_EXTENSIONS = [".adoc", ".asciidoc", ".asc", ".ad", ".adoc.txt"];
-
-function isAdocFile(name: string): boolean {
-  return ADOC_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
 export async function openDirectory(): Promise<FileSystemDirectoryHandle> {

@@ -44,6 +44,20 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      keyframes: {
+        "content-show": {
+          from: { opacity: "0", transform: "scale(0.96)" },
+          to: { opacity: "1", transform: "scale(1)" },
+        },
+        "content-hide": {
+          from: { opacity: "1", transform: "scale(1)" },
+          to: { opacity: "0", transform: "scale(0.96)" },
+        },
+      },
+      animation: {
+        "content-show": "content-show 0.15s ease-out",
+        "content-hide": "content-hide 0.1s ease-in",
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

@@ -251,6 +251,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   background: hsl(var(--background));
+  position: relative;
 }
 
 .preview {
@@ -317,6 +318,21 @@
   border-color: #5c1d1d;
 }
 
+/* === Dark Mode Switch === */
+.dark-mode-switch {
+  background: hsl(var(--input)) !important;
+}
+
+.dark-mode-switch[data-checked] {
+  background: hsl(233 16% 28%) !important;
+}
+
+.dark-mode-thumb {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
 /* === Print === */
 @media print {
   .no-print,
@@ -325,23 +341,33 @@
     display: none !important;
   }
 
+  /* Remove ALL overflow constraints so content flows across pages */
+  html, body, #root {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
   .app {
     display: block;
-    height: auto;
+    height: auto !important;
+    overflow: visible !important;
   }
 
   .main {
     display: block;
-    height: auto;
+    height: auto !important;
+    overflow: visible !important;
   }
 
   .content {
-    overflow: visible;
+    overflow: visible !important;
+    height: auto !important;
   }
 
   .preview {
     max-width: 100%;
     padding: 0;
+    overflow: visible !important;
   }
 }
 

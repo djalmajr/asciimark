@@ -19,5 +19,48 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": []
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*/*.adoc", "*://*/*.adoc?*",
+        "*://*/*.asciidoc", "*://*/*.asciidoc?*",
+        "*://*/*.asc", "*://*/*.asc?*",
+        "*://*/*.ad", "*://*/*.ad?*",
+        "*://*/*.adoc.txt", "*://*/*.adoc.txt?*",
+        "file://*/*.adoc", "file://*/*.adoc?*",
+        "file://*/*.asciidoc", "file://*/*.asciidoc?*",
+        "file://*/*.asc", "file://*/*.asc?*",
+        "file://*/*.ad", "file://*/*.ad?*",
+        "file://*/*.adoc.txt", "file://*/*.adoc.txt?*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "activeTab"
+  ],
+  "host_permissions": [
+    "*://*/*.adoc", "*://*/*.adoc?*",
+    "*://*/*.asciidoc", "*://*/*.asciidoc?*",
+    "*://*/*.asc", "*://*/*.asc?*",
+    "*://*/*.ad", "*://*/*.ad?*",
+    "*://*/*.adoc.txt", "*://*/*.adoc.txt?*",
+    "file://*/*.adoc", "file://*/*.adoc?*",
+    "file://*/*.asciidoc", "file://*/*.asciidoc?*",
+    "file://*/*.asc", "file://*/*.asc?*",
+    "file://*/*.ad", "file://*/*.ad?*",
+    "file://*/*.adoc.txt", "file://*/*.adoc.txt?*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "index.html",
+        "assets/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
 }

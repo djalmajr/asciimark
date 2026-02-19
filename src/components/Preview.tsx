@@ -114,12 +114,11 @@ function setupTocScrollTracking(container: HTMLElement): (() => void) | undefine
   return () => observer.disconnect();
 }
 
-/** ADOC file extensions to detect navigable links */
-const ADOC_EXTENSIONS = [".adoc", ".asciidoc", ".asc", ".ad"];
+import { isAdocFile } from "../lib/utils.ts";
 
 function isAdocHref(href: string): boolean {
   const path = href.split("#")[0]!;
-  return ADOC_EXTENSIONS.some((ext) => path.endsWith(ext));
+  return isAdocFile(path);
 }
 
 /**
