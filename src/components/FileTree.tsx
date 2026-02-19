@@ -11,7 +11,7 @@ interface FileTreeProps {
 export function FileTree(props: FileTreeProps) {
   return (
     <nav class="file-tree">
-      <For each={props.entries} fallback={<div class="file-tree-empty">No .adoc files found</div>}>
+      <For each={props.entries} fallback={<div class="file-tree-empty">No supported files found</div>}>
         {(entry) => (
           <FileTreeItem
             entry={entry}

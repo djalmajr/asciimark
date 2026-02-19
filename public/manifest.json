@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AsciiDoc Viewer",
+  "name": "AsciiMark",
   "version": "1.0.0",
-  "description": "Preview AsciiDoc files with folder navigation, include:: support, and auto-refresh",
+  "description": "Preview AsciiDoc and Markdown files with syntax highlighting, mermaid diagrams, math, TOC, and auto-refresh",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -14,7 +14,7 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "Open AsciiDoc Viewer"
+    "default_title": "Open AsciiMark"
   },
   "background": {
     "service_worker": "background.js"
@@ -27,30 +27,36 @@
         "*://*/*.asc", "*://*/*.asc?*",
         "*://*/*.ad", "*://*/*.ad?*",
         "*://*/*.adoc.txt", "*://*/*.adoc.txt?*",
+        "*://*/*.md", "*://*/*.md?*",
+        "*://*/*.markdown", "*://*/*.markdown?*",
+        "*://*/*.mdown", "*://*/*.mdown?*",
         "file://*/*.adoc", "file://*/*.adoc?*",
         "file://*/*.asciidoc", "file://*/*.asciidoc?*",
         "file://*/*.asc", "file://*/*.asc?*",
         "file://*/*.ad", "file://*/*.ad?*",
-        "file://*/*.adoc.txt", "file://*/*.adoc.txt?*"
+        "file://*/*.adoc.txt", "file://*/*.adoc.txt?*",
+        "file://*/*.md", "file://*/*.md?*",
+        "file://*/*.markdown", "file://*/*.markdown?*",
+        "file://*/*.mdown", "file://*/*.mdown?*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
   ],
   "permissions": [
-    "activeTab"
+    "activeTab",
+    "storage"
   ],
   "host_permissions": [
+    "file:///*",
     "*://*/*.adoc", "*://*/*.adoc?*",
     "*://*/*.asciidoc", "*://*/*.asciidoc?*",
     "*://*/*.asc", "*://*/*.asc?*",
     "*://*/*.ad", "*://*/*.ad?*",
     "*://*/*.adoc.txt", "*://*/*.adoc.txt?*",
-    "file://*/*.adoc", "file://*/*.adoc?*",
-    "file://*/*.asciidoc", "file://*/*.asciidoc?*",
-    "file://*/*.asc", "file://*/*.asc?*",
-    "file://*/*.ad", "file://*/*.ad?*",
-    "file://*/*.adoc.txt", "file://*/*.adoc.txt?*"
+    "*://*/*.md", "*://*/*.md?*",
+    "*://*/*.markdown", "*://*/*.markdown?*",
+    "*://*/*.mdown", "*://*/*.mdown?*"
   ],
   "web_accessible_resources": [
     {

@@ -96,7 +96,6 @@ export function Toolbar(props: ToolbarProps) {
             <TooltipTrigger
               as={Toggle}
               size="sm"
-              variant="outline"
               pressed={props.sidebarVisible}
               onChange={props.onToggleSidebar}
               aria-label="Toggle sidebar"
@@ -111,7 +110,6 @@ export function Toolbar(props: ToolbarProps) {
             <TooltipTrigger
               as={Toggle}
               size="sm"
-              variant="outline"
               pressed={props.tocVisible}
               onChange={props.onToggleToc}
               aria-label="Toggle table of contents"
@@ -126,7 +124,7 @@ export function Toolbar(props: ToolbarProps) {
           <Tooltip>
             <TooltipTrigger
               as={DropdownMenuTrigger}
-              class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 w-8"
+              class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:bg-accent hover:text-accent-foreground h-8 w-8"
             >
               <IconSettings width={16} height={16} />
             </TooltipTrigger>

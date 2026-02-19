@@ -1,16 +1,121 @@
-// File System Access API wrapper
-import { isAdocFile } from "./utils.ts";
+// File System Access API wrapper with <input webkitdirectory> fallback
+import { isSupportedFile, IGNORED_DIRS } from "./utils.ts";
 
 export interface FSEntry {
   name: string;
   kind: "file" | "directory";
   path: string;
-  handle: FileSystemFileHandle | FileSystemDirectoryHandle;
+  /** Handle is available in native folder mode, absent in URL mode and fallback mode */
+  handle?: FileSystemFileHandle | FileSystemDirectoryHandle;
+  /** File object available in fallback mode (input webkitdirectory) */
+  file?: File;
   children?: FSEntry[];
 }
 
+/** Whether the browser supports the File System Access API (Brave blocks it) */
+export const hasNativePicker = typeof window.showDirectoryPicker === "function";
+
 export async function openDirectory(): Promise<FileSystemDirectoryHandle> {
   return await window.showDirectoryPicker({ mode: "read" });
+}
+
+/**
+ * Fallback: open a directory using <input type="file" webkitdirectory>.
+ * Returns the root folder name and the flat list of File objects.
+ */
+export function openDirectoryFallback(): Promise<{ rootName: string; files: File[] }> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.webkitdirectory = true;
+    input.multiple = true;
+    input.style.display = "none";
+    document.body.appendChild(input);
+
+    input.addEventListener("change", () => {
+      document.body.removeChild(input);
+      const files = Array.from(input.files ?? []);
+      if (files.length === 0) {
+        reject(new DOMException("No files selected", "AbortError"));
+        return;
+      }
+      // Extract root folder name from webkitRelativePath (e.g. "myFolder/sub/file.adoc")
+      const firstPath = (files[0] as any).webkitRelativePath as string;
+      const rootName = firstPath.split("/")[0] ?? "folder";
+      resolve({ rootName, files });
+    });
+
+    // Handle cancel — use a focusback heuristic
+    input.addEventListener("cancel", () => {
+      document.body.removeChild(input);
+      reject(new DOMException("User cancelled", "AbortError"));
+    });
+
+    input.click();
+  });
+}
+
+/**
+ * Build an FSEntry tree from a flat list of File objects (fallback mode).
+ * Each File has webkitRelativePath like "rootDir/sub/file.adoc".
+ */
+export function buildTreeFromFiles(files: File[]): { rootName: string; entries: FSEntry[] } {
+  // All paths start with the root folder name
+  const rootName = ((files[0] as any).webkitRelativePath as string).split("/")[0] ?? "folder";
+
+  // Build a nested map structure
+  interface DirNode {
+    entries: Map<string, DirNode | File>;
+  }
+  const root: DirNode = { entries: new Map() };
+
+  for (const file of files) {
+    const relPath = ((file as any).webkitRelativePath as string);
+    // Strip the root folder prefix
+    const parts = relPath.split("/").slice(1); // remove root dir name
+    if (parts.length === 0) continue;
+
+    let current = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const dirName = parts[i]!;
+      if (!current.entries.has(dirName)) {
+        current.entries.set(dirName, { entries: new Map() });
+      }
+      current = current.entries.get(dirName) as DirNode;
+    }
+    const fileName = parts[parts.length - 1]!;
+    current.entries.set(fileName, file);
+  }
+
+  function buildEntries(node: DirNode, parentPath: string): FSEntry[] {
+    const entries: FSEntry[] = [];
+
+    for (const [name, value] of node.entries) {
+      if (name.startsWith(".")) continue;
+      const path = parentPath ? `${parentPath}/${name}` : name;
+
+      if ("entries" in value) {
+        // Directory node
+        if (IGNORED_DIRS.has(name)) continue;
+        const children = buildEntries(value, path);
+        if (children.length > 0) {
+          entries.push({ name, kind: "directory", path, children });
+        }
+      } else {
+        // File node
+        if (isSupportedFile(name)) {
+          entries.push({ name, kind: "file", path, file: value });
+        }
+      }
+    }
+
+    return entries.sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  return { rootName, entries: buildEntries(root, "") };
 }
 
 export async function readTree(
@@ -26,6 +131,7 @@ export async function readTree(
     const path = parentPath ? `${parentPath}/${name}` : name;
 
     if (handle.kind === "directory") {
+      if (IGNORED_DIRS.has(name)) continue;
       const children = await readTree(
         handle as FileSystemDirectoryHandle,
         path,
@@ -34,7 +140,7 @@ export async function readTree(
       if (children.length > 0) {
         entries.push({ name, kind: "directory", path, handle, children });
       }
-    } else if (handle.kind === "file" && isAdocFile(name)) {
+    } else if (handle.kind === "file" && isSupportedFile(name)) {
       entries.push({ name, kind: "file", path, handle });
     }
   }
@@ -46,10 +152,16 @@ export async function readTree(
   });
 }
 
+/**
+ * Read file content — supports both native handles and fallback File objects.
+ */
 export async function readFileContent(
-  handle: FileSystemFileHandle,
+  handleOrFile: FileSystemFileHandle | File,
 ): Promise<string> {
-  const file = await handle.getFile();
+  if (handleOrFile instanceof File) {
+    return await handleOrFile.text();
+  }
+  const file = await handleOrFile.getFile();
   return await file.text();
 }
 
@@ -104,6 +216,35 @@ export async function readFileByPath(
   const fileHandle = await resolveFileByPath(rootHandle, relativePath);
   if (!fileHandle) return null;
   return await readFileContent(fileHandle);
+}
+
+/**
+ * Build a flat map of path -> File from the fallback file list.
+ * Used for resolving include:: directives in fallback mode.
+ */
+export function buildFileMap(files: File[]): Map<string, File> {
+  const map = new Map<string, File>();
+  for (const file of files) {
+    const relPath = ((file as any).webkitRelativePath as string);
+    // Strip root folder name
+    const parts = relPath.split("/").slice(1);
+    if (parts.length > 0) {
+      map.set(parts.join("/"), file);
+    }
+  }
+  return map;
+}
+
+/**
+ * Read a file by path using the fallback file map.
+ */
+export async function readFileByPathFallback(
+  fileMap: Map<string, File>,
+  relativePath: string,
+): Promise<string | null> {
+  const file = fileMap.get(relativePath);
+  if (!file) return null;
+  return await file.text();
 }
 
 /**

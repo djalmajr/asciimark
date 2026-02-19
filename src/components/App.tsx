@@ -1,12 +1,17 @@
 import { createSignal, createEffect, onCleanup, Show } from "solid-js";
 import {
   openDirectory,
+  openDirectoryFallback,
+  buildTreeFromFiles,
+  buildFileMap,
   readTree,
   readFileContent,
   readFileByPath,
+  readFileByPathFallback,
   resolveFileByPath,
   saveDirectoryHandle,
   loadDirectoryHandle,
+  hasNativePicker,
   type FSEntry,
 } from "../lib/fs.ts";
 import {
@@ -20,6 +25,8 @@ import {
   createUrlReadFile,
 } from "../lib/url-source.ts";
 import { convertAdoc, getIncludePaths } from "../lib/asciidoc.ts";
+import { convertMarkdown, getMarkdownIncludePaths } from "../lib/markdown.ts";
+import { isMdFile } from "../lib/utils.ts";
 import { FileWatcher } from "../lib/watcher.ts";
 import { Toolbar } from "./Toolbar.tsx";
 import { FileTree } from "./FileTree.tsx";
@@ -97,6 +104,8 @@ export function App() {
   // Folder mode state
   const [rootHandle, setRootHandle] =
     createSignal<FileSystemDirectoryHandle | null>(null);
+  /** Fallback mode: flat file map for resolving includes (when File System Access API is unavailable) */
+  const [fallbackFileMap, setFallbackFileMap] = createSignal<Map<string, File> | null>(null);
   const [tree, setTree] = createSignal<FSEntry[]>([]);
   const [selectedFile, setSelectedFile] = createSignal<FSEntry | null>(null);
   const [sidebarWidth, setSidebarWidth] = createSignal(280);
@@ -160,15 +169,13 @@ export function App() {
       lastUrlContentHash = simpleHash(content);
 
       const baseUrl = dirOfUrl(url);
-      // Extract a relative-like path for convertAdoc
       const filePath = fileNameFromUrl(url);
       const readFile = createUrlReadFile(baseUrl);
 
-      const result = await convertAdoc({
-        filePath,
-        fileContent: content,
-        readFile,
-      });
+      const convertOpts = { filePath, fileContent: content, readFile };
+      const result = isMdFile(filePath)
+        ? await convertMarkdown(convertOpts)
+        : await convertAdoc(convertOpts);
 
       setHtml(result);
     } catch (e) {
@@ -195,11 +202,10 @@ export function App() {
           const baseUrl = dirOfUrl(url);
           const filePath = fileNameFromUrl(url);
           const readFile = createUrlReadFile(baseUrl);
-          const result = await convertAdoc({
-            filePath,
-            fileContent: content,
-            readFile,
-          });
+          const convertOpts = { filePath, fileContent: content, readFile };
+          const result = isMdFile(filePath)
+            ? await convertMarkdown(convertOpts)
+            : await convertAdoc(convertOpts);
           setHtml(result);
         }
       } catch {
@@ -218,6 +224,9 @@ export function App() {
   }
 
   async function initFolderMode() {
+    // Fallback mode has no persistence — nothing to restore
+    if (!hasNativePicker) return;
+
     const saved = await loadDirectoryHandle();
     if (saved) {
       try {
@@ -270,19 +279,36 @@ export function App() {
 
   async function handleOpenFolder() {
     try {
-      const handle = await openDirectory();
-      setRootHandle(handle);
-      setRootName(handle.name);
-      await saveDirectoryHandle(handle);
-      setLoading(true);
-      const entries = await readTree(handle);
-      setTree(entries);
-      setLoading(false);
+      if (hasNativePicker) {
+        // Native File System Access API (Chrome, Edge)
+        const handle = await openDirectory();
+        setRootHandle(handle);
+        setRootName(handle.name);
+        setFallbackFileMap(null);
+        await saveDirectoryHandle(handle);
+        setLoading(true);
+        const entries = await readTree(handle);
+        setTree(entries);
+        setLoading(false);
+      } else {
+        // Fallback: <input webkitdirectory> (Brave, etc.)
+        const { rootName: name, files } = await openDirectoryFallback();
+        const { entries } = buildTreeFromFiles(files);
+        const fileMap = buildFileMap(files);
+        setRootHandle(null);
+        setFallbackFileMap(fileMap);
+        setRootName(name);
+        setTree(entries);
+      }
       setSelectedFile(null);
       setHtml("");
       setHashFromPath(null);
     } catch (e: any) {
-      if (e.name !== "AbortError") {
+      if (e.name === "AbortError") return;
+      // SecurityError/InvalidStateError = user gesture expired (e.g., from dropdown animation)
+      if (e instanceof DOMException) {
+        console.info("Open Folder requires a direct click. Try the button on the empty state page.");
+      } else {
         console.error("Failed to open directory:", e);
       }
     }
@@ -290,7 +316,12 @@ export function App() {
 
   async function loadFileContent(entry: FSEntry, pushHistory = true) {
     const root = rootHandle();
-    if (!root || entry.kind !== "file") return;
+    const fileMap = fallbackFileMap();
+    const isFallback = !root && !!fileMap;
+
+    // Need either a native handle or a fallback file
+    if (!root && !fileMap) return;
+    if (entry.kind !== "file") return;
 
     setSelectedFile(entry);
     setLoading(true);
@@ -300,33 +331,44 @@ export function App() {
     }
 
     try {
-      const content = await readFileContent(
-        entry.handle as FileSystemFileHandle,
-      );
+      // Read file content from handle (native) or File object (fallback)
+      const content = isFallback
+        ? await readFileContent(entry.file as File)
+        : await readFileContent(entry.handle as FileSystemFileHandle);
 
-      const readFile = (path: string) => readFileByPath(root, path);
+      // Build readFile function for include:: resolution
+      const readFile = isFallback
+        ? (path: string) => readFileByPathFallback(fileMap, path)
+        : (path: string) => readFileByPath(root!, path);
 
-      const result = await convertAdoc({
+      const convertOpts = {
         filePath: entry.path,
         fileContent: content,
         readFile,
-      });
+      };
+      const result = isMdFile(entry.path)
+        ? await convertMarkdown(convertOpts)
+        : await convertAdoc(convertOpts);
 
       setHtml(result);
 
-      // Update watcher target
-      const baseDirPath = entry.path.includes("/")
-        ? entry.path.substring(0, entry.path.lastIndexOf("/"))
-        : "";
-      const includePaths = getIncludePaths(content, baseDirPath);
-      watcher.setTarget({
-        fileHandle: entry.handle as FileSystemFileHandle,
-        includePaths,
-        rootHandle: root,
-      });
+      // Update watcher target (only in native mode — fallback has static snapshots)
+      if (!isFallback && root) {
+        const baseDirPath = entry.path.includes("/")
+          ? entry.path.substring(0, entry.path.lastIndexOf("/"))
+          : "";
+        const includePaths = isMdFile(entry.path)
+          ? getMarkdownIncludePaths(content, baseDirPath)
+          : getIncludePaths(content, baseDirPath);
+        watcher.setTarget({
+          fileHandle: entry.handle as FileSystemFileHandle,
+          includePaths,
+          rootHandle: root,
+        });
 
-      if (autoRefresh()) {
-        watcher.start();
+        if (autoRefresh()) {
+          watcher.start();
+        }
       }
     } catch (e) {
       console.error("Failed to convert file:", e);
@@ -341,9 +383,17 @@ export function App() {
    */
   async function handleNavigate(targetPath: string) {
     if (isUrlMode) {
-      // In URL mode, resolve relative to the source URL and redirect
-      const baseUrl = dirOfUrl(sourceUrl!);
-      const targetUrl = resolveUrl(baseUrl, targetPath);
+      let targetUrl: string;
+
+      if (/^file:\/\//i.test(targetPath) || /^https?:\/\//i.test(targetPath)) {
+        // Already a full URL (e.g., file:// link clicked directly)
+        targetUrl = targetPath;
+      } else {
+        // Resolve relative to the source URL
+        const baseUrl = dirOfUrl(sourceUrl!);
+        targetUrl = resolveUrl(baseUrl, targetPath);
+      }
+
       // Navigate to the viewer with the new URL
       const viewerUrl =
         window.location.pathname + "?url=" + encodeURIComponent(targetUrl);
@@ -452,7 +502,7 @@ export function App() {
         hasFile={hasFile()}
       />
       <div class="main">
-        <Show when={!isUrlMode && rootHandle() && sidebarVisible()}>
+        <Show when={!isUrlMode && sidebarVisible() && rootHandle()}>
           <aside class="sidebar" style={{ width: `${sidebarWidth()}px` }}>
             <FileTree
               entries={tree()}

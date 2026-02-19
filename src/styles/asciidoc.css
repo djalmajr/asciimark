@@ -1,17 +1,17 @@
 /* === AsciiDoc Output Styles === */
-.adoc-body {
+.doc-body {
   line-height: 1.7;
   color: hsl(var(--foreground));
   word-wrap: break-word;
 }
 
 /* Headings */
-.adoc-body h1,
-.adoc-body h2,
-.adoc-body h3,
-.adoc-body h4,
-.adoc-body h5,
-.adoc-body h6 {
+.doc-body h1,
+.doc-body h2,
+.doc-body h3,
+.doc-body h4,
+.doc-body h5,
+.doc-body h6 {
   font-weight: 600;
   line-height: 1.3;
   margin-top: 1.5em;
@@ -19,57 +19,57 @@
   color: hsl(var(--foreground));
 }
 
-.adoc-body h1 { font-size: 2em; margin-top: 0; }
-.adoc-body h2 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid hsl(var(--border)); }
-.adoc-body h3 { font-size: 1.25em; }
-.adoc-body h4 { font-size: 1.1em; }
-.adoc-body h5 { font-size: 1em; }
-.adoc-body h6 { font-size: 0.9em; color: hsl(var(--muted-foreground)); }
+.doc-body h1 { font-size: 2em; margin-top: 0; }
+.doc-body h2 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid hsl(var(--border)); }
+.doc-body h3 { font-size: 1.25em; }
+.doc-body h4 { font-size: 1.1em; }
+.doc-body h5 { font-size: 1em; }
+.doc-body h6 { font-size: 0.9em; color: hsl(var(--muted-foreground)); }
 
 /* Paragraphs */
-.adoc-body p,
-.adoc-body .paragraph > p {
+.doc-body p,
+.doc-body .paragraph > p {
   margin-bottom: 1em;
 }
 
 /* Links */
-.adoc-body a {
+.doc-body a {
   color: hsl(var(--primary));
   text-decoration: none;
 }
 
-.adoc-body a:hover {
+.doc-body a:hover {
   text-decoration: underline;
 }
 
 /* Lists */
-.adoc-body ul,
-.adoc-body ol {
+.doc-body ul,
+.doc-body ol {
   padding-left: 2em;
   margin-bottom: 1em;
 }
 
-.adoc-body li {
+.doc-body li {
   margin-bottom: 0.3em;
 }
 
-.adoc-body li > p {
+.doc-body li > p {
   margin-bottom: 0.3em;
 }
 
 /* Description lists */
-.adoc-body .dlist dt {
+.doc-body .dlist dt {
   font-weight: 600;
   margin-top: 0.8em;
 }
 
-.adoc-body .dlist dd {
+.doc-body .dlist dd {
   margin-left: 1.5em;
   margin-bottom: 0.5em;
 }
 
 /* Code - inline */
-.adoc-body code {
+.doc-body code {
   font-family: var(--font-mono);
   font-size: 0.9em;
   padding: 0.15em 0.4em;
@@ -79,20 +79,20 @@
 }
 
 /* Code - blocks */
-.adoc-body .listingblock,
-.adoc-body .literalblock {
+.doc-body .listingblock,
+.doc-body .literalblock {
   margin-bottom: 1em;
 }
 
-.adoc-body .listingblock > .title,
-.adoc-body .literalblock > .title {
+.doc-body .listingblock > .title,
+.doc-body .literalblock > .title {
   font-size: 0.85em;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
   margin-bottom: 4px;
 }
 
-.adoc-body pre {
+.doc-body pre {
   font-family: var(--font-mono);
   font-size: 0.875em;
   line-height: 1.6;
@@ -104,7 +104,7 @@
   margin-bottom: 1em;
 }
 
-.adoc-body pre code {
+.doc-body pre code {
   padding: 0;
   border: none;
   background: transparent;
@@ -112,7 +112,7 @@
 }
 
 /* Tables — horizontal scroll for wide tables */
-.adoc-body table.tableblock {
+.doc-body table.tableblock {
   display: block;
   overflow-x: auto;
   margin-bottom: 1em;
@@ -120,13 +120,13 @@
   font-size: 0.95em;
 }
 
-.adoc-body table:not(.tableblock) {
+.doc-body table:not(.tableblock) {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.95em;
 }
 
-.adoc-body table thead th {
+.doc-body table thead th {
   background: hsl(var(--secondary));
   font-weight: 600;
   text-align: left;
@@ -134,30 +134,30 @@
   border: 1px solid hsl(var(--border));
 }
 
-.adoc-body table td {
+.doc-body table td {
   padding: 8px 12px;
   border: 1px solid hsl(var(--border));
   vertical-align: top;
 }
 
-.adoc-body table tbody tr:hover {
+.doc-body table tbody tr:hover {
   background: hsl(var(--muted) / 0.5);
 }
 
 /* Admonitions */
-.adoc-body .admonitionblock {
+.doc-body .admonitionblock {
   margin-bottom: 1em;
   border-radius: 8px;
   overflow: hidden;
 }
 
-.adoc-body .admonitionblock table {
+.doc-body .admonitionblock table {
   margin: 0;
   width: 100%;
   min-width: 0;
 }
 
-.adoc-body .admonitionblock td.icon {
+.doc-body .admonitionblock td.icon {
   padding: 12px 16px;
   width: 60px;
   text-align: center;
@@ -167,49 +167,49 @@
   vertical-align: middle;
 }
 
-.adoc-body .admonitionblock td.content {
+.doc-body .admonitionblock td.content {
   padding: 12px 16px;
   border: none;
 }
 
-.adoc-body .admonitionblock.note {
+.doc-body .admonitionblock.note {
   background: #eff6ff;
   border: 1px solid #bfdbfe;
 }
-.adoc-body .admonitionblock.note td.icon { color: #2563eb; }
+.doc-body .admonitionblock.note td.icon { color: #2563eb; }
 
-.adoc-body .admonitionblock.tip {
+.doc-body .admonitionblock.tip {
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
 }
-.adoc-body .admonitionblock.tip td.icon { color: #16a34a; }
+.doc-body .admonitionblock.tip td.icon { color: #16a34a; }
 
-.adoc-body .admonitionblock.warning {
+.doc-body .admonitionblock.warning {
   background: #fffbeb;
   border: 1px solid #fde68a;
 }
-.adoc-body .admonitionblock.warning td.icon { color: #d97706; }
+.doc-body .admonitionblock.warning td.icon { color: #d97706; }
 
-.adoc-body .admonitionblock.caution {
+.doc-body .admonitionblock.caution {
   background: #fff7ed;
   border: 1px solid #fed7aa;
 }
-.adoc-body .admonitionblock.caution td.icon { color: #ea580c; }
+.doc-body .admonitionblock.caution td.icon { color: #ea580c; }
 
-.adoc-body .admonitionblock.important {
+.doc-body .admonitionblock.important {
   background: #fef2f2;
   border: 1px solid #fecaca;
 }
-.adoc-body .admonitionblock.important td.icon { color: #dc2626; }
+.doc-body .admonitionblock.important td.icon { color: #dc2626; }
 
-.dark .adoc-body .admonitionblock.note { background: #0f1729; border-color: #1e3a5f; }
-.dark .adoc-body .admonitionblock.tip { background: #071a0f; border-color: #14532d; }
-.dark .adoc-body .admonitionblock.warning { background: #1a1507; border-color: #713f12; }
-.dark .adoc-body .admonitionblock.caution { background: #1a1007; border-color: #9a3412; }
-.dark .adoc-body .admonitionblock.important { background: #1a0f0f; border-color: #7f1d1d; }
+.dark .doc-body .admonitionblock.note { background: #0f1729; border-color: #1e3a5f; }
+.dark .doc-body .admonitionblock.tip { background: #071a0f; border-color: #14532d; }
+.dark .doc-body .admonitionblock.warning { background: #1a1507; border-color: #713f12; }
+.dark .doc-body .admonitionblock.caution { background: #1a1007; border-color: #9a3412; }
+.dark .doc-body .admonitionblock.important { background: #1a0f0f; border-color: #7f1d1d; }
 
 /* Blockquote — unified style for .quoteblock (which contains a blockquote) */
-.adoc-body .quoteblock {
+.doc-body .quoteblock {
   margin: 0 0 1em 0;
   padding: 12px 20px;
   border-left: 4px solid hsl(var(--primary));
@@ -218,7 +218,7 @@
 }
 
 /* Prevent double-styling: the inner blockquote inside .quoteblock inherits */
-.adoc-body .quoteblock blockquote {
+.doc-body .quoteblock blockquote {
   margin: 0;
   padding: 0;
   border: none;
@@ -227,8 +227,8 @@
 }
 
 /* Standalone blockquotes (not inside .quoteblock) */
-.adoc-body > blockquote,
-.adoc-body .paragraph + blockquote {
+.doc-body > blockquote,
+.doc-body .paragraph + blockquote {
   margin: 0 0 1em 0;
   padding: 12px 20px;
   border-left: 4px solid hsl(var(--primary));
@@ -236,7 +236,7 @@
   border-radius: 0 8px 8px 0;
 }
 
-.adoc-body .quoteblock .attribution {
+.doc-body .quoteblock .attribution {
   margin-top: 8px;
   font-size: 0.9em;
   color: hsl(var(--muted-foreground));
@@ -244,17 +244,17 @@
 }
 
 /* Images */
-.adoc-body .imageblock {
+.doc-body .imageblock {
   margin-bottom: 1em;
 }
 
-.adoc-body .imageblock img {
+.doc-body .imageblock img {
   max-width: 100%;
   height: auto;
   border-radius: 8px;
 }
 
-.adoc-body .imageblock > .title {
+.doc-body .imageblock > .title {
   font-size: 0.85em;
   color: hsl(var(--muted-foreground));
   margin-top: 6px;
@@ -262,35 +262,35 @@
 }
 
 /* Horizontal rule */
-.adoc-body hr {
+.doc-body hr {
   border: none;
   border-top: 1px solid hsl(var(--border));
   margin: 2em 0;
 }
 
 /* Section anchors */
-.adoc-body a.anchor {
+.doc-body a.anchor {
   opacity: 0;
   padding-right: 6px;
   text-decoration: none;
   font-weight: normal;
 }
 
-.adoc-body h1:hover a.anchor,
-.adoc-body h2:hover a.anchor,
-.adoc-body h3:hover a.anchor,
-.adoc-body h4:hover a.anchor,
-.adoc-body h5:hover a.anchor,
-.adoc-body h6:hover a.anchor {
+.doc-body h1:hover a.anchor,
+.doc-body h2:hover a.anchor,
+.doc-body h3:hover a.anchor,
+.doc-body h4:hover a.anchor,
+.doc-body h5:hover a.anchor,
+.doc-body h6:hover a.anchor {
   opacity: 0.5;
 }
 
 /* TOC - Right sidebar layout */
-.adoc-body {
+.doc-body {
   position: relative;
 }
 
-.adoc-body #toc {
+.doc-body #toc {
   position: fixed;
   top: var(--toolbar-h, 49px);
   right: 0;
@@ -305,8 +305,8 @@
   font-size: 13px;
 }
 
-.adoc-body #toc .title,
-.adoc-body #toctitle {
+.doc-body #toc .title,
+.doc-body #toctitle {
   font-weight: 600;
   font-size: 13px;
   margin-bottom: 8px;
@@ -315,22 +315,22 @@
   color: hsl(var(--muted-foreground));
 }
 
-.adoc-body #toc ul {
+.doc-body #toc ul {
   list-style: none;
   padding-left: 12px;
   margin: 0;
 }
 
-.adoc-body #toc > ul {
+.doc-body #toc > ul {
   padding-left: 0;
 }
 
-.adoc-body #toc li {
+.doc-body #toc li {
   margin-bottom: 2px;
   line-height: 1.4;
 }
 
-.adoc-body #toc a {
+.doc-body #toc a {
   color: hsl(var(--muted-foreground));
   font-size: 12.5px;
   display: block;
@@ -339,21 +339,21 @@
   transition: all 0.1s ease;
 }
 
-.adoc-body #toc a:hover {
+.doc-body #toc a:hover {
   color: hsl(var(--primary));
   background: hsl(var(--bg-hover));
   text-decoration: none;
 }
 
 /* TOC active item highlight */
-.adoc-body #toc a.toc-active {
+.doc-body #toc a.toc-active {
   color: hsl(var(--primary));
   background: hsl(var(--bg-hover));
   font-weight: 500;
 }
 
 /* When TOC is visible, add right margin to content so it doesn't overlap */
-.preview:has(#toc:not([style*="display: none"])) .adoc-body > :not(#toc) {
+.preview:has(#toc:not([style*="display: none"])) .doc-body > :not(#toc) {
   margin-right: 276px;
 }
 
@@ -362,11 +362,11 @@
 }
 
 /* TOC scrollbar */
-.adoc-body #toc::-webkit-scrollbar { width: 4px; }
-.adoc-body #toc::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 2px; }
+.doc-body #toc::-webkit-scrollbar { width: 4px; }
+.doc-body #toc::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 2px; }
 
 /* Sidebar blocks */
-.adoc-body .sidebarblock {
+.doc-body .sidebarblock {
   background: hsl(var(--secondary));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
@@ -374,20 +374,20 @@
   margin-bottom: 1em;
 }
 
-.adoc-body .sidebarblock > .content > .title {
+.doc-body .sidebarblock > .content > .title {
   font-weight: 600;
   margin-bottom: 8px;
 }
 
 /* Example blocks */
-.adoc-body .exampleblock {
+.doc-body .exampleblock {
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   padding: 16px 20px;
   margin-bottom: 1em;
 }
 
-.adoc-body .exampleblock > .title {
+.doc-body .exampleblock > .title {
   font-size: 0.85em;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
@@ -395,24 +395,235 @@
 }
 
 /* Bold, italic, etc */
-.adoc-body strong { font-weight: 600; }
-.adoc-body em { font-style: italic; }
-.adoc-body .line-through { text-decoration: line-through; }
-.adoc-body sup { font-size: 0.75em; }
-.adoc-body sub { font-size: 0.75em; }
+.doc-body strong { font-weight: 600; }
+.doc-body em { font-style: italic; }
+.doc-body .line-through { text-decoration: line-through; }
+.doc-body sup { font-size: 0.75em; }
+.doc-body sub { font-size: 0.75em; }
+.doc-body ins { text-decoration: underline; }
+.doc-body mark {
+  background-color: #fff3bf;
+  padding: 0.1em 0.2em;
+  border-radius: 2px;
+}
+.dark .doc-body mark {
+  background-color: #5c4b1f;
+  color: #fde68a;
+}
+
+/* Abbreviations */
+.doc-body abbr[title] {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+/* Definition lists (Markdown deflist plugin — uses bare <dl>/<dt>/<dd>) */
+.doc-body dl {
+  margin-bottom: 1em;
+}
+.doc-body dt {
+  font-weight: 600;
+  margin-top: 0.8em;
+}
+.doc-body dd {
+  margin-left: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+/* Footnotes */
+.doc-body .footnotes-sep {
+  border: none;
+  border-top: 1px solid hsl(var(--border));
+  margin: 2em 0 1em;
+}
+
+.doc-body section.footnotes {
+  font-size: 0.875em;
+  color: hsl(var(--muted-foreground));
+}
+
+.doc-body .footnotes-list {
+  padding-left: 1.5em;
+}
+
+.doc-body .footnote-item {
+  margin-bottom: 0.5em;
+}
+
+.doc-body .footnote-item p {
+  margin-bottom: 0.25em;
+}
+
+.doc-body .footnote-ref a,
+.doc-body .footnote-backref {
+  color: hsl(var(--primary));
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.doc-body .footnote-ref a:hover,
+.doc-body .footnote-backref:hover {
+  text-decoration: underline;
+}
+
+/* Custom containers (::: warning, ::: note, etc.) */
+.doc-body .warning,
+.doc-body .note,
+.doc-body .tip,
+.doc-body .caution,
+.doc-body .important,
+.doc-body .info {
+  margin-bottom: 1em;
+  padding: 12px 20px;
+  border-radius: 8px;
+  border-left: 4px solid;
+}
+
+.doc-body div.note { background: #eff6ff; border-left-color: #2563eb; }
+.doc-body div.tip { background: #f0fdf4; border-left-color: #16a34a; }
+.doc-body div.info { background: #eff6ff; border-left-color: #2563eb; }
+.doc-body div.warning { background: #fffbeb; border-left-color: #d97706; }
+.doc-body div.caution { background: #fff7ed; border-left-color: #ea580c; }
+.doc-body div.important { background: #fef2f2; border-left-color: #dc2626; }
+
+.dark .doc-body div.note { background: #0f1729; border-left-color: #3b82f6; }
+.dark .doc-body div.tip { background: #071a0f; border-left-color: #22c55e; }
+.dark .doc-body div.info { background: #0f1729; border-left-color: #3b82f6; }
+.dark .doc-body div.warning { background: #1a1507; border-left-color: #eab308; }
+.dark .doc-body div.caution { background: #1a1007; border-left-color: #f97316; }
+.dark .doc-body div.important { background: #1a0f0f; border-left-color: #ef4444; }
+
+/* GitHub-style alerts (@mdit/plugin-alert) */
+.doc-body .markdown-alert {
+  margin-bottom: 1em;
+}
+
+/* Details/summary container */
+.doc-body details {
+  margin-bottom: 1em;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.doc-body details summary {
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+
+.doc-body details[open] summary {
+  margin-bottom: 8px;
+}
+
+/* Highlight.js: transparent bg (inherits from pre) */
+.doc-body pre code.hljs {
+  background: transparent;
+}
+
+/* Highlight.js: dark mode overrides (github-dark-dimmed colors) */
+.dark .doc-body .hljs {
+  color: #adbac7;
+}
+.dark .doc-body .hljs-doctag,
+.dark .doc-body .hljs-keyword,
+.dark .doc-body .hljs-meta .hljs-keyword,
+.dark .doc-body .hljs-template-tag,
+.dark .doc-body .hljs-template-variable,
+.dark .doc-body .hljs-type,
+.dark .doc-body .hljs-variable.language_ {
+  color: #f47067;
+}
+.dark .doc-body .hljs-title,
+.dark .doc-body .hljs-title.class_,
+.dark .doc-body .hljs-title.class_.inherited__,
+.dark .doc-body .hljs-title.function_ {
+  color: #dcbdfb;
+}
+.dark .doc-body .hljs-attr,
+.dark .doc-body .hljs-attribute,
+.dark .doc-body .hljs-literal,
+.dark .doc-body .hljs-meta,
+.dark .doc-body .hljs-number,
+.dark .doc-body .hljs-operator,
+.dark .doc-body .hljs-selector-attr,
+.dark .doc-body .hljs-selector-class,
+.dark .doc-body .hljs-selector-id,
+.dark .doc-body .hljs-variable {
+  color: #6cb6ff;
+}
+.dark .doc-body .hljs-meta .hljs-string,
+.dark .doc-body .hljs-regexp,
+.dark .doc-body .hljs-string {
+  color: #96d0ff;
+}
+.dark .doc-body .hljs-built_in,
+.dark .doc-body .hljs-symbol {
+  color: #f69d50;
+}
+.dark .doc-body .hljs-code,
+.dark .doc-body .hljs-comment,
+.dark .doc-body .hljs-formula {
+  color: #768390;
+}
+.dark .doc-body .hljs-name,
+.dark .doc-body .hljs-quote,
+.dark .doc-body .hljs-selector-pseudo,
+.dark .doc-body .hljs-selector-tag {
+  color: #8ddb8c;
+}
+.dark .doc-body .hljs-subst {
+  color: #adbac7;
+}
+.dark .doc-body .hljs-section {
+  color: #316dca;
+  font-weight: 700;
+}
+.dark .doc-body .hljs-bullet {
+  color: #eac55f;
+}
+.dark .doc-body .hljs-emphasis {
+  color: #adbac7;
+  font-style: italic;
+}
+.dark .doc-body .hljs-strong {
+  color: #adbac7;
+  font-weight: 700;
+}
+.dark .doc-body .hljs-addition {
+  color: #b4f1b4;
+  background-color: #1b4721;
+}
+.dark .doc-body .hljs-deletion {
+  color: #ffd8d3;
+  background-color: #78191b;
+}
+
+/* KaTeX math blocks */
+.doc-body .math-block {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.doc-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}
 
 /* Mermaid diagrams */
-.adoc-body .mermaid {
+.doc-body .mermaid {
   margin: 1em 0;
   text-align: center;
 }
 
-.adoc-body .mermaid svg {
+.doc-body .mermaid svg {
   max-width: 100%;
   height: auto;
 }
 
-.adoc-body .mermaid-error {
+.doc-body .mermaid-error {
   color: #ef4444;
   background: #fef2f2;
   border: 1px solid #fecaca;
@@ -422,36 +633,36 @@
   white-space: pre-wrap;
 }
 
-.dark .adoc-body .mermaid-error {
+.dark .doc-body .mermaid-error {
   background: #1a0f0f;
   border-color: #5c1d1d;
 }
 
 /* === Print === */
 @media print {
-  .adoc-body {
+  .doc-body {
     color: #000;
     font-size: 12pt;
     line-height: 1.6;
     overflow: visible !important;
   }
 
-  .adoc-body h1 { font-size: 24pt; }
-  .adoc-body h2 { font-size: 18pt; border-bottom-color: #ccc; }
-  .adoc-body h3 { font-size: 14pt; }
+  .doc-body h1 { font-size: 24pt; }
+  .doc-body h2 { font-size: 18pt; border-bottom-color: #ccc; }
+  .doc-body h3 { font-size: 14pt; }
 
   /* Headings: avoid widows (heading at bottom without content) */
-  .adoc-body h1,
-  .adoc-body h2,
-  .adoc-body h3,
-  .adoc-body h4,
-  .adoc-body h5,
-  .adoc-body h6 {
+  .doc-body h1,
+  .doc-body h2,
+  .doc-body h3,
+  .doc-body h4,
+  .doc-body h5,
+  .doc-body h6 {
     page-break-after: avoid;
     break-after: avoid;
   }
 
-  .adoc-body pre {
+  .doc-body pre {
     border: 1px solid #ccc;
     background: #f5f5f5;
     page-break-inside: avoid;
@@ -459,45 +670,45 @@
     word-wrap: break-word;
   }
 
-  .adoc-body table {
+  .doc-body table {
     page-break-inside: auto;
   }
 
-  .adoc-body tr {
+  .doc-body tr {
     page-break-inside: avoid;
   }
 
-  .adoc-body .admonitionblock {
+  .doc-body .admonitionblock {
     page-break-inside: avoid;
   }
 
-  .adoc-body .imageblock {
+  .doc-body .imageblock {
     page-break-inside: avoid;
   }
 
-  .adoc-body a {
+  .doc-body a {
     color: #000;
     text-decoration: underline;
   }
 
-  .adoc-body a[href]::after {
+  .doc-body a[href]::after {
     content: " (" attr(href) ")";
     font-size: 0.8em;
     color: #666;
   }
 
   /* Don't show href for TOC links and anchor links */
-  .adoc-body #toc a[href]::after,
-  .adoc-body a.anchor[href]::after {
+  .doc-body #toc a[href]::after,
+  .doc-body a.anchor[href]::after {
     content: none;
   }
 
-  .adoc-body a.anchor {
+  .doc-body a.anchor {
     display: none;
   }
 
   /* TOC: render as a static block on the first page */
-  .adoc-body #toc {
+  .doc-body #toc {
     position: static !important;
     width: 100% !important;
     height: auto !important;
@@ -512,27 +723,27 @@
     font-size: 10pt;
   }
 
-  .adoc-body #toc .title,
-  .adoc-body #toctitle {
+  .doc-body #toc .title,
+  .doc-body #toctitle {
     color: #000;
     font-size: 14pt;
     font-weight: 700;
     margin-bottom: 12px;
   }
 
-  .adoc-body #toc a {
+  .doc-body #toc a {
     color: #333;
     font-size: 10pt;
   }
 
-  .adoc-body #toc a.toc-active {
+  .doc-body #toc a.toc-active {
     background: none;
     font-weight: normal;
     color: #333;
   }
 
   /* Remove TOC right margin offset in print */
-  .preview:has(#toc) .adoc-body > :not(#toc) {
+  .preview:has(#toc) .doc-body > :not(#toc) {
     margin-right: 0 !important;
   }
 }

@@ -1,5 +1,9 @@
 import { Show, createEffect, onMount, onCleanup } from "solid-js";
 import mermaid from "mermaid";
+import hljs from "highlight.js/lib/common";
+import "highlight.js/styles/github.css";
+import "katex/dist/katex.min.css";
+import "@mdit/plugin-alert/style";
 import "../styles/asciidoc.css";
 
 let mermaidInitialized = false;
@@ -13,6 +17,15 @@ function initMermaid() {
     fontFamily: "inherit",
   });
   mermaidInitialized = true;
+}
+
+/** Apply syntax highlighting to code blocks that haven't been highlighted yet */
+function highlightCodeBlocks(container: HTMLElement) {
+  container.querySelectorAll<HTMLElement>("pre code").forEach((el) => {
+    if (!el.classList.contains("hljs")) {
+      hljs.highlightElement(el);
+    }
+  });
 }
 
 async function renderMermaidBlocks(container: HTMLElement) {
@@ -32,11 +45,14 @@ async function renderMermaidBlocks(container: HTMLElement) {
       const id = `mermaid-${Date.now()}-${idx++}`;
       const { svg } = await mermaid.render(id, source);
       block.innerHTML = svg;
-      block.setAttribute("data-processed", "true");
     } catch (e) {
-      console.warn("Mermaid render error:", e);
-      block.innerHTML = `<pre class="mermaid-error">Mermaid error: ${e}\n\n${source}</pre>`;
+      // Show inline error instead of raw source
+      const escaped = source.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      block.innerHTML = `<pre class="mermaid-error">Mermaid syntax error\n\n${escaped}</pre>`;
     }
+
+    // Always mark as processed to prevent re-processing on effect re-runs
+    block.setAttribute("data-processed", "true");
 
     // Clean up temporary render containers mermaid leaves in the body
     document.querySelectorAll('div[id^="dmermaid-"]').forEach((el) => el.remove());
@@ -61,7 +77,10 @@ function setupTocScrollTracking(container: HTMLElement): (() => void) | undefine
   let currentActive: HTMLAnchorElement | null = null;
 
   function setActive(id: string) {
-    if (currentActive) currentActive.classList.remove("toc-active");
+    if (currentActive) {
+      if (currentActive.getAttribute("href") === `#${id}`) return;
+      currentActive.classList.remove("toc-active");
+    }
     const link = toc!.querySelector<HTMLAnchorElement>(`a[href="#${id}"]`);
     if (link) {
       link.classList.add("toc-active");
@@ -71,54 +90,95 @@ function setupTocScrollTracking(container: HTMLElement): (() => void) | undefine
     }
   }
 
-  const visibleHeadings = new Map<string, IntersectionObserverEntry>();
+  // Find the scrollable container (.content element)
+  const scrollContainer = container.closest(".content");
 
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        const id = (entry.target as HTMLElement).id;
-        if (entry.isIntersecting) {
-          visibleHeadings.set(id, entry);
-        } else {
-          visibleHeadings.delete(id);
-        }
-      }
+  /**
+   * Scroll-based tracking: find the last heading that has scrolled past the top.
+   * Also handles bottom-of-page: if scrolled to the end, activate the last heading.
+   */
+  function updateActiveFromScroll() {
+    if (!scrollContainer) return;
 
-      let topId: string | null = null;
-      let topY = Infinity;
-      for (const [id, entry] of visibleHeadings) {
-        if (entry.boundingClientRect.top < topY) {
-          topY = entry.boundingClientRect.top;
-          topId = id;
-        }
-      }
+    const scrollTop = scrollContainer.scrollTop;
+    const scrollHeight = scrollContainer.scrollHeight;
+    const clientHeight = scrollContainer.clientHeight;
 
-      if (topId) {
-        setActive(topId);
-      }
-    },
-    {
-      rootMargin: "-53px 0px -60% 0px",
-      threshold: 0,
+    // If at the bottom of the page, activate the last heading
+    if (scrollTop + clientHeight >= scrollHeight - 2) {
+      setActive(headings[headings.length - 1].id);
+      return;
     }
-  );
 
-  for (const heading of headings) {
-    observer.observe(heading);
+    // Find the last heading that has scrolled past the top of the container
+    // (accounting for toolbar height offset)
+    const offset = 60;
+    let activeId: string | null = null;
+
+    for (const heading of headings) {
+      const rect = heading.getBoundingClientRect();
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const relativeTop = rect.top - containerRect.top;
+
+      if (relativeTop <= offset) {
+        activeId = heading.id;
+      } else {
+        break;
+      }
+    }
+
+    if (activeId) {
+      setActive(activeId);
+    }
   }
 
+  // Use scroll event on the .content container
+  if (scrollContainer) {
+    scrollContainer.addEventListener("scroll", updateActiveFromScroll, { passive: true });
+  }
+
+  // Set initial active heading
   if (headings.length > 0) {
-    setActive(headings[0].id);
+    // Delay to let layout settle
+    queueMicrotask(updateActiveFromScroll);
   }
 
-  return () => observer.disconnect();
+  return () => {
+    if (scrollContainer) {
+      scrollContainer.removeEventListener("scroll", updateActiveFromScroll);
+    }
+  };
 }
 
-import { isAdocFile } from "../lib/utils.ts";
+import { isSupportedFile, isAdocFile } from "../lib/utils.ts";
 
-function isAdocHref(href: string): boolean {
+/**
+ * Check if a link href points to a supported document file.
+ * Handles:
+ * - Direct references: other.adoc, docs/readme.md
+ * - AsciiDoc xref with .html extension: other.html (converted from .adoc by asciidoctor)
+ * - Links with fragments: other.adoc#section
+ */
+function isSupportedHref(href: string): boolean {
   const path = href.split("#")[0]!;
-  return isAdocFile(path);
+  if (isSupportedFile(path)) return true;
+  // AsciiDoc xref converts .adoc to .html — treat .html links as navigable
+  if (path.endsWith(".html")) return true;
+  return false;
+}
+
+/**
+ * Normalize href for navigation:
+ * - Strip fragment (#section)
+ * - Convert .html back to .adoc if applicable (AsciiDoc xref)
+ */
+function normalizeHref(href: string): string {
+  let path = href.split("#")[0]!;
+  // AsciiDoc xref: convert .html back to .adoc
+  if (path.endsWith(".html")) {
+    path = path.slice(0, -5) + ".adoc";
+  }
+  return path;
 }
 
 /**
@@ -148,7 +208,7 @@ interface PreviewProps {
   tocVisible: boolean;
   /** Current file path (relative to root), used to resolve xref links */
   currentFilePath: string | null;
-  /** Called when user clicks an .adoc link; receives the resolved path */
+  /** Called when user clicks a document link (.adoc/.md); receives the resolved path */
   onNavigate: (path: string) => void;
 }
 
@@ -205,18 +265,35 @@ export function Preview(props: PreviewProps) {
       return;
     }
 
-    // Skip external links (http/https/mailto)
-    if (/^[a-z]+:\/\//i.test(href) || href.startsWith("mailto:")) return;
+    // Skip mailto links
+    if (href.startsWith("mailto:")) return;
 
-    // Check if it's an .adoc file link
-    if (!isAdocHref(href)) return;
+    // Skip truly external links (http/https) but NOT file:// links
+    if (/^https?:\/\//i.test(href)) return;
+
+    // Handle file:// links — extract path and navigate
+    if (href.startsWith("file://")) {
+      if (isSupportedHref(href.replace(/^file:\/\//, ""))) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Pass the full file:// URL to onNavigate
+        props.onNavigate(href);
+      }
+      return;
+    }
+
+    // Check if it's a supported file link (.adoc, .md, .html, etc.)
+    if (!isSupportedHref(href)) return;
 
     e.preventDefault();
     e.stopPropagation();
 
+    // Normalize href (e.g., .html → .adoc for xref links)
+    const normalized = normalizeHref(href);
+
     // Resolve relative to current file
     const currentPath = props.currentFilePath;
-    const targetPath = currentPath ? resolveRelativePath(currentPath, href) : href;
+    const targetPath = currentPath ? resolveRelativePath(currentPath, normalized) : normalized;
 
     props.onNavigate(targetPath);
   }
@@ -229,6 +306,7 @@ export function Preview(props: PreviewProps) {
 
     if (articleRef && _html) {
       queueMicrotask(() => {
+        highlightCodeBlocks(articleRef!);
         renderMermaidBlocks(articleRef!);
 
         // Apply TOC visibility
@@ -255,7 +333,7 @@ export function Preview(props: PreviewProps) {
       </Show>
       <article
         ref={articleRef}
-        class="adoc-body"
+        class="doc-body"
         innerHTML={props.html}
         onClick={handleClick}
       />

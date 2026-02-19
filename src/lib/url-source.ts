@@ -18,8 +18,16 @@ async function sendMessage<T>(message: Record<string, unknown>): Promise<T> {
 }
 
 /**
+ * Extract the local filesystem path from a file:// URL.
+ * file:///Users/x/docs/file.adoc → /Users/x/docs/file.adoc
+ */
+function fileUrlToPath(url: string): string {
+  return decodeURIComponent(url.replace(/^file:\/\//, ""));
+}
+
+/**
  * Fetch a file's text content.
- * Uses the service worker in extension context, or direct fetch() in dev mode.
+ * Uses the service worker in extension context, or dev proxy for file:// in dev mode.
  */
 export async function fetchFileByUrl(url: string): Promise<string> {
   if (hasRuntime) {
@@ -31,7 +39,16 @@ export async function fetchFileByUrl(url: string): Promise<string> {
     return resp.text ?? "";
   }
 
-  // Dev mode fallback: direct fetch
+  // Dev mode fallback
+  if (url.startsWith("file://")) {
+    // Use Vite dev proxy to read local files
+    const localPath = fileUrlToPath(url);
+    const resp = await fetch(`/__local_file?path=${encodeURIComponent(localPath)}`);
+    if (!resp.ok) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
+    return resp.text();
+  }
+
+  // Non-file URLs: direct fetch
   const resp = await fetch(url, {
     headers: { "Cache-Control": "no-cache", Accept: "text/plain" },
   });
