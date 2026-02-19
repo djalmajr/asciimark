@@ -138,7 +138,7 @@
 }
 
 .adoc-body table tbody tr:hover {
-  background: hsl(var(--bg-hover));
+  background: hsl(var(--muted) / 0.5);
 }
 
 /* Admonitions */
@@ -287,10 +287,10 @@
 
 .adoc-body #toc {
   position: fixed;
-  top: 44px; /* toolbar height */
+  top: 53px; /* toolbar height */
   right: 0;
   width: 260px;
-  height: calc(100vh - 44px);
+  height: calc(100vh - 53px);
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px 16px 32px 16px;
@@ -346,12 +346,12 @@
   font-weight: 500;
 }
 
-/* When TOC exists, add right margin to content so it doesn't overlap */
-.preview:has(#toc) .adoc-body > :not(#toc) {
+/* When TOC is visible, add right margin to content so it doesn't overlap */
+.preview:has(#toc:not([style*="display: none"])) .adoc-body > :not(#toc) {
   margin-right: 276px;
 }
 
-.preview:has(#toc) {
+.preview:has(#toc:not([style*="display: none"])) {
   max-width: 100%;
 }
 

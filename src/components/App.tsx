@@ -4,6 +4,7 @@ import {
   readTree,
   readFileContent,
   readFileByPath,
+  resolveFileByPath,
   saveDirectoryHandle,
   loadDirectoryHandle,
   type FSEntry,
@@ -14,6 +15,40 @@ import { Toolbar } from "./Toolbar.tsx";
 import { FileTree } from "./FileTree.tsx";
 import { Preview } from "./Preview.tsx";
 import { EmptyState } from "./EmptyState.tsx";
+
+/** Get file path from URL hash. Hash format: #/path/to/file.adoc */
+function getPathFromHash(): string | null {
+  const hash = window.location.hash;
+  if (!hash || hash === "#") return null;
+  // Strip leading #/ or #
+  return hash.replace(/^#\/?/, "");
+}
+
+/** Set URL hash from file path */
+function setHashFromPath(path: string | null) {
+  if (path) {
+    const newHash = `#/${path}`;
+    if (window.location.hash !== newHash) {
+      history.pushState(null, "", newHash);
+    }
+  } else {
+    if (window.location.hash) {
+      history.pushState(null, "", window.location.pathname);
+    }
+  }
+}
+
+/** Recursively find an FSEntry by its path in the tree */
+function findEntryByPath(entries: FSEntry[], targetPath: string): FSEntry | null {
+  for (const entry of entries) {
+    if (entry.path === targetPath) return entry;
+    if (entry.children) {
+      const found = findEntryByPath(entry.children, targetPath);
+      if (found) return found;
+    }
+  }
+  return null;
+}
 
 export function App() {
   const [rootHandle, setRootHandle] =
@@ -29,7 +64,6 @@ export function App() {
   const [rootName, setRootName] = createSignal("");
 
   const watcher = new FileWatcher(() => {
-    // On file change, re-render the current file
     const file = selectedFile();
     if (file) loadFileContent(file);
   });
@@ -41,19 +75,41 @@ export function App() {
     const saved = await loadDirectoryHandle();
     if (saved) {
       try {
-        // Verify permission
         const perm = await (saved as any).queryPermission({ mode: "read" });
         if (perm === "granted") {
           setRootHandle(saved);
           setRootName(saved.name);
           const entries = await readTree(saved);
           setTree(entries);
+
+          // Restore file from URL hash
+          const hashPath = getPathFromHash();
+          if (hashPath) {
+            const entry = findEntryByPath(entries, hashPath);
+            if (entry && entry.kind === "file") {
+              loadFileContent(entry);
+            }
+          }
         }
       } catch {
         // Permission denied or handle invalid
       }
     }
   })();
+
+  // Handle browser back/forward navigation
+  function onPopState() {
+    const hashPath = getPathFromHash();
+    if (hashPath) {
+      const entry = findEntryByPath(tree(), hashPath);
+      if (entry && entry.kind === "file") {
+        loadFileContent(entry, false); // don't push to history
+      }
+    }
+  }
+
+  window.addEventListener("popstate", onPopState);
+  onCleanup(() => window.removeEventListener("popstate", onPopState));
 
   // Toggle auto-refresh
   createEffect(() => {
@@ -76,6 +132,7 @@ export function App() {
       setLoading(false);
       setSelectedFile(null);
       setHtml("");
+      setHashFromPath(null);
     } catch (e: any) {
       if (e.name !== "AbortError") {
         console.error("Failed to open directory:", e);
@@ -83,12 +140,17 @@ export function App() {
     }
   }
 
-  async function loadFileContent(entry: FSEntry) {
+  async function loadFileContent(entry: FSEntry, pushHistory = true) {
     const root = rootHandle();
     if (!root || entry.kind !== "file") return;
 
     setSelectedFile(entry);
     setLoading(true);
+
+    // Update URL hash
+    if (pushHistory) {
+      setHashFromPath(entry.path);
+    }
 
     try {
       const content = await readFileContent(
@@ -125,6 +187,46 @@ export function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  /**
+   * Navigate to a file by its path (from xref link clicks).
+   * The path may not be in the tree if it wasn't an .adoc file picked up by readTree,
+   * so we also try resolving directly via the filesystem handle.
+   */
+  async function handleNavigate(targetPath: string) {
+    const root = rootHandle();
+    if (!root) return;
+
+    // First, try to find it in the existing tree (fastest)
+    const entry = findEntryByPath(tree(), targetPath);
+    if (entry && entry.kind === "file") {
+      loadFileContent(entry);
+      return;
+    }
+
+    // Not in tree — resolve the file handle directly from the filesystem
+    try {
+      const fileHandle = await resolveFileByPath(root, targetPath);
+      if (fileHandle) {
+        // Create a synthetic FSEntry
+        const name = targetPath.includes("/")
+          ? targetPath.substring(targetPath.lastIndexOf("/") + 1)
+          : targetPath;
+        const syntheticEntry: FSEntry = {
+          name,
+          kind: "file",
+          path: targetPath,
+          handle: fileHandle,
+        };
+        loadFileContent(syntheticEntry);
+        return;
+      }
+    } catch {
+      // Fall through
+    }
+
+    console.warn(`File not found: ${targetPath}`);
   }
 
   function handleExportPdf() {
@@ -176,14 +278,20 @@ export function App() {
             <FileTree
               entries={tree()}
               selectedPath={selectedFile()?.path ?? null}
-              onSelect={loadFileContent}
+              onSelect={(entry) => loadFileContent(entry)}
             />
           </aside>
           <div class="resize-handle" onMouseDown={onResizeStart} />
         </Show>
         <div class="content">
           <Show when={selectedFile()} fallback={<EmptyState hasRoot={!!rootHandle()} onOpenFolder={handleOpenFolder} />}>
-            <Preview html={html()} loading={loading()} tocVisible={tocVisible()} />
+            <Preview
+              html={html()}
+              loading={loading()}
+              tocVisible={tocVisible()}
+              currentFilePath={selectedFile()?.path ?? null}
+              onNavigate={handleNavigate}
+            />
           </Show>
         </div>
       </div>

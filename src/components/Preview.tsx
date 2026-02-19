@@ -37,6 +37,9 @@ async function renderMermaidBlocks(container: HTMLElement) {
       console.warn("Mermaid render error:", e);
       block.innerHTML = `<pre class="mermaid-error">Mermaid error: ${e}\n\n${source}</pre>`;
     }
+
+    // Clean up temporary render containers mermaid leaves in the body
+    document.querySelectorAll('div[id^="dmermaid-"]').forEach((el) => el.remove());
   }
 }
 
@@ -45,7 +48,6 @@ function setupTocScrollTracking(container: HTMLElement): (() => void) | undefine
   const toc = container.querySelector("#toc");
   if (!toc) return;
 
-  // Collect all heading IDs referenced in the TOC
   const tocLinks = Array.from(toc.querySelectorAll<HTMLAnchorElement>("a[href^='#']"));
   if (tocLinks.length === 0) return;
 
@@ -64,10 +66,11 @@ function setupTocScrollTracking(container: HTMLElement): (() => void) | undefine
     if (link) {
       link.classList.add("toc-active");
       currentActive = link;
+      // Auto-scroll TOC so active item is visible
+      link.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }
 
-  // Track which headings are visible; pick the topmost
   const visibleHeadings = new Map<string, IntersectionObserverEntry>();
 
   const observer = new IntersectionObserver(
@@ -81,7 +84,6 @@ function setupTocScrollTracking(container: HTMLElement): (() => void) | undefine
         }
       }
 
-      // Find the topmost visible heading (smallest boundingClientRect.top)
       let topId: string | null = null;
       let topY = Infinity;
       for (const [id, entry] of visibleHeadings) {
@@ -96,8 +98,7 @@ function setupTocScrollTracking(container: HTMLElement): (() => void) | undefine
       }
     },
     {
-      // Observe within the scrolling content area, trigger early
-      rootMargin: "-44px 0px -60% 0px",
+      rootMargin: "-53px 0px -60% 0px",
       threshold: 0,
     }
   );
@@ -106,7 +107,6 @@ function setupTocScrollTracking(container: HTMLElement): (() => void) | undefine
     observer.observe(heading);
   }
 
-  // Activate the first heading initially
   if (headings.length > 0) {
     setActive(headings[0].id);
   }
@@ -114,10 +114,43 @@ function setupTocScrollTracking(container: HTMLElement): (() => void) | undefine
   return () => observer.disconnect();
 }
 
+/** ADOC file extensions to detect navigable links */
+const ADOC_EXTENSIONS = [".adoc", ".asciidoc", ".asc", ".ad"];
+
+function isAdocHref(href: string): boolean {
+  const path = href.split("#")[0]!;
+  return ADOC_EXTENSIONS.some((ext) => path.endsWith(ext));
+}
+
+/**
+ * Resolve a relative link target against the current file's directory.
+ */
+function resolveRelativePath(currentFilePath: string, target: string): string {
+  const dirParts = currentFilePath.includes("/")
+    ? currentFilePath.substring(0, currentFilePath.lastIndexOf("/")).split("/")
+    : [];
+
+  const targetParts = target.split("/");
+
+  for (const part of targetParts) {
+    if (part === "..") {
+      dirParts.pop();
+    } else if (part !== "." && part !== "") {
+      dirParts.push(part);
+    }
+  }
+
+  return dirParts.join("/");
+}
+
 interface PreviewProps {
   html: string;
   loading: boolean;
   tocVisible: boolean;
+  /** Current file path (relative to root), used to resolve xref links */
+  currentFilePath: string | null;
+  /** Called when user clicks an .adoc link; receives the resolved path */
+  onNavigate: (path: string) => void;
 }
 
 export function Preview(props: PreviewProps) {
@@ -138,26 +171,81 @@ export function Preview(props: PreviewProps) {
 
   onCleanup(() => cleanupToc?.());
 
-  // Render mermaid blocks and set up TOC tracking whenever html changes
+  /**
+   * Intercept clicks on links inside the rendered AsciiDoc:
+   * - #anchor links: scroll manually within .content container (prevent hash corruption)
+   * - .adoc file links: navigate via SPA routing
+   */
+  function handleClick(e: MouseEvent) {
+    const anchor = (e.target as HTMLElement).closest("a");
+    if (!anchor) return;
+
+    const href = anchor.getAttribute("href");
+    if (!href) return;
+
+    // Handle #anchor links (TOC items, section links)
+    if (href.startsWith("#")) {
+      e.preventDefault();
+      const targetId = decodeURIComponent(href.slice(1));
+      if (!targetId) return;
+
+      // Find the target element and scroll it into view within the .content container
+      const target = articleRef?.querySelector(`[id="${CSS.escape(targetId)}"]`) as HTMLElement | null;
+      if (target) {
+        const contentEl = articleRef?.closest(".content");
+        if (contentEl) {
+          // Calculate offset within the scrollable container
+          const targetRect = target.getBoundingClientRect();
+          const contentRect = contentEl.getBoundingClientRect();
+          const offset = targetRect.top - contentRect.top + contentEl.scrollTop - 16;
+          contentEl.scrollTo({ top: offset, behavior: "smooth" });
+        } else {
+          target.scrollIntoView({ behavior: "smooth" });
+        }
+      }
+      return;
+    }
+
+    // Skip external links (http/https/mailto)
+    if (/^[a-z]+:\/\//i.test(href) || href.startsWith("mailto:")) return;
+
+    // Check if it's an .adoc file link
+    if (!isAdocHref(href)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Resolve relative to current file
+    const currentPath = props.currentFilePath;
+    const targetPath = currentPath ? resolveRelativePath(currentPath, href) : href;
+
+    props.onNavigate(targetPath);
+  }
+
+  // Render mermaid blocks, set up TOC tracking, and apply TOC visibility whenever html changes
   createEffect(() => {
     const _html = props.html;
+    // Also track tocVisible so this re-runs when it changes
+    const tocVis = props.tocVisible;
+
     if (articleRef && _html) {
       queueMicrotask(() => {
         renderMermaidBlocks(articleRef!);
 
-        // Clean up previous observer, set up new one
-        cleanupToc?.();
-        cleanupToc = setupTocScrollTracking(articleRef!);
-      });
-    }
-  });
+        // Apply TOC visibility
+        const toc = articleRef!.querySelector<HTMLElement>("#toc");
+        if (toc) {
+          toc.style.display = tocVis ? "" : "none";
+        }
 
-  // Toggle TOC visibility
-  createEffect(() => {
-    if (!articleRef) return;
-    const toc = articleRef.querySelector<HTMLElement>("#toc");
-    if (toc) {
-      toc.style.display = props.tocVisible ? "" : "none";
+        // Set up scroll tracking (only if TOC is visible)
+        cleanupToc?.();
+        if (tocVis) {
+          cleanupToc = setupTocScrollTracking(articleRef!);
+        } else {
+          cleanupToc = undefined;
+        }
+      });
     }
   });
 
@@ -166,7 +254,12 @@ export function Preview(props: PreviewProps) {
       <Show when={props.loading}>
         <div class="preview-loading">Converting...</div>
       </Show>
-      <article ref={articleRef} class="adoc-body" innerHTML={props.html} />
+      <article
+        ref={articleRef}
+        class="adoc-body"
+        innerHTML={props.html}
+        onClick={handleClick}
+      />
     </div>
   );
 }
