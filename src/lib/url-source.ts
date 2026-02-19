@@ -1,74 +1,50 @@
 /**
  * URL-based data source for the viewer.
- * Fetches .adoc files via the background service worker,
- * supporting both file:// and https:// URLs.
+ * Reads file content from chrome.storage.session (captured by content script)
+ * or falls back to service worker fetch for https:// URLs.
  */
 
-/** Whether chrome.runtime messaging is available (real extension context) */
-const hasRuntime =
+const hasStorage =
   typeof chrome !== "undefined" &&
-  chrome?.runtime?.sendMessage !== undefined;
-
-/** Send a message to the background service worker */
-async function sendMessage<T>(message: Record<string, unknown>): Promise<T> {
-  if (!hasRuntime) {
-    throw new Error("chrome.runtime.sendMessage not available");
-  }
-  return chrome.runtime.sendMessage(message) as Promise<T>;
-}
+  chrome?.storage?.session !== undefined;
 
 /**
- * Extract the local filesystem path from a file:// URL.
- * file:///Users/x/docs/file.adoc → /Users/x/docs/file.adoc
+ * Read the cached file content from chrome.storage.session.
+ * The content script stores { url, content } before redirecting to the viewer.
  */
-function fileUrlToPath(url: string): string {
-  return decodeURIComponent(url.replace(/^file:\/\//, ""));
+async function readCachedContent(url: string): Promise<string | null> {
+  if (!hasStorage) return null;
+  try {
+    const data = await chrome.storage.session.get("urlContent");
+    if (data?.urlContent?.url === url && typeof data.urlContent.content === "string") {
+      return data.urlContent.content;
+    }
+  } catch {
+    // storage not available
+  }
+  return null;
 }
 
 /**
  * Fetch a file's text content.
- * Uses the service worker in extension context, or dev proxy for file:// in dev mode.
+ * 1. Try chrome.storage.session (content captured by content script — no permissions needed)
+ * 2. Fall back to direct fetch (works for https:// URLs from extension context)
  */
 export async function fetchFileByUrl(url: string): Promise<string> {
-  if (hasRuntime) {
-    const resp = await sendMessage<{ text?: string; error?: string }>({
-      action: "fetch-file",
-      url,
-    });
-    if (resp.error) throw new Error(resp.error);
-    return resp.text ?? "";
-  }
+  // Try cached content first (captured by content script for file:// URLs)
+  const cached = await readCachedContent(url);
+  if (cached !== null) return cached;
 
-  // Dev mode fallback
-  if (url.startsWith("file://")) {
-    // Use Vite dev proxy to read local files
-    const localPath = fileUrlToPath(url);
-    const resp = await fetch(`/__local_file?path=${encodeURIComponent(localPath)}`);
-    if (!resp.ok) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
-    return resp.text();
-  }
-
-  // Non-file URLs: direct fetch
+  // Direct fetch — works for https:// URLs from extension pages
+  // For file:// URLs, this will fail without host_permissions,
+  // but the content script should have cached the content already
   const resp = await fetch(url, {
-    headers: { "Cache-Control": "no-cache", Accept: "text/plain" },
+    headers: { "Cache-Control": "no-cache", Accept: "text/plain, */*" },
   });
   if (!resp.ok && resp.status !== 0) {
     throw new Error(`Failed to fetch ${url}: ${resp.status}`);
   }
   return resp.text();
-}
-
-/** Check if the extension has file:// access */
-export async function checkFileAccess(): Promise<boolean> {
-  if (!hasRuntime) return true; // Dev mode — assume ok
-  try {
-    const resp = await sendMessage<{ allowed?: boolean }>({
-      action: "check-file-access",
-    });
-    return resp.allowed ?? false;
-  } catch {
-    return true;
-  }
 }
 
 /** Extract the directory portion of a URL (everything up to the last /) */
@@ -81,7 +57,6 @@ export function dirOfUrl(url: string): string {
 export function fileNameFromUrl(url: string): string {
   const idx = url.lastIndexOf("/");
   const name = idx >= 0 ? url.substring(idx + 1) : url;
-  // Remove query string
   const qIdx = name.indexOf("?");
   return qIdx >= 0 ? name.substring(0, qIdx) : name;
 }
@@ -91,7 +66,6 @@ export function fileNameFromUrl(url: string): string {
  * Handles ../ and ./ segments.
  */
 export function resolveUrl(baseUrl: string, relativePath: string): string {
-  // If already absolute URL, return as-is
   if (/^(file|https?):\/\//i.test(relativePath)) return relativePath;
 
   const baseParts = baseUrl.split("/");
@@ -111,6 +85,8 @@ export function resolveUrl(baseUrl: string, relativePath: string): string {
 /**
  * Read a file by resolving a relative path against a base URL.
  * Used as the `readFile` function for convertAdoc in URL mode.
+ * Note: includes only work for https:// URLs (direct fetch).
+ * For file:// URLs, includes are not supported without host_permissions.
  */
 export function createUrlReadFile(
   baseUrl: string,

@@ -1,23 +1,13 @@
-import { createSignal } from "solid-js";
 import IconShieldAlert from "~icons/lucide/shield-alert";
 import { Button } from "./ui/button.tsx";
-import { checkFileAccess } from "../lib/url-source.ts";
 
 interface FileAccessWarningProps {
   url: string;
 }
 
 export function FileAccessWarning(props: FileAccessWarningProps) {
-  const [checking, setChecking] = createSignal(false);
-
-  async function handleRetry() {
-    setChecking(true);
-    const allowed = await checkFileAccess();
-    setChecking(false);
-    if (allowed) {
-      // Reload the page to retry with the URL
-      location.reload();
-    }
+  function handleRetry() {
+    location.reload();
   }
 
   return (
@@ -27,15 +17,15 @@ export function FileAccessWarning(props: FileAccessWarningProps) {
       </div>
       <h2>File access not enabled</h2>
       <p style={{ "max-width": "480px", "text-align": "center" }}>
-        To preview local <code>.adoc</code> files, you need to enable file
-        access for this extension:
+        To preview local files, you need to enable file access for this
+        extension:
       </p>
       <ol
         style={{
           "text-align": "left",
           "max-width": "480px",
           "line-height": "1.8",
-          "margin": "8px 0 16px",
+          margin: "8px 0 16px",
           "padding-left": "20px",
           color: "hsl(var(--muted-foreground))",
         }}
@@ -53,14 +43,16 @@ export function FileAccessWarning(props: FileAccessWarningProps) {
             chrome://extensions
           </code>
         </li>
-        <li>Find "AsciiDoc Viewer" and click <strong>Details</strong></li>
+        <li>
+          Find <strong>"AsciiMark"</strong> and click <strong>Details</strong>
+        </li>
         <li>
           Enable <strong>"Allow access to file URLs"</strong>
         </li>
-        <li>Come back here and click the button below</li>
+        <li>Reload the original file in a new tab</li>
       </ol>
-      <Button size="lg" onClick={handleRetry} disabled={checking()}>
-        {checking() ? "Checking..." : "Retry"}
+      <Button size="lg" onClick={handleRetry}>
+        Retry
       </Button>
     </div>
   );

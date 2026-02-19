@@ -16,7 +16,6 @@ import {
 } from "../lib/fs.ts";
 import {
   fetchFileByUrl,
-  checkFileAccess,
   dirOfUrl,
   fileNameFromUrl,
   resolveUrl,
@@ -145,24 +144,20 @@ export function App() {
   async function initUrlMode(url: string) {
     setUrlFileName(fileNameFromUrl(url));
 
-    // Check file:// access if needed
-    if (isFileUrl(url)) {
-      const allowed = await checkFileAccess();
-      if (!allowed) {
-        setFileAccessDenied(true);
-        return;
-      }
-    }
-
     await loadUrlContent(url);
 
-    // Start auto-refresh polling for URL mode
-    startUrlRefresh(url);
+    // Auto-refresh polling only works for https:// URLs (direct fetch).
+    // For file:// URLs the content was captured once by the content script
+    // and we cannot re-fetch without host_permissions.
+    if (!isFileUrl(url)) {
+      startUrlRefresh(url);
+    }
   }
 
   async function loadUrlContent(url: string) {
     setLoading(true);
     setUrlError(null);
+    setFileAccessDenied(false);
 
     try {
       const content = await fetchFileByUrl(url);
@@ -180,10 +175,17 @@ export function App() {
       setHtml(result);
     } catch (e) {
       console.error("Failed to load URL:", e);
-      setUrlError(`Failed to load file: ${e}`);
-      setHtml(
-        `<div class="error">Error loading file: ${e}</div>`,
-      );
+
+      // For file:// URLs, fetch failure likely means the content script
+      // didn't inject (file access not enabled for the extension)
+      if (isFileUrl(url)) {
+        setFileAccessDenied(true);
+      } else {
+        setUrlError(`Failed to load file: ${e}`);
+        setHtml(
+          `<div class="error">Error loading file: ${e}</div>`,
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -228,27 +230,33 @@ export function App() {
     if (!hasNativePicker) return;
 
     const saved = await loadDirectoryHandle();
-    if (saved) {
-      try {
-        const perm = await (saved as any).queryPermission({ mode: "read" });
-        if (perm === "granted") {
-          setRootHandle(saved);
-          setRootName(saved.name);
-          const entries = await readTree(saved);
-          setTree(entries);
+    if (!saved) return;
 
-          // Restore file from URL hash
-          const hashPath = getPathFromHash();
-          if (hashPath) {
-            const entry = findEntryByPath(entries, hashPath);
-            if (entry && entry.kind === "file") {
-              loadFileContent(entry);
-            }
-          }
+    try {
+      // Request permission — may show a prompt if not already granted
+      const perm = await (saved as any).requestPermission({ mode: "read" });
+      if (perm !== "granted") return;
+
+      setRootHandle(saved);
+      setRootName(saved.name);
+      setLoading(true);
+      const entries = await readTree(saved);
+      setTree(entries);
+      setLoading(false);
+
+      // Restore file from URL hash
+      const hashPath = getPathFromHash();
+      if (hashPath) {
+        const entry = findEntryByPath(entries, hashPath);
+        if (entry && entry.kind === "file") {
+          loadFileContent(entry);
         }
-      } catch {
-        // Permission denied or handle invalid
       }
+    } catch {
+      // Permission denied or handle invalid — clear stale handle
+      setRootHandle(null);
+      setTree([]);
+      setRootName("");
     }
   }
 

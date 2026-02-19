@@ -29,34 +29,14 @@
         "*://*/*.adoc.txt", "*://*/*.adoc.txt?*",
         "*://*/*.md", "*://*/*.md?*",
         "*://*/*.markdown", "*://*/*.markdown?*",
-        "*://*/*.mdown", "*://*/*.mdown?*",
-        "file://*/*.adoc", "file://*/*.adoc?*",
-        "file://*/*.asciidoc", "file://*/*.asciidoc?*",
-        "file://*/*.asc", "file://*/*.asc?*",
-        "file://*/*.ad", "file://*/*.ad?*",
-        "file://*/*.adoc.txt", "file://*/*.adoc.txt?*",
-        "file://*/*.md", "file://*/*.md?*",
-        "file://*/*.markdown", "file://*/*.markdown?*",
-        "file://*/*.mdown", "file://*/*.mdown?*"
+        "*://*/*.mdown", "*://*/*.mdown?*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
   ],
   "permissions": [
-    "activeTab",
     "storage"
-  ],
-  "host_permissions": [
-    "file:///*",
-    "*://*/*.adoc", "*://*/*.adoc?*",
-    "*://*/*.asciidoc", "*://*/*.asciidoc?*",
-    "*://*/*.asc", "*://*/*.asc?*",
-    "*://*/*.ad", "*://*/*.ad?*",
-    "*://*/*.adoc.txt", "*://*/*.adoc.txt?*",
-    "*://*/*.md", "*://*/*.md?*",
-    "*://*/*.markdown", "*://*/*.markdown?*",
-    "*://*/*.mdown", "*://*/*.mdown?*"
   ],
   "web_accessible_resources": [
     {

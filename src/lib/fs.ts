@@ -284,7 +284,7 @@ export async function readAllFiles(
 }
 
 // IndexedDB persistence for directory handle
-const DB_NAME = "adoc-viewer";
+const DB_NAME = "asciimark";
 const STORE_NAME = "handles";
 
 function openDB(): Promise<IDBDatabase> {
