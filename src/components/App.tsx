@@ -422,7 +422,8 @@ export function App() {
     }
 
     const root = rootHandle();
-    if (!root) return;
+    const fileMap = fallbackFileMap();
+    if (!root && !fileMap) return;
 
     // First, try to find it in the existing tree (fastest)
     const entry = findEntryByPath(tree(), targetPath);
@@ -431,9 +432,29 @@ export function App() {
       return;
     }
 
-    // Not in tree — resolve the file handle directly from the filesystem
+    // Fallback mode: look up the file in the flat file map
+    if (!root && fileMap) {
+      const file = fileMap.get(targetPath);
+      if (file) {
+        const name = targetPath.includes("/")
+          ? targetPath.substring(targetPath.lastIndexOf("/") + 1)
+          : targetPath;
+        const syntheticEntry: FSEntry = {
+          name,
+          kind: "file",
+          path: targetPath,
+          file,
+        };
+        loadFileContent(syntheticEntry);
+        return;
+      }
+      console.warn(`File not found in fallback map: ${targetPath}`);
+      return;
+    }
+
+    // Native mode: resolve the file handle directly from the filesystem
     try {
-      const fileHandle = await resolveFileByPath(root, targetPath);
+      const fileHandle = await resolveFileByPath(root!, targetPath);
       if (fileHandle) {
         const name = targetPath.includes("/")
           ? targetPath.substring(targetPath.lastIndexOf("/") + 1)
@@ -522,7 +543,7 @@ export function App() {
         hasFile={hasFile()}
       />
       <div class="main">
-        <Show when={!isUrlMode && sidebarVisible() && rootHandle()}>
+        <Show when={!isUrlMode && sidebarVisible() && (rootHandle() || fallbackFileMap())}>
           <aside class="sidebar" style={{ width: `${sidebarWidth()}px` }}>
             <FileTree
               entries={tree()}
@@ -541,7 +562,7 @@ export function App() {
               when={isUrlMode ? html() : selectedFile()}
               fallback={
                 <EmptyState
-                  hasRoot={!!rootHandle()}
+                  hasRoot={!!rootHandle() || !!fallbackFileMap()}
                   onOpenFolder={handleOpenFolder}
                 />
               }

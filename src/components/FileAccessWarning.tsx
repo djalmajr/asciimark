@@ -5,10 +5,20 @@ interface FileAccessWarningProps {
   url: string;
 }
 
+/** Detect browser to show correct extensions URL */
+function getExtensionsUrl(): string {
+  const ua = navigator.userAgent;
+  if (ua.includes("Brave")) return "brave://extensions";
+  if (ua.includes("Edg/")) return "edge://extensions";
+  return "chrome://extensions";
+}
+
 export function FileAccessWarning(props: FileAccessWarningProps) {
   function handleRetry() {
     location.reload();
   }
+
+  const extUrl = getExtensionsUrl();
 
   return (
     <div class="empty-state">
@@ -40,7 +50,7 @@ export function FileAccessWarning(props: FileAccessWarningProps) {
               "font-size": "0.85em",
             }}
           >
-            chrome://extensions
+            {extUrl}
           </code>
         </li>
         <li>
