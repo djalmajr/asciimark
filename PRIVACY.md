@@ -10,15 +10,31 @@ AsciiMark does **not** collect, store, or transmit any personal data or user inf
 
 AsciiMark is a browser extension that renders AsciiDoc and Markdown files as formatted HTML. All processing happens **entirely locally** in your browser.
 
+## Local Storage
+
+AsciiMark stores the following data locally in your browser. None of this data ever leaves your device:
+
+- **Theme preference** (light/dark) in `localStorage`
+- **Last opened directory handle** in `IndexedDB` (for session restore when reopening the browser)
+
 ## Permissions Explained
 
-- **activeTab**: Detects when you open a supported file (.adoc, .md) to render it automatically.
-- **storage**: Stores your preferences (theme, auto-refresh setting) locally in Chrome. This data never leaves your browser.
-- **Host permissions (file:///\*)**: Reads local files from your filesystem for rendering. No file content is transmitted anywhere.
+- **storage**: Used to temporarily pass document content from the page to the extension viewer via `chrome.storage.session`. This data is session-only and is automatically cleared when the browser closes.
+- **File URL access** (optional): If you enable "Allow access to file URLs" in the extension settings, AsciiMark can render `.adoc` and `.md` files opened from your local filesystem. This is not enabled by default and requires manual opt-in. No file content is transmitted anywhere.
 
 ## Network Requests
 
-AsciiMark makes **no network requests** except when you open a document hosted on a remote URL (e.g., https://). In that case, the extension fetches the document content directly from that URL for rendering. No data is sent to any third-party server.
+AsciiMark makes **no network requests** except when you open a document hosted on a remote URL (e.g., `https://`). In that case, the extension fetches the document content directly from that URL for rendering. No data is sent to any third-party server.
+
+## Third-Party Libraries
+
+AsciiMark bundles the following open-source libraries for local processing only. None of them make network requests or collect data:
+
+- **@asciidoctor/core** - AsciiDoc to HTML conversion
+- **markdown-it** (+ plugins) - Markdown to HTML conversion
+- **highlight.js** - Syntax highlighting for code blocks
+- **Mermaid** - Diagram rendering
+- **KaTeX** - Math expression rendering
 
 ## Third-Party Services
 
