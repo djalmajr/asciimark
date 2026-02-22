@@ -11,26 +11,30 @@
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    --primary: 217 91% 60%;
+    --primary: 188 76% 34%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 14% 96%;
     --secondary-foreground: 220 9% 46%;
     --muted: 220 14% 96%;
     --muted-foreground: 220 9% 46%;
-    --accent: 220 14% 96%;
-    --accent-foreground: 220 9% 46%;
+    --accent: 182 56% 94%;
+    --accent-foreground: 188 58% 28%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 217 91% 60%;
+    --ring: 188 76% 34%;
     --radius: 0.5rem;
 
     /* Layout tokens (used by custom CSS below) */
     --toolbar-bg: 220 14% 97%;
     --sidebar-bg: 220 14% 96%;
     --bg-hover: 220 13% 93%;
-    --bg-selected: 213 94% 92%;
+    --bg-selected: 183 66% 90%;
+    --brand-glow-1: 188 60% 44%;
+    --brand-glow-2: 175 67% 37%;
+    --brand-surface-start: 0 0% 100%;
+    --brand-surface-end: 180 40% 97%;
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-mono: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
   }
@@ -42,24 +46,28 @@
     --card-foreground: 226 64% 88%;
     --popover: 234 20% 15%;
     --popover-foreground: 226 64% 88%;
-    --primary: 224 78% 72%;
+    --primary: 173 51% 57%;
     --primary-foreground: 235 21% 13%;
     --secondary: 234 20% 15%;
     --secondary-foreground: 229 21% 57%;
     --muted: 234 20% 15%;
     --muted-foreground: 229 21% 57%;
-    --accent: 234 20% 15%;
-    --accent-foreground: 226 64% 88%;
+    --accent: 178 37% 22%;
+    --accent-foreground: 174 62% 88%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --border: 233 16% 22%;
     --input: 233 16% 22%;
-    --ring: 224 78% 72%;
+    --ring: 173 51% 57%;
 
     --toolbar-bg: 234 20% 15%;
     --sidebar-bg: 235 21% 13%;
     --bg-hover: 234 18% 20%;
-    --bg-selected: 211 52% 24%;
+    --bg-selected: 178 37% 22%;
+    --brand-glow-1: 173 51% 57%;
+    --brand-glow-2: 188 60% 44%;
+    --brand-surface-start: 235 21% 13%;
+    --brand-surface-end: 186 32% 12%;
   }
 }
 
@@ -400,18 +408,24 @@
 
 /* === Search Overlay === */
 .search-overlay {
-  position: absolute;
-  top: 8px;
+  position: fixed;
+  top: calc(var(--toolbar-h, 40px) + 8px);
   right: 16px;
   z-index: 10;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
   background: hsl(var(--popover));
   border: 1px solid hsl(var(--border));
   border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px hsl(var(--foreground) / 0.15);
+}
+
+.search-overlay-hidden {
+  display: none;
 }
 
 .search-input {
@@ -455,23 +469,23 @@
 }
 
 mark.search-highlight {
-  background: hsl(50 100% 70%);
+  background: hsl(var(--primary) / 0.24);
   border-radius: 2px;
   color: inherit;
 }
 
 mark.search-highlight.search-active {
-  background: hsl(30 100% 60%);
-  outline: 2px solid hsl(30 100% 50%);
+  background: hsl(var(--primary) / 0.38);
+  outline: 2px solid hsl(var(--primary) / 0.72);
 }
 
 .dark mark.search-highlight {
-  background: hsl(50 80% 30%);
+  background: hsl(var(--primary) / 0.3);
 }
 
 .dark mark.search-highlight.search-active {
-  background: hsl(30 80% 40%);
-  outline-color: hsl(30 80% 50%);
+  background: hsl(var(--primary) / 0.45);
+  outline-color: hsl(var(--primary) / 0.78);
 }
 
 .preview {

@@ -4,7 +4,13 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["apps/site/**"]
+    paths:
+      - "apps/site/**"
+      - "packages/ui/src/components/ui/**"
+      - "packages/core/src/**"
+
+env:
+  PUBLIC_RELEASES_REPO: djalmajr/asciimark-releases
 
 jobs:
   deploy:
@@ -14,11 +20,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install wrangler
-        run: npm install -g wrangler
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
-      - name: Deploy to Cloudflare Pages
-        run: wrangler pages deploy apps/site --project-name asciimark --branch main
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build site
+        run: bun run --filter @asciimark/site build
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VITE_SITE_BASE_PATH: ${{ vars.PUBLIC_SITE_BASE_PATH || '/' }}
+
+      - name: Add SPA fallback for GitHub Pages
+        run: cp "apps/site/dist/index.html" "apps/site/dist/404.html"
+
+      - name: Publish site to GitHub Pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.PUBLIC_DIST_TOKEN }}
+          external_repository: ${{ env.PUBLIC_RELEASES_REPO }}
+          publish_branch: gh-pages
+          publish_dir: apps/site/dist
+          force_orphan: true
+          enable_jekyll: false
+          commit_message: "Deploy site from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"

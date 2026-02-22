@@ -1,0 +1,7 @@
+= Getting Started
+
+AsciiMark demo AsciiDoc file.
+
+== Section
+
+This file exists only for screenshot generation.

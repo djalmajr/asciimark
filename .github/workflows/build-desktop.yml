@@ -6,10 +6,13 @@ on:
     tags:
       - "v*"
 
+env:
+  PUBLIC_RELEASES_REPO: djalmajr/asciimark-releases
+
 jobs:
   build:
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -62,16 +65,9 @@ jobs:
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop
           tauriScript: bunx tauri
-          tagName: v__VERSION__
-          releaseName: "AsciiMark v__VERSION__"
-          releaseBody: "Download the installer for your platform from the assets below."
-          releaseDraft: true
-          prerelease: false
           args: ${{ matrix.args }}
 
       - name: Upload build artifacts
@@ -88,10 +84,12 @@ jobs:
             apps/desktop/src-tauri/target/**/bundle/**/*.nsis
           if-no-files-found: ignore
 
-  upload-r2:
+  publish-public-release:
     needs: build
     runs-on: ubuntu-latest
     if: always() && startsWith(github.ref, 'refs/tags/v') && !cancelled()
+    permissions:
+      contents: read
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -99,63 +97,62 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Install rclone
+      - name: Normalize asset names
         run: |
-          curl -fsSL https://rclone.org/install.sh | sudo bash
+          python <<'PY'
+          from pathlib import Path
+          import shutil
 
-      - name: Configure rclone for R2
-        run: |
-          mkdir -p ~/.config/rclone
-          cat > ~/.config/rclone/rclone.conf << EOF
-          [r2]
-          type = s3
-          provider = Cloudflare
-          access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
-          secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          endpoint = https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          acl = private
-          no_check_bucket = true
-          EOF
+          source_dir = Path("artifacts")
+          output_dir = Path("release-assets")
+          output_dir.mkdir(parents=True, exist_ok=True)
 
-      - name: Upload to R2
+          files = [path for path in source_dir.rglob("*") if path.is_file()]
+
+          def pick(target_name, predicate):
+              candidates = [path for path in files if predicate(path.name.lower())]
+              if not candidates:
+                  return False
+              candidates.sort(key=lambda path: len(path.name))
+              source = candidates[0]
+              destination = output_dir / target_name
+              shutil.copy2(source, destination)
+              print(f"Mapped {source.name} -> {destination.name}")
+              return True
+
+          pick("AsciiMark-macos-arm64.dmg", lambda name: name.endswith(".dmg") and ("arm64" in name or "aarch64" in name))
+          pick("AsciiMark-macos-x64.dmg", lambda name: name.endswith(".dmg") and "arm64" not in name and "aarch64" not in name)
+          pick("AsciiMark-linux-x64.AppImage", lambda name: name.endswith(".appimage"))
+          pick("AsciiMark-linux-x64.deb", lambda name: name.endswith(".deb"))
+          pick("AsciiMark-windows-x64.msi", lambda name: name.endswith(".msi"))
+          pick("AsciiMark-windows-x64.exe", lambda name: name.endswith(".exe") and "installer" in name)
+
+          generated_assets = list(output_dir.iterdir())
+          if not generated_assets:
+              raise SystemExit("No release assets were generated.")
+
+          print("Generated assets:")
+          for asset in sorted(generated_assets):
+              print(asset.name)
+          PY
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_DIST_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          echo "Uploading artifacts for tag: $TAG"
-          find artifacts -type f | while read -r file; do
-            filename=$(basename "$file")
-            echo "Uploading $filename..."
-            rclone copyto "$file" "r2:releases/asciimark/${TAG}/${filename}"
-          done
-          echo "Upload complete. Files in R2:"
-          rclone ls "r2:releases/asciimark/${TAG}/"
+          if gh release view "$TAG" --repo "$PUBLIC_RELEASES_REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists in $PUBLIC_RELEASES_REPO"
+          else
+            gh release create "$TAG" \
+              --repo "$PUBLIC_RELEASES_REPO" \
+              --title "AsciiMark $TAG" \
+              --notes "Desktop binaries published from $GITHUB_REPOSITORY ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+          fi
 
-      - name: Generate and upload latest.json
+      - name: Upload assets to public release
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_DIST_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          BASE_URL="https://releases.djalmajr.dev/asciimark/${TAG}"
-          FILES=$(find artifacts -type f -exec basename {} \; | sort)
-          JSON="{\"version\":\"${TAG}\",\"date\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"files\":{"
-          FIRST=true
-          for file in $FILES; do
-            ext="${file##*.}"
-            case "$ext" in
-              dmg)
-                if echo "$file" | grep -qi "aarch64\|arm64"; then
-                  key="macos-arm64"
-                else
-                  key="macos-x64"
-                fi ;;
-              AppImage) key="linux-appimage" ;;
-              deb) key="linux-deb" ;;
-              msi) key="windows-msi" ;;
-              exe|nsis) key="windows-exe" ;;
-              *) continue ;;
-            esac
-            if [ "$FIRST" = true ]; then FIRST=false; else JSON+=","; fi
-            JSON+="\"${key}\":{\"url\":\"${BASE_URL}/${file}\",\"filename\":\"${file}\"}"
-          done
-          JSON+="}}"
-          echo "$JSON" | jq '.' > latest.json
-          echo "Generated latest.json:"
-          cat latest.json
-          rclone copyto latest.json "r2:releases/asciimark/latest.json"
+          gh release upload "$TAG" release-assets/* --clobber --repo "$PUBLIC_RELEASES_REPO"

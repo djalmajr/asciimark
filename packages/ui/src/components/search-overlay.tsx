@@ -1,7 +1,9 @@
 import { createSignal, createEffect, onCleanup, onMount } from "solid-js";
+import { Portal } from "solid-js/web";
 
 interface SearchOverlayProps {
   container: HTMLElement;
+  visible: boolean;
   onClose: () => void;
 }
 
@@ -13,7 +15,15 @@ export function SearchOverlay(props: SearchOverlayProps) {
   let marks: HTMLElement[] = [];
 
   onMount(() => {
-    inputRef?.focus();
+    if (props.visible) {
+      inputRef?.focus();
+    }
+  });
+
+  createEffect(() => {
+    if (props.visible) {
+      queueMicrotask(() => inputRef?.focus());
+    }
   });
 
   function clearHighlights() {
@@ -116,7 +126,15 @@ export function SearchOverlay(props: SearchOverlayProps) {
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   createEffect(() => {
+    const visible = props.visible;
     const q = query();
+
+    if (!visible) {
+      clearTimeout(debounceTimer);
+      clearHighlights();
+      return;
+    }
+
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => highlightMatches(q), 150);
   });
@@ -141,28 +159,30 @@ export function SearchOverlay(props: SearchOverlayProps) {
   }
 
   return (
-    <div class="search-overlay">
-      <input
-        class="search-input"
-        placeholder="Find in page..."
-        ref={inputRef}
-        type="text"
-        value={query()}
-        onInput={(e) => setQuery(e.currentTarget.value)}
-        onKeyDown={handleKeyDown}
-      />
-      <span class="search-count">
-        {matchCount() > 0 ? `${currentIndex() + 1}/${matchCount()}` : "0/0"}
-      </span>
-      <button class="search-nav-btn" aria-label="Previous" onClick={goPrev}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15" /></svg>
-      </button>
-      <button class="search-nav-btn" aria-label="Next" onClick={goNext}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9" /></svg>
-      </button>
-      <button class="search-nav-btn" aria-label="Close" onClick={props.onClose}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-      </button>
-    </div>
+    <Portal>
+      <div class={`search-overlay ${props.visible ? "" : "search-overlay-hidden"}`}>
+        <input
+          class="search-input"
+          placeholder="Find in page..."
+          ref={inputRef}
+          type="text"
+          value={query()}
+          onInput={(e) => setQuery(e.currentTarget.value)}
+          onKeyDown={handleKeyDown}
+        />
+        <span class="search-count">
+          {matchCount() > 0 ? `${currentIndex() + 1}/${matchCount()}` : "0/0"}
+        </span>
+        <button class="search-nav-btn" aria-label="Previous" onClick={goPrev}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15" /></svg>
+        </button>
+        <button class="search-nav-btn" aria-label="Next" onClick={goNext}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9" /></svg>
+        </button>
+        <button class="search-nav-btn" aria-label="Close" onClick={props.onClose}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+        </button>
+      </div>
+    </Portal>
   );
 }

@@ -10,9 +10,11 @@
   "scripts": {
     "build:app": "bun run --filter @asciimark/desktop build",
     "build:ext": "bun run --filter @asciimark/extension build",
+    "build:site": "bun run --filter @asciimark/site build",
     "dev:app": "bun run --filter @asciimark/desktop dev",
     "dev:ext": "bun run --filter @asciimark/extension dev",
-    "deploy:site": "bun run --filter @asciimark/site deploy",
+    "dev:site": "bun run --filter @asciimark/site dev",
+    "generate:icons": "bash scripts/generate-icons.sh",
     "typecheck": "bun run --filter '*' typecheck"
   }
 }

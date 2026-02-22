@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "paths": {
+      "~/*": ["./src/*"],
+      "@asciimark/core/*": ["../../packages/core/src/*"],
+      "@asciimark/ui/*": ["../../packages/ui/src/*"]
+    }
+  },
+  "include": ["src"]
+}

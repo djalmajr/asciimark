@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="bg-gradient" x1="3" y1="3" x2="29" y2="29" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2DA2B4"/>
+      <stop offset="55%" stop-color="#158799"/>
+      <stop offset="100%" stop-color="#0B6676"/>
+    </linearGradient>
+    <filter id="art-shadow" x="-28%" y="-28%" width="156%" height="156%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0.5" stdDeviation="0.72" flood-color="#0F172A" flood-opacity="0.22"/>
+    </filter>
+    <mask id="a-cutout" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="white"/>
+      <path d="M12.02 22.2Q14.01 18.82 16 15.75Q17.99 18.82 19.98 22.2" fill="none" stroke="black" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="12.62" cy="22.16" r="0.62" fill="black"/>
+    </mask>
+  </defs>
+  <rect x="2.9" y="2.9" width="26.2" height="26.2" rx="6" fill="url(#bg-gradient)"/>
+  <g filter="url(#art-shadow)">
+    <path d="M9.05 22.55Q12.52 16.8 16 10.65Q19.48 16.8 22.95 22.55" fill="none" stroke="#FFFFFF" stroke-width="4.36" stroke-linecap="round" stroke-linejoin="round" mask="url(#a-cutout)"/>
+    <rect x="14.3" y="17.95" width="3.4" height="3.4" rx="0.48" transform="rotate(45 16 19.65)" fill="#FFFFFF"/>
+  </g>
+</svg>

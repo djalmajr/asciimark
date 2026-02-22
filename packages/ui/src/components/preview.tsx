@@ -369,6 +369,7 @@ interface PreviewProps {
 
 export function Preview(props: PreviewProps) {
   const [searchOpen, setSearchOpen] = createSignal(false);
+  const [hasArticle, setHasArticle] = createSignal(false);
   let articleRef: HTMLElement | undefined;
   let cleanupToc: (() => void) | undefined;
 
@@ -377,7 +378,7 @@ export function Preview(props: PreviewProps) {
     const handleCtrlF = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "f") {
         e.preventDefault();
-        setSearchOpen(true);
+        setSearchOpen((visible) => !visible);
       }
     };
     window.addEventListener("keydown", handleCtrlF);
@@ -605,14 +606,18 @@ export function Preview(props: PreviewProps) {
       <Show when={props.loading}>
         <div class="preview-loading">Converting...</div>
       </Show>
-      <Show when={searchOpen() && articleRef}>
+      <Show when={hasArticle()}>
         <SearchOverlay
           container={articleRef!}
+          visible={searchOpen()}
           onClose={() => setSearchOpen(false)}
         />
       </Show>
       <article
-        ref={articleRef}
+        ref={(el) => {
+          articleRef = el;
+          setHasArticle(true);
+        }}
         class="doc-body"
         onClick={handleClick}
       />
