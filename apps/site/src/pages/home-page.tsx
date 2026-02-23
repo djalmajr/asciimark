@@ -310,7 +310,9 @@ export function HomePage() {
 
       <section class="grid-panel">
         <h2 class="section-title">Screenshots</h2>
-        <p class="section-subtitle">Captured from the extension web mode already available in the project.</p>
+        <p class="section-subtitle">
+          Captured from extension web mode. Chrome Web Store listing is currently under review.
+        </p>
         <div class="screenshot-grid">
           <For each={screenshotItems}>
             {(item) => (

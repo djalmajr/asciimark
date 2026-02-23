@@ -140,8 +140,9 @@ export function GuidePage() {
           <h2>Installation</h2>
           <h3>Chrome Extension</h3>
           <p>
-            Install AsciiMark from the Chrome Web Store. After installation, <code>.adoc</code>
-            and <code>.md</code> files can be rendered in-browser with formatted preview.
+            The Chrome Extension is currently under review in the Chrome Web Store. Once approved,
+            you will be able to install it and render <code>.adoc</code> and <code>.md</code> files
+            in-browser with formatted preview.
           </p>
           <h3>Desktop App</h3>
           <p>Download the installer for your platform from the Home page downloads section.</p>
