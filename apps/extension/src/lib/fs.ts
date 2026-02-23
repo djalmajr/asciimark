@@ -1,5 +1,5 @@
 // File System Access API wrapper with <input webkitdirectory> fallback
-import { isSupportedFile, IGNORED_DIRS } from "@asciimark/core/utils.ts";
+import { IGNORED_DIRS } from "@asciimark/core/utils.ts";
 
 export type { FSEntry } from "@asciimark/core/types.ts";
 
@@ -89,14 +89,10 @@ export function buildTreeFromFiles(files: File[]): { rootName: string; entries: 
         // Directory node
         if (IGNORED_DIRS.has(name)) continue;
         const children = buildEntries(value, path);
-        if (children.length > 0) {
-          entries.push({ name, kind: "directory", path, children });
-        }
+        entries.push({ name, kind: "directory", path, children });
       } else {
         // File node
-        if (isSupportedFile(name)) {
-          entries.push({ name, kind: "file", path, file: value });
-        }
+        entries.push({ name, kind: "file", path, file: value });
       }
     }
 
@@ -127,11 +123,8 @@ export async function readTree(
         handle as FileSystemDirectoryHandle,
         path,
       );
-      // Only include directories that contain adoc files (directly or nested)
-      if (children.length > 0) {
-        entries.push({ name, kind: "directory", path, handle, children });
-      }
-    } else if (handle.kind === "file" && isSupportedFile(name)) {
+      entries.push({ name, kind: "directory", path, handle, children });
+    } else if (handle.kind === "file") {
       entries.push({ name, kind: "file", path, handle });
     }
   }

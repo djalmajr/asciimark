@@ -91,6 +91,8 @@ export function createAppState(config: AppStateConfig) {
   const DEFAULT_SIDEBAR_WIDTH = 280;
   const [sidebarWidth, setSidebarWidth] = createSignal(DEFAULT_SIDEBAR_WIDTH);
   const [sidebarVisible, setSidebarVisible] = createSignal(true);
+  const [showAllDirs, setShowAllDirs] = createSignal(false);
+  const [showAllFiles, setShowAllFiles] = createSignal(false);
   const [rootName, setRootName] = createSignal("");
 
   // ── Navigation state ────────────────────────────────────────────────────
@@ -379,6 +381,8 @@ export function createAppState(config: AppStateConfig) {
     rootName,
     savedContent,
     selectedFile,
+    showAllDirs,
+    showAllFiles,
     sidebarVisible,
     sidebarWidth,
     themeMode,
@@ -402,6 +406,8 @@ export function createAppState(config: AppStateConfig) {
     setRootName,
     setSavedContent,
     setSelectedFile,
+    setShowAllDirs,
+    setShowAllFiles,
     setSidebarVisible,
     setSidebarWidth,
     setThemeMode,

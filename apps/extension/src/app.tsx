@@ -41,10 +41,10 @@ export function App() {
   const [, setUrlError] = createSignal<string | null>(null);
   const [fileAccessDenied, setFileAccessDenied] = createSignal(false);
 
-  // File watcher (folder mode only)
+  // File watcher (folder mode only — watches current file + includes)
   const watcher = new FileWatcher(() => {
     const file = state.selectedFile();
-    if (file) loader.loadFileContent(file);
+    if (file) loader.loadFileContent(file, false, true);
   });
 
   // Create modules
@@ -83,6 +83,7 @@ export function App() {
   // Toggle auto-refresh (folder mode watcher)
   createEffect(() => {
     if (isUrlMode) return;
+    if (!rootHandle()) return;
     if (state.autoRefresh()) {
       watcher.start();
     } else {
@@ -125,6 +126,7 @@ export function App() {
       onGoForward={navigation.handleGoForward}
       onLoadFile={(entry) => loader.loadFileContent(entry)}
       onNavigate={navigation.handleNavigate}
+      onRefreshTree={() => folder.refreshTree()}
     />
   );
 }

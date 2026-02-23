@@ -17,9 +17,20 @@ export class FileWatcher {
     rootPath: string;
   }) {
     const { filePath, includePaths, rootPath } = params;
-    this.watchedPaths = [filePath];
+    const newPaths = [filePath];
     for (const relPath of includePaths) {
-      this.watchedPaths.push(`${rootPath}/${relPath}`);
+      newPaths.push(`${rootPath}/${relPath}`);
+    }
+
+    const changed =
+      newPaths.length !== this.watchedPaths.length ||
+      newPaths.some((p, i) => p !== this.watchedPaths[i]);
+
+    this.watchedPaths = newPaths;
+
+    // If already running and paths changed, update the backend watcher
+    if (this.running && changed) {
+      this.sendWatchPaths();
     }
   }
 
@@ -31,9 +42,7 @@ export class FileWatcher {
       this.onChange();
     });
 
-    if (this.watchedPaths.length > 0) {
-      await invoke("watch_paths", { paths: this.watchedPaths });
-    }
+    this.sendWatchPaths();
   }
 
   async stop() {
@@ -46,6 +55,12 @@ export class FileWatcher {
     }
 
     await invoke("stop_watching");
+  }
+
+  private async sendWatchPaths() {
+    if (this.watchedPaths.length > 0) {
+      await invoke("watch_paths", { paths: this.watchedPaths });
+    }
   }
 
   async destroy() {

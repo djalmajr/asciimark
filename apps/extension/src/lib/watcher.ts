@@ -1,4 +1,4 @@
-// Auto-refresh watcher using polling
+// Auto-refresh watcher using polling (file content only)
 import { getFileLastModified, resolveFileByPath } from "./fs.ts";
 
 export interface WatchTarget {
@@ -10,16 +10,14 @@ export interface WatchTarget {
   rootHandle: FileSystemDirectoryHandle;
 }
 
-export type OnChangeCallback = () => void;
-
 export class FileWatcher {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private lastModifiedMap = new Map<string, number>();
   private target: WatchTarget | null = null;
-  private onChange: OnChangeCallback;
+  private onChange: () => void;
   private intervalMs: number;
 
-  constructor(onChange: OnChangeCallback, intervalMs = 2000) {
+  constructor(onChange: () => void, intervalMs = 2000) {
     this.onChange = onChange;
     this.intervalMs = intervalMs;
   }

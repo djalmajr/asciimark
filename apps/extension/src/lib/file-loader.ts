@@ -22,7 +22,7 @@ interface FileLoaderDeps {
 export function createFileLoader(deps: FileLoaderDeps) {
   const { fallbackFileMap, rootHandle, state, watcher } = deps;
 
-  async function loadFileContent(entry: FSEntry, pushHistory = true) {
+  async function loadFileContent(entry: FSEntry, pushHistory = true, force = false) {
     const root = rootHandle();
     const fileMap = fallbackFileMap();
     const isFallback = !root && !!fileMap;
@@ -30,7 +30,7 @@ export function createFileLoader(deps: FileLoaderDeps) {
 
     if (!root && !fileMap && !hasDirectHandle) return;
     if (entry.kind !== "file") return;
-    if (state.selectedFile()?.path === entry.path) return;
+    if (!force && state.selectedFile()?.path === entry.path) return;
 
     state.setSelectedFile(entry);
     state.setLoading(true);

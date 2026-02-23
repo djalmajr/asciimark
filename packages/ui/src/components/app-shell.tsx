@@ -29,6 +29,7 @@ interface AppShellProps {
   onLoadFile: (entry: FSEntry) => void;
   onNavigate: (path: string, fragment?: string | null) => void;
   onOpenFolder?: () => void;
+  onRefreshTree?: () => void;
 
   // Platform-specific content (extension: FileAccessWarning wrapper)
   contentWrapper?: (content: JSX.Element) => JSX.Element;
@@ -127,7 +128,12 @@ export function AppShell(props: AppShellProps) {
               <FileTree
                 entries={s.tree()}
                 selectedPath={s.selectedFile()?.path ?? null}
+                showAllDirs={s.showAllDirs()}
+                showAllFiles={s.showAllFiles()}
                 onSelect={(entry) => props.onLoadFile(entry)}
+                onRefreshTree={props.onRefreshTree}
+                onToggleShowAllDirs={props.onRefreshTree ? () => s.setShowAllDirs((v) => !v) : undefined}
+                onToggleShowAllFiles={props.onRefreshTree ? () => s.setShowAllFiles((v) => !v) : undefined}
               />
             </aside>
             <div class="resize-handle" onDblClick={s.onResizeReset} onMouseDown={(e) => s.onResizeStart(e, appRef)} />

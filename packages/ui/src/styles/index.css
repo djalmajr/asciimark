@@ -199,10 +199,11 @@
 
 /* === Sidebar === */
 .sidebar {
+  display: flex;
+  flex-direction: column;
   background: hsl(var(--sidebar-bg));
   border-right: 1px solid hsl(var(--border));
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   flex-shrink: 0;
   min-width: 180px;
 }
@@ -222,12 +223,23 @@
 
 /* === File Tree === */
 .file-tree {
-  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .file-tree-search-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 4px;
+  flex-shrink: 0;
+}
+
+.file-tree-search-field {
   position: relative;
-  margin: 4px 8px 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .file-tree-search {
@@ -269,6 +281,50 @@
 .file-tree-search-clear:hover {
   color: hsl(var(--foreground));
   background: hsl(var(--bg-hover));
+}
+
+.file-tree-levels {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+
+.file-tree-levels:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--bg-hover));
+}
+
+.file-tree-switch {
+  pointer-events: none;
+}
+
+.file-tree-switch-control {
+  width: 28px !important;
+  height: 16px !important;
+}
+
+.file-tree-switch-thumb {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.file-tree-switch-control[data-checked] .file-tree-switch-thumb {
+  transform: translateX(12px) !important;
+}
+
+.file-tree-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: 8px;
 }
 
 .file-tree-empty {

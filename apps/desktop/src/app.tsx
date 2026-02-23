@@ -22,10 +22,10 @@ export function App() {
 
   const [rootPath, setRootPath] = createSignal<string | null>(null);
 
-  // File watcher
+  // File watcher (watches current file + includes for content changes)
   const watcher = new FileWatcher(() => {
     const file = state.selectedFile();
-    if (file) loader.loadFileContent(file);
+    if (file) loader.loadFileContent(file, false, true);
   });
 
   // Create modules: loader -> navigation -> folder -> dnd
@@ -57,8 +57,9 @@ export function App() {
   state.canGoBack = navigation.canGoBack;
   state.canGoForward = navigation.canGoForward;
 
-  // Toggle auto-refresh
+  // Toggle auto-refresh (only when a folder is open)
   createEffect(() => {
+    if (!rootPath()) return;
     if (state.autoRefresh()) {
       watcher.start();
     } else {
@@ -99,6 +100,7 @@ export function App() {
       onLoadFile={loader.loadFileContent}
       onNavigate={navigation.handleNavigate}
       onOpenFolder={folder.handleOpenFolder}
+      onRefreshTree={() => folder.refreshTree()}
     />
   );
 }

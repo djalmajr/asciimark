@@ -1,5 +1,6 @@
 import { createSignal, createEffect, Show, For, onMount, onCleanup } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
+import type { ExpandAction } from "./file-tree.tsx";
 import IconChevronRight from "~icons/lucide/chevron-right";
 import IconFolder from "~icons/lucide/folder";
 import IconFile from "~icons/lucide/file-text";
@@ -11,6 +12,7 @@ const BASE_PADDING = 8;
 interface FileTreeItemProps {
   depth: number;
   entry: FSEntry;
+  expandAction: ExpandAction;
   focusedPath: string | null;
   forceExpand?: boolean;
   selectedPath: string | null;
@@ -21,6 +23,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
   const app = useApp();
   const [expanded, setExpanded] = createSignal(props.depth < 1);
   let itemRef: HTMLDivElement | undefined;
+  let lastExpandVersion = 0;
 
   // Auto-expand directories that contain the selected file
   createEffect(() => {
@@ -31,6 +34,15 @@ export function FileTreeItem(props: FileTreeItemProps) {
         setExpanded(true);
       }
     }
+  });
+
+  // React to expand/collapse all action
+  createEffect(() => {
+    const ea = props.expandAction;
+    if (ea.version > lastExpandVersion && props.entry.kind === "directory") {
+      setExpanded(ea.action === "expand");
+    }
+    lastExpandVersion = ea.version;
   });
 
   // Listen for custom expand/collapse events from keyboard handler
@@ -101,6 +113,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
             <FileTreeItem
               depth={props.depth + 1}
               entry={child}
+              expandAction={props.expandAction}
               focusedPath={props.focusedPath}
               forceExpand={props.forceExpand}
               selectedPath={props.selectedPath}

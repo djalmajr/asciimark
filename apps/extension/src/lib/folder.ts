@@ -39,7 +39,7 @@ export function createFolder(deps: FolderDeps) {
       setRootHandle(saved);
       state.setRootName(saved.name);
       state.setLoading(true);
-      const entries = await readTree(saved);
+      const entries = await readTree(saved, "");
       state.setTree(entries);
       state.setLoading(false);
 
@@ -67,7 +67,7 @@ export function createFolder(deps: FolderDeps) {
         setFallbackFileMap(null);
         await saveDirectoryHandle(handle);
         state.setLoading(true);
-        const entries = await readTree(handle);
+        const entries = await readTree(handle, "");
         state.setTree(entries);
         state.setLoading(false);
       } else {
@@ -96,6 +96,24 @@ export function createFolder(deps: FolderDeps) {
     }
   }
 
+  async function refreshTree() {
+    const root = deps.rootHandle();
+    if (!root) return;
+    try {
+      const newEntries = await readTree(root, "");
+      const currentPath = state.selectedFile()?.path;
+      state.setTree(newEntries);
+
+      // If selected file was deleted, clear the selection
+      if (currentPath && !state.findEntryByPath(currentPath)) {
+        state.setSelectedFile(null);
+        state.setHtml("");
+      }
+    } catch (e) {
+      console.error("Failed to refresh tree:", e);
+    }
+  }
+
   async function handleEditorSave() {
     const entry = state.selectedFile();
     const root = deps.rootHandle();
@@ -112,5 +130,5 @@ export function createFolder(deps: FolderDeps) {
     }
   }
 
-  return { handleEditorSave, handleOpenFolder, initFolderMode };
+  return { handleEditorSave, handleOpenFolder, initFolderMode, refreshTree };
 }

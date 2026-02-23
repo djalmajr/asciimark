@@ -26,15 +26,6 @@ const IGNORED_DIRS: &[&str] = &[
     "coverage", ".nyc_output", "tmp", "temp",
 ];
 
-const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "adoc", "asciidoc", "asc", "ad", "md", "markdown", "mdown",
-];
-
-fn is_supported_file(name: &str) -> bool {
-    let lower = name.to_lowercase();
-    SUPPORTED_EXTENSIONS.iter().any(|ext| lower.ends_with(&format!(".{}", ext)))
-}
-
 fn read_dir_recursive(dir: &Path, base: &Path) -> Result<Vec<DirEntry>, String> {
     let mut entries = Vec::new();
     let read = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
@@ -60,15 +51,13 @@ fn read_dir_recursive(dir: &Path, base: &Path) -> Result<Vec<DirEntry>, String> 
                 continue;
             }
             let children = read_dir_recursive(&entry.path(), base)?;
-            if !children.is_empty() {
-                entries.push(DirEntry {
-                    name,
-                    kind: "directory".into(),
-                    path: rel_path,
-                    children: Some(children),
-                });
-            }
-        } else if file_type.is_file() && is_supported_file(&name) {
+            entries.push(DirEntry {
+                name,
+                kind: "directory".into(),
+                path: rel_path,
+                children: Some(children),
+            });
+        } else if file_type.is_file() {
             entries.push(DirEntry {
                 name,
                 kind: "file".into(),

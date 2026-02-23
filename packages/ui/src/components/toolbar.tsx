@@ -21,9 +21,9 @@ import type { RecentFile } from "@asciimark/core/recent-files.ts";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 import { Toggle } from "./ui/toggle.tsx";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip.tsx";
+import { Switch, SwitchControl, SwitchThumb } from "./ui/switch.tsx";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
@@ -202,12 +202,17 @@ export function Toolbar(props: ToolbarProps) {
               </DropdownMenuSub>
             </Show>
             <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={props.autoRefresh}
-              onChange={props.onToggleAutoRefresh}
+            <DropdownMenuItem
+              closeOnSelect={false}
+              onSelect={props.onToggleAutoRefresh}
             >
-              Auto-refresh
-            </DropdownMenuCheckboxItem>
+              <span class="flex-1">Auto-refresh</span>
+              <Switch checked={props.autoRefresh} class="file-tree-switch">
+                <SwitchControl class="file-tree-switch-control">
+                  <SwitchThumb class="file-tree-switch-thumb" />
+                </SwitchControl>
+              </Switch>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>

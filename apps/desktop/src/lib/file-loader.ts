@@ -20,10 +20,10 @@ interface FileLoaderDeps {
 export function createFileLoader(deps: FileLoaderDeps) {
   const { rootPath, state, watcher } = deps;
 
-  async function loadFileContent(entry: FSEntry, pushHistory = true) {
+  async function loadFileContent(entry: FSEntry, pushHistory = true, force = false) {
     const root = rootPath();
     if (!root || entry.kind !== "file") return;
-    if (state.selectedFile()?.path === entry.path) return;
+    if (!force && state.selectedFile()?.path === entry.path) return;
 
     state.setSelectedFile(entry);
     state.setHtml("");

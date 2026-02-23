@@ -1,21 +1,66 @@
 import { createSignal, createEffect, createMemo, Show, For } from "solid-js";
 import { FileTreeItem } from "./file-tree-item.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
+import { Switch, SwitchControl, SwitchThumb } from "./ui/switch.tsx";
+import IconSlidersHorizontal from "~icons/lucide/sliders-horizontal";
 import IconX from "~icons/lucide/x";
+import { isSupportedFile } from "@asciimark/core/utils.ts";
 import type { FSEntry } from "@asciimark/core/types.ts";
+
+export interface ExpandAction {
+  action: "expand" | "collapse";
+  version: number;
+}
 
 interface FileTreeProps {
   entries: FSEntry[];
   selectedPath: string | null;
+  showAllDirs?: boolean;
+  showAllFiles?: boolean;
   onSelect: (entry: FSEntry) => void;
+  onRefreshTree?: () => void;
+  onToggleShowAllDirs?: () => void;
+  onToggleShowAllFiles?: () => void;
 }
 
-function filterEntries(entries: FSEntry[], text: string): FSEntry[] {
+/**
+ * Filter entries by visibility settings (showAllDirs, showAllFiles).
+ * When showAllDirs is false, directories that contain no supported files (recursively) are hidden.
+ * When showAllFiles is false, non-supported files are hidden.
+ */
+function filterByVisibility(entries: FSEntry[], showAllDirs: boolean, showAllFiles: boolean): FSEntry[] {
+  if (showAllDirs && showAllFiles) return entries;
+
+  return entries.reduce<FSEntry[]>((acc, entry) => {
+    if (entry.kind === "directory") {
+      const filteredChildren = filterByVisibility(entry.children ?? [], showAllDirs, showAllFiles);
+      // Show directory if showAllDirs is true, or if it has visible children
+      if (showAllDirs || filteredChildren.length > 0) {
+        acc.push({ ...entry, children: filteredChildren });
+      }
+    } else {
+      // File: show if showAllFiles is true, or if it's a supported file
+      if (showAllFiles || isSupportedFile(entry.name)) {
+        acc.push(entry);
+      }
+    }
+    return acc;
+  }, []);
+}
+
+function filterBySearch(entries: FSEntry[], text: string): FSEntry[] {
   if (!text) return entries;
   const lower = text.toLowerCase();
 
   return entries.reduce<FSEntry[]>((acc, entry) => {
     if (entry.kind === "directory" && entry.children) {
-      const filtered = filterEntries(entry.children, text);
+      const filtered = filterBySearch(entry.children, text);
       if (filtered.length > 0) {
         acc.push({ ...entry, children: filtered });
       }
@@ -29,6 +74,7 @@ function filterEntries(entries: FSEntry[], text: string): FSEntry[] {
 export function FileTree(props: FileTreeProps) {
   const [filterText, setFilterText] = createSignal("");
   const [focusedPath, setFocusedPath] = createSignal<string | null>(null);
+  const [expandAction, setExpandAction] = createSignal<ExpandAction>({ action: "collapse", version: 0 });
   let navRef: HTMLElement | undefined;
 
   // Sync focused path when selection changes (e.g. via click)
@@ -37,11 +83,23 @@ export function FileTree(props: FileTreeProps) {
     if (sel) setFocusedPath(sel);
   });
 
+  const visibleEntries = createMemo(() =>
+    filterByVisibility(props.entries, props.showAllDirs ?? false, props.showAllFiles ?? false)
+  );
+
   const filteredEntries = createMemo(() =>
-    filterEntries(props.entries, filterText())
+    filterBySearch(visibleEntries(), filterText())
   );
 
   const isFiltering = () => filterText().length > 0;
+
+  function expandAll() {
+    setExpandAction((prev) => ({ action: "expand", version: prev.version + 1 }));
+  }
+
+  function collapseAll() {
+    setExpandAction((prev) => ({ action: "collapse", version: prev.version + 1 }));
+  }
 
   function getVisibleItems(): HTMLElement[] {
     if (!navRef) return [];
@@ -136,48 +194,105 @@ export function FileTree(props: FileTreeProps) {
   return (
     <nav
       class="file-tree"
-      ref={navRef}
       tabindex="0"
       onKeyDown={handleKeyDown}
     >
       <div class="file-tree-search-wrapper">
-        <input
-          class="file-tree-search"
-          placeholder="Filter files..."
-          type="text"
-          value={filterText()}
-          onInput={(e) => setFilterText(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              setFilterText("");
-              e.currentTarget.blur();
-            }
-            e.stopPropagation();
-          }}
-        />
-        <Show when={filterText()}>
-          <button
-            class="file-tree-search-clear"
-            aria-label="Clear filter"
-            tabindex={-1}
-            onClick={() => setFilterText("")}
-          >
-            <IconX width={12} height={12} />
-          </button>
-        </Show>
-      </div>
-      <For each={filteredEntries()} fallback={<div class="file-tree-empty">No supported files found</div>}>
-        {(entry) => (
-          <FileTreeItem
-            depth={0}
-            entry={entry}
-            focusedPath={focusedPath()}
-            forceExpand={isFiltering()}
-            selectedPath={props.selectedPath}
-            onSelect={props.onSelect}
+        <div class="file-tree-search-field">
+          <input
+            class="file-tree-search"
+            placeholder="Filter files..."
+            type="text"
+            value={filterText()}
+            onInput={(e) => setFilterText(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setFilterText("");
+                e.currentTarget.blur();
+              }
+              e.stopPropagation();
+            }}
           />
-        )}
-      </For>
+          <Show when={filterText()}>
+            <button
+              class="file-tree-search-clear"
+              aria-label="Clear filter"
+              tabindex={-1}
+              onClick={() => setFilterText("")}
+            >
+              <IconX width={12} height={12} />
+            </button>
+          </Show>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            as="button"
+            class="file-tree-levels"
+            aria-label="Tree options"
+            title="Tree options"
+            tabindex={-1}
+          >
+            <IconSlidersHorizontal width={13} height={13} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onSelect={expandAll}>
+              Expand All
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={collapseAll}>
+              Collapse All
+            </DropdownMenuItem>
+            <Show when={props.onRefreshTree}>
+              <DropdownMenuItem onSelect={() => props.onRefreshTree?.()}>
+                Refresh Tree
+              </DropdownMenuItem>
+            </Show>
+            <Show when={props.onToggleShowAllDirs || props.onToggleShowAllFiles}>
+              <DropdownMenuSeparator />
+              <Show when={props.onToggleShowAllDirs}>
+                <DropdownMenuItem
+                  closeOnSelect={false}
+                  onSelect={() => props.onToggleShowAllDirs?.()}
+                >
+                  <span class="flex-1">Show All Folders</span>
+                  <Switch checked={props.showAllDirs ?? false} class="file-tree-switch">
+                    <SwitchControl class="file-tree-switch-control">
+                      <SwitchThumb class="file-tree-switch-thumb" />
+                    </SwitchControl>
+                  </Switch>
+                </DropdownMenuItem>
+              </Show>
+              <Show when={props.onToggleShowAllFiles}>
+                <DropdownMenuItem
+                  closeOnSelect={false}
+                  onSelect={() => props.onToggleShowAllFiles?.()}
+                >
+                  <span class="flex-1">Show All Files</span>
+                  <Switch checked={props.showAllFiles ?? false} class="file-tree-switch">
+                    <SwitchControl class="file-tree-switch-control">
+                      <SwitchThumb class="file-tree-switch-thumb" />
+                    </SwitchControl>
+                  </Switch>
+                </DropdownMenuItem>
+              </Show>
+            </Show>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div class="file-tree-list" ref={navRef}>
+        <For each={filteredEntries()} fallback={<div class="file-tree-empty">No supported files found</div>}>
+          {(entry) => (
+            <FileTreeItem
+              depth={0}
+              entry={entry}
+              expandAction={expandAction()}
+              focusedPath={focusedPath()}
+              forceExpand={isFiltering()}
+              selectedPath={props.selectedPath}
+              onSelect={props.onSelect}
+            />
+          )}
+        </For>
+      </div>
     </nav>
   );
 }

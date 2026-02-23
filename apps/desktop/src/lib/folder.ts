@@ -38,6 +38,24 @@ export function createFolder(deps: FolderDeps) {
     }
   }
 
+  async function refreshTree() {
+    const root = rootPath();
+    if (!root) return;
+    try {
+      const entries = await readTree(root);
+      const currentPath = state.selectedFile()?.path;
+      state.setTree(entries);
+
+      // If selected file was deleted, clear the selection
+      if (currentPath && !state.findEntryByPath(currentPath)) {
+        state.setSelectedFile(null);
+        state.setHtml("");
+      }
+    } catch (e) {
+      console.error("Failed to refresh tree:", e);
+    }
+  }
+
   function handleCloseFolder() {
     setRootPath(null);
     state.resetState();
@@ -62,5 +80,5 @@ export function createFolder(deps: FolderDeps) {
     }
   }
 
-  return { handleCloseFolder, handleEditorSave, handleOpenFolder };
+  return { handleCloseFolder, handleEditorSave, handleOpenFolder, refreshTree };
 }
