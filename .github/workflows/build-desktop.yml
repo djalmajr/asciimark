@@ -135,7 +135,10 @@ jobs:
           pick("AsciiMark-linux-x64.AppImage", lambda name: name.endswith(".appimage"))
           pick("AsciiMark-linux-x64.deb", lambda name: name.endswith(".deb"))
           pick("AsciiMark-windows-x64.msi", lambda name: name.endswith(".msi"))
-          pick("AsciiMark-windows-x64.exe", lambda name: name.endswith(".exe") and "installer" in name)
+          pick(
+              "AsciiMark-windows-x64.exe",
+              lambda name: name.endswith(".exe") and ("installer" in name or "setup" in name),
+          )
 
           generated_assets = list(output_dir.iterdir())
           if not generated_assets:
@@ -157,7 +160,7 @@ jobs:
             gh release create "$TAG" \
               --repo "$PUBLIC_RELEASES_REPO" \
               --title "AsciiMark $TAG" \
-              --notes "Desktop binaries published from $GITHUB_REPOSITORY ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+              --notes "Desktop binaries for AsciiMark."
           fi
 
       - name: Upload assets to public release

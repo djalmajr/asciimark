@@ -53,4 +53,5 @@ jobs:
           publish_dir: apps/site/dist
           force_orphan: true
           enable_jekyll: false
-          commit_message: "Deploy site from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+          cname: ${{ vars.PUBLIC_SITE_CNAME || 'asciimark.djalmajr.dev' }}
+          commit_message: "Deploy site"
