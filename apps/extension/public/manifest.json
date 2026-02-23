@@ -3,7 +3,7 @@
   "name": "AsciiMark",
   "version": "1.0.0",
   "description": "Preview AsciiDoc and Markdown files with syntax highlighting, mermaid diagrams, math, TOC, and auto-refresh",
-  "homepage_url": "https://asciimark.pages.dev/",
+  "homepage_url": "https://asciimark.djalmajr.dev/",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
