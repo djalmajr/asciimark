@@ -38,7 +38,7 @@ const featureItems: FeatureItem[] = [
   {
     title: "Desktop + Extension",
     description:
-      "Use it as a Tauri desktop app or as a browser extension depending on your workflow.",
+      "Use it as a desktop app or as a browser extension depending on your workflow.",
   },
   {
     title: "Local-first",

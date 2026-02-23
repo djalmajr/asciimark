@@ -143,7 +143,7 @@ export function GuidePage() {
             Install AsciiMark from the Chrome Web Store. After installation, <code>.adoc</code>
             and <code>.md</code> files can be rendered in-browser with formatted preview.
           </p>
-          <h3>Desktop App (Tauri)</h3>
+          <h3>Desktop App</h3>
           <p>Download the installer for your platform from the Home page downloads section.</p>
           <h3>macOS: first launch</h3>
           <p>Since the app is not notarized, macOS may block first launch. Run once:</p>
