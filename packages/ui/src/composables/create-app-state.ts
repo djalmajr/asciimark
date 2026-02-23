@@ -46,6 +46,7 @@ export function createAppState(config: AppStateConfig) {
   const [loading, setLoading] = createSignal(false);
   const [autoRefresh, setAutoRefresh] = createSignal(true);
   const [tocVisible, setTocVisible] = createSignal(true);
+  const [tocLevels, setTocLevels] = createSignal(2);
   const [themeMode, setThemeMode] = createSignal<ThemeMode>(
     config.getStoredTheme(),
   );
@@ -387,6 +388,7 @@ export function createAppState(config: AppStateConfig) {
     sidebarWidth,
     themeMode,
     tocVisible,
+    tocLevels,
     tree,
     setAutoRefresh,
     setCodeTheme,
@@ -412,6 +414,7 @@ export function createAppState(config: AppStateConfig) {
     setSidebarWidth,
     setThemeMode,
     setTocVisible,
+    setTocLevels,
     setTree,
 
     // Derived signals

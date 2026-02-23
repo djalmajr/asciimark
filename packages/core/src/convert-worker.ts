@@ -153,6 +153,7 @@ function convertAdocSync(
       idprefix: "",
       idseparator: "-",
       toc: "left",
+      toclevels: 4,
     },
   }) as string;
 }

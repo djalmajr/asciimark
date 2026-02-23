@@ -307,6 +307,7 @@ export async function convertAdoc(opts: ConvertOptions): Promise<string> {
       idprefix: "",
       idseparator: "-",
       toc: "left",
+      toclevels: 4,
     },
   }) as string;
 

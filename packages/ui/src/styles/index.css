@@ -450,12 +450,55 @@
 .toc-panel {
   width: 260px;
   flex-shrink: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   background: hsl(var(--secondary));
   border-left: 1px solid hsl(var(--border));
-  padding: 16px 16px 32px 16px;
+  padding: 12px 12px 0;
   font-size: 13px;
+  display: flex;
+  flex-direction: column;
+}
+
+.toc-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  margin-bottom: 8px;
+}
+
+.toc-panel-title {
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: hsl(var(--muted-foreground));
+}
+
+.toc-panel-options {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+
+.toc-panel-options:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--bg-hover));
+}
+
+.toc-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 4px 32px;
 }
 
 .toc-panel.toc-hidden {

@@ -7,6 +7,15 @@ import { FileTree } from "./file-tree.tsx";
 import { Preview } from "./preview.tsx";
 import { Editor } from "./editor.tsx";
 import { EmptyState } from "./empty-state.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
+import IconCheck from "~icons/lucide/check";
+import IconSlidersHorizontal from "~icons/lucide/sliders-horizontal";
 
 interface AppShellProps {
   state: AppState;
@@ -41,12 +50,26 @@ interface AppShellProps {
 }
 
 export function AppShell(props: AppShellProps) {
+  let tocContainerRef: HTMLElement | undefined;
   let tocPanelRef: HTMLElement | undefined;
   let appRef: HTMLDivElement | undefined;
   let mainRef: HTMLDivElement | undefined;
 
   // Wire tocPanelRef for state methods that need it
   const s = props.state;
+
+  function setTocExpanded(expanded: boolean) {
+    if (!tocContainerRef) return;
+    const items = tocContainerRef.querySelectorAll<HTMLLIElement>("#toc li.toc-collapsible");
+    for (const item of items) {
+      item.classList.toggle("toc-expanded", expanded);
+      item.classList.toggle("toc-collapsed", !expanded);
+      const toggle = item.querySelector<HTMLElement>(":scope > .toc-toggle");
+      if (toggle) {
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      }
+    }
+  }
 
   const defaultContent = () => (
     <Show
@@ -58,14 +81,14 @@ export function AppShell(props: AppShellProps) {
         />
       }
     >
-      <Preview
-        html={s.html()}
-        loading={s.loading()}
-        tocVisible={s.tocVisible()}
-        tocContainer={tocPanelRef}
-        currentFilePath={s.selectedFile()?.path ?? null}
-        pendingFragment={s.pendingFragment()}
-        onFragmentHandled={() => s.setPendingFragment(null)}
+        <Preview
+          html={s.html()}
+          loading={s.loading()}
+          tocVisible={s.tocVisible()}
+          tocContainer={tocContainerRef}
+          currentFilePath={s.selectedFile()?.path ?? null}
+          pendingFragment={s.pendingFragment()}
+          onFragmentHandled={() => s.setPendingFragment(null)}
         onNavigate={props.onNavigate}
         onTocChange={(has) => s.setHasToc(has)}
       />
@@ -174,8 +197,57 @@ export function AppShell(props: AppShellProps) {
           <aside
             class="toc-panel"
             classList={{ "toc-hidden": !s.tocVisible() || !s.hasFile() || !s.hasToc() }}
+            data-toc-levels={s.tocLevels()}
             ref={tocPanelRef}
-          />
+          >
+            <div class="toc-panel-header">
+              <span class="toc-panel-title">Table of Contents</span>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  as="button"
+                  class="toc-panel-options"
+                  aria-label="TOC options"
+                  title="TOC options"
+                >
+                  <IconSlidersHorizontal width={13} height={13} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onSelect={() => setTocExpanded(true)}>
+                    Expand All
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setTocExpanded(false)}>
+                    Collapse All
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => s.setTocLevels(1)}>
+                    <span class="flex-1">Show 1 Level</span>
+                    <Show when={s.tocLevels() === 1}>
+                      <IconCheck width={14} height={14} />
+                    </Show>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => s.setTocLevels(2)}>
+                    <span class="flex-1">Show 2 Levels</span>
+                    <Show when={s.tocLevels() === 2}>
+                      <IconCheck width={14} height={14} />
+                    </Show>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => s.setTocLevels(3)}>
+                    <span class="flex-1">Show 3 Levels</span>
+                    <Show when={s.tocLevels() === 3}>
+                      <IconCheck width={14} height={14} />
+                    </Show>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => s.setTocLevels(4)}>
+                    <span class="flex-1">Show 4 Levels</span>
+                    <Show when={s.tocLevels() === 4}>
+                      <IconCheck width={14} height={14} />
+                    </Show>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <div class="toc-panel-content" ref={tocContainerRef} />
+          </aside>
         </div>
         <Show when={props.showToolbar && (props.toolbarRootName || props.toolbarFilePath)}>
           <footer class="status-bar no-print">
