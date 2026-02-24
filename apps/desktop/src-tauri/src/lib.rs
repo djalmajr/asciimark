@@ -352,7 +352,11 @@ fn toggle_maximize_instant(webview: tauri::Webview) -> Result<(), String> {
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
 fn toggle_maximize_instant(window: tauri::Window) -> Result<(), String> {
-    window.toggle_maximize().map_err(|e| e.to_string())
+    if window.is_maximized().map_err(|e| e.to_string())? {
+        window.unmaximize().map_err(|e| e.to_string())
+    } else {
+        window.maximize().map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
