@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { Show } from "solid-js";
 import IconArrowLeft from "~icons/lucide/arrow-left";
 import IconArrowRight from "~icons/lucide/arrow-right";
 import IconFileDown from "~icons/lucide/file-down";
@@ -6,19 +6,14 @@ import IconFolder from "~icons/lucide/folder-open";
 import IconListTree from "~icons/lucide/list-tree";
 import IconMonitor from "~icons/lucide/monitor";
 import IconMoon from "~icons/lucide/moon";
-import IconPalette from "~icons/lucide/palette";
 import IconPanelLeft from "~icons/lucide/panel-left";
 import IconMenu from "~icons/lucide/menu";
 import IconSun from "~icons/lucide/sun";
-import IconType from "~icons/lucide/type";
 import IconX from "~icons/lucide/x";
 
-import type { CodeTheme } from "@asciimark/core/code-theme.ts";
-import type { FontPrefs } from "@asciimark/core/font-prefs.ts";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 import { Toggle } from "./ui/toggle.tsx";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip.tsx";
-import { Switch, SwitchControl, SwitchThumb } from "./ui/switch.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,16 +28,10 @@ import {
 } from "./ui/dropdown-menu.tsx";
 
 interface ToolbarProps {
-  autoRefresh: boolean;
   canGoBack?: boolean;
   canGoForward?: boolean;
-  codeTheme: string;
-  codeThemes: CodeTheme[];
   darkMode: boolean;
   editorMode: "edit" | "split" | "preview";
-  fontFamilies: readonly { readonly id: string; readonly label: string }[];
-  fontPrefs: FontPrefs;
-  fontSizes: readonly number[];
   hasFile: boolean;
   hasRoot: boolean;
   inWindowFrame?: boolean;
@@ -52,15 +41,12 @@ interface ToolbarProps {
   themeMode: string;
   tocVisible: boolean;
   onCloseFolder?: () => void;
-  onCodeThemeChange: (id: string) => void;
   onEditorModeChange: (mode: "edit" | "split" | "preview") => void;
   onExportPdf?: () => void;
-  onFontPrefsChange: (prefs: Partial<FontPrefs>) => void;
   onGoBack?: () => void;
   onGoForward?: () => void;
   onOpenFolder?: () => void;
   onThemeChange: (mode: string) => void;
-  onToggleAutoRefresh: () => void;
   onToggleSidebar: () => void;
   onToggleToc: () => void;
   onWindowDragStart?: () => void | Promise<void>;
@@ -209,18 +195,6 @@ export function Toolbar(props: ToolbarProps) {
               </DropdownMenuItem>
             </Show>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              closeOnSelect={false}
-              onSelect={props.onToggleAutoRefresh}
-            >
-              <span class="flex-1">Auto-refresh</span>
-              <Switch checked={props.autoRefresh} class="file-tree-switch">
-                <SwitchControl class="file-tree-switch-control">
-                  <SwitchThumb class="file-tree-switch-thumb" />
-                </SwitchControl>
-              </Switch>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Show when={props.darkMode} fallback={<IconSun width={14} height={14} />}>
@@ -245,61 +219,6 @@ export function Toolbar(props: ToolbarProps) {
                     <IconMoon width={14} height={14} />
                     Dark
                   </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <IconPalette width={14} height={14} />
-                Code Theme
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent class="w-48">
-                <DropdownMenuRadioGroup
-                  value={props.codeTheme}
-                  onChange={props.onCodeThemeChange}
-                >
-                  <DropdownMenuRadioItem value="auto">Auto</DropdownMenuRadioItem>
-                  <DropdownMenuSeparator />
-                  <For each={props.codeThemes}>
-                    {(theme) => (
-                      <DropdownMenuRadioItem value={theme.id}>
-                        {theme.label}
-                      </DropdownMenuRadioItem>
-                    )}
-                  </For>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <IconType width={14} height={14} />
-                Font
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent class="w-40">
-                <DropdownMenuRadioGroup
-                  value={String(props.fontPrefs.fontSize)}
-                  onChange={(v) => props.onFontPrefsChange({ fontSize: Number(v) })}
-                >
-                  <For each={[...props.fontSizes]}>
-                    {(size) => (
-                      <DropdownMenuRadioItem value={String(size)}>
-                        {size}px
-                      </DropdownMenuRadioItem>
-                    )}
-                  </For>
-                </DropdownMenuRadioGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={props.fontPrefs.fontFamily}
-                  onChange={(v) => props.onFontPrefsChange({ fontFamily: v })}
-                >
-                  <For each={[...props.fontFamilies]}>
-                    {(fam) => (
-                      <DropdownMenuRadioItem value={fam.id}>
-                        {fam.label}
-                      </DropdownMenuRadioItem>
-                    )}
-                  </For>
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>

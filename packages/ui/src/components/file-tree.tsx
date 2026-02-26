@@ -75,7 +75,7 @@ export function FileTree(props: FileTreeProps) {
   const [filterText, setFilterText] = createSignal("");
   const [focusedPath, setFocusedPath] = createSignal<string | null>(null);
   const [expandAction, setExpandAction] = createSignal<ExpandAction>({ action: "collapse", version: 0 });
-  let navRef: HTMLElement | undefined;
+  let navRef: HTMLDivElement | undefined;
 
   // Sync focused path when selection changes (e.g. via click)
   createEffect(() => {

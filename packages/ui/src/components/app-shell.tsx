@@ -4,6 +4,7 @@ import type { RecentFile } from "@asciimark/core/recent-files.ts";
 import type { AppState } from "../composables/create-app-state.ts";
 import { AppProvider } from "../context/app-context.tsx";
 import { Toolbar } from "./toolbar.tsx";
+import { ContentToolbar } from "./content-toolbar.tsx";
 import { FileTree } from "./file-tree.tsx";
 import { Preview } from "./preview.tsx";
 import { Editor } from "./editor.tsx";
@@ -58,7 +59,7 @@ interface AppShellProps {
 }
 
 export function AppShell(props: AppShellProps) {
-  let tocContainerRef: HTMLElement | undefined;
+  let tocContainerRef: HTMLDivElement | undefined;
   let tocPanelRef: HTMLElement | undefined;
   let appRef: HTMLDivElement | undefined;
   let mainRef: HTMLDivElement | undefined;
@@ -127,16 +128,10 @@ export function AppShell(props: AppShellProps) {
       >
         <Show when={props.showToolbar}>
           <Toolbar
-            autoRefresh={s.autoRefresh()}
             canGoBack={s.canGoBack()}
             canGoForward={s.canGoForward()}
-            codeTheme={s.codeTheme()}
-            codeThemes={s.CodeThemes}
             darkMode={s.darkMode()}
             editorMode={s.editorMode()}
-            fontFamilies={s.FontFamilies}
-            fontPrefs={s.fontPrefs()}
-            fontSizes={s.FontSizes}
             hasFile={s.hasFile()}
             hasRoot={props.hasRoot}
             showEditorTabs={props.showEditorTabs}
@@ -148,15 +143,12 @@ export function AppShell(props: AppShellProps) {
             onWindowDragStart={props.onWindowDragStart}
             onWindowTitleDoubleClick={props.onWindowTitleDoubleClick}
             onCloseFolder={props.onCloseFolder}
-            onCodeThemeChange={s.handleCodeThemeChange}
             onEditorModeChange={(m) => s.setEditorMode(m)}
             onExportPdf={props.showPdfExport !== false ? s.handleExportPdf : undefined}
-            onFontPrefsChange={s.handleFontPrefsChange}
             onGoBack={props.onGoBack}
             onGoForward={props.onGoForward}
             onOpenFolder={props.onOpenFolder}
             onThemeChange={s.handleThemeChange}
-            onToggleAutoRefresh={() => s.setAutoRefresh((v) => !v)}
             onToggleSidebar={() => s.setSidebarVisible((v) => !v)}
             onToggleToc={() => s.setTocVisible((v) => !v)}
           />
@@ -177,39 +169,56 @@ export function AppShell(props: AppShellProps) {
             </aside>
             <div class="resize-handle" onDblClick={s.onResizeReset} onMouseDown={(e) => s.onResizeStart(e, appRef)} />
           </Show>
-          <Show when={s.editorMode() !== "preview" && s.selectedFile()}>
-            <div
-              class="editor-panel"
-              style={s.editorMode() === "split" ? { flex: s.editorWidth() } : undefined}
-            >
-              <Editor
-                content={s.savedContent()}
-                darkMode={s.darkMode()}
-                onChange={(content) => {
-                  const entry = s.selectedFile();
-                  if (entry) s.debouncedConvert(content, entry.path, s._readFile ?? (() => Promise.resolve(null)));
-                }}
+          <div class="content-area">
+            <Show when={props.showToolbar && s.hasFile()}>
+              <ContentToolbar
+                autoRefresh={s.autoRefresh()}
+                codeTheme={s.codeTheme()}
+                codeThemes={s.CodeThemes}
+                fontFamilies={s.FontFamilies}
+                fontPrefs={s.fontPrefs()}
+                fontSizes={s.FontSizes}
+                onCodeThemeChange={s.handleCodeThemeChange}
+                onFontPrefsChange={s.handleFontPrefsChange}
+                onToggleAutoRefresh={() => s.setAutoRefresh((v) => !v)}
               />
+            </Show>
+            <div class="content-panels">
+              <Show when={s.editorMode() !== "preview" && s.selectedFile()}>
+                <div
+                  class="editor-panel"
+                  style={s.editorMode() === "split" ? { flex: s.editorWidth() } : undefined}
+                >
+                  <Editor
+                    content={s.savedContent()}
+                    darkMode={s.darkMode()}
+                    onChange={(content) => {
+                      const entry = s.selectedFile();
+                      if (entry) s.debouncedConvert(content, entry.path, s._readFile ?? (() => Promise.resolve(null)));
+                    }}
+                  />
+                </div>
+              </Show>
+              <Show when={s.editorMode() === "split" && s.selectedFile()}>
+                <div
+                  class="resize-handle"
+                  onDblClick={s.onEditorResizeReset}
+                  onMouseDown={(e) => s.onEditorResizeStart(e, mainRef, appRef)}
+                />
+              </Show>
+              <Show when={s.editorMode() !== "edit"}>
+                <div
+                  class="content"
+                  style={s.editorMode() === "split" ? { flex: 100 - s.editorWidth() } : undefined}
+                >
+                  {props.contentWrapper
+                    ? props.contentWrapper(defaultContent())
+                    : defaultContent()
+                  }
+                </div>
+              </Show>
             </div>
-          </Show>
-          <Show when={s.editorMode() === "split" && s.selectedFile()}>
-            <div
-              class="resize-handle"
-              onDblClick={s.onEditorResizeReset}
-              onMouseDown={(e) => s.onEditorResizeStart(e, mainRef, appRef)}
-            />
-          </Show>
-          <Show when={s.editorMode() !== "edit"}>
-            <div
-              class="content"
-              style={s.editorMode() === "split" ? { flex: 100 - s.editorWidth() } : undefined}
-            >
-              {props.contentWrapper
-                ? props.contentWrapper(defaultContent())
-                : defaultContent()
-              }
-            </div>
-          </Show>
+          </div>
           <aside
             class="toc-panel"
             classList={{ "toc-hidden": !s.tocVisible() || !s.hasFile() || !s.hasToc() }}
