@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, Show, For } from "solid-js";
+import { createSignal, createEffect, createMemo, For, Index, Show } from "solid-js";
 import { FileTreeItem } from "./file-tree-item.tsx";
 import {
   DropdownMenu,
@@ -8,10 +8,13 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { Switch, SwitchControl, SwitchThumb } from "./ui/switch.tsx";
+import IconChevronRight from "~icons/lucide/chevron-right";
 import IconSlidersHorizontal from "~icons/lucide/sliders-horizontal";
 import IconX from "~icons/lucide/x";
+import IconFolderOpen from "~icons/lucide/folder-open";
+import IconRefreshCw from "~icons/lucide/refresh-cw";
 import { isSupportedFile } from "@asciimark/core/utils.ts";
-import type { FSEntry } from "@asciimark/core/types.ts";
+import type { FSEntry, WorkspaceRoot } from "@asciimark/core/types.ts";
 
 export interface ExpandAction {
   action: "expand" | "collapse";
@@ -19,12 +22,15 @@ export interface ExpandAction {
 }
 
 interface FileTreeProps {
-  entries: FSEntry[];
+  roots: WorkspaceRoot[];
   selectedPath: string | null;
+  selectedRootId: string | null;
   showAllDirs?: boolean;
   showAllFiles?: boolean;
-  onSelect: (entry: FSEntry) => void;
-  onRefreshTree?: () => void;
+  onCloseRoot?: (rootId: string) => void;
+  onRefreshRoot?: (rootId: string) => void;
+  onSelect: (entry: FSEntry, rootId: string) => void;
+  onToggleRootCollapsed?: (rootId: string) => void;
   onToggleShowAllDirs?: () => void;
   onToggleShowAllFiles?: () => void;
 }
@@ -71,6 +77,13 @@ function filterBySearch(entries: FSEntry[], text: string): FSEntry[] {
   }, []);
 }
 
+interface FilteredRoot {
+  collapsed: boolean;
+  entries: FSEntry[];
+  id: string;
+  name: string;
+}
+
 export function FileTree(props: FileTreeProps) {
   const [filterText, setFilterText] = createSignal("");
   const [focusedPath, setFocusedPath] = createSignal<string | null>(null);
@@ -83,15 +96,17 @@ export function FileTree(props: FileTreeProps) {
     if (sel) setFocusedPath(sel);
   });
 
-  const visibleEntries = createMemo(() =>
-    filterByVisibility(props.entries, props.showAllDirs ?? false, props.showAllFiles ?? false)
-  );
-
-  const filteredEntries = createMemo(() =>
-    filterBySearch(visibleEntries(), filterText())
+  const filteredRoots = createMemo((): FilteredRoot[] =>
+    props.roots.map((root) => {
+      const visible = filterByVisibility(root.entries, props.showAllDirs ?? false, props.showAllFiles ?? false);
+      const filtered = filterBySearch(visible, filterText());
+      return { collapsed: root.collapsed, entries: filtered, id: root.id, name: root.name };
+    })
   );
 
   const isFiltering = () => filterText().length > 0;
+
+  const hasAnyEntries = () => filteredRoots().some((r) => r.entries.length > 0);
 
   function expandAll() {
     setExpandAction((prev) => ({ action: "expand", version: prev.version + 1 }));
@@ -241,11 +256,6 @@ export function FileTree(props: FileTreeProps) {
             <DropdownMenuItem onSelect={collapseAll}>
               Collapse All
             </DropdownMenuItem>
-            <Show when={props.onRefreshTree}>
-              <DropdownMenuItem onSelect={() => props.onRefreshTree?.()}>
-                Refresh Tree
-              </DropdownMenuItem>
-            </Show>
             <Show when={props.onToggleShowAllDirs || props.onToggleShowAllFiles}>
               <DropdownMenuSeparator />
               <Show when={props.onToggleShowAllDirs}>
@@ -279,19 +289,71 @@ export function FileTree(props: FileTreeProps) {
         </DropdownMenu>
       </div>
       <div class="file-tree-list" ref={navRef}>
-        <For each={filteredEntries()} fallback={<div class="file-tree-empty">No supported files found</div>}>
-          {(entry) => (
-            <FileTreeItem
-              depth={0}
-              entry={entry}
-              expandAction={expandAction()}
-              focusedPath={focusedPath()}
-              forceExpand={isFiltering()}
-              selectedPath={props.selectedPath}
-              onSelect={props.onSelect}
-            />
-          )}
-        </For>
+        <Show when={hasAnyEntries()} fallback={<div class="file-tree-empty">No supported files found</div>}>
+          <Index each={filteredRoots()}>
+            {(root) => {
+              const isActiveRoot = () => props.selectedRootId === root().id;
+              const rootSelectedPath = () => isActiveRoot() ? props.selectedPath : null;
+              const rootFocusedPath = () => isActiveRoot() ? focusedPath() : null;
+
+              return (
+                <>
+                  <div
+                    class="workspace-root-header"
+                    classList={{ "workspace-root-active": isActiveRoot() }}
+                    onClick={() => props.onToggleRootCollapsed?.(root().id)}
+                  >
+                    <span
+                      class="workspace-root-chevron"
+                      classList={{ "workspace-root-chevron-open": !root().collapsed }}
+                    >
+                      <IconChevronRight width={14} height={14} />
+                    </span>
+                    <IconFolderOpen width={14} height={14} class="workspace-root-icon" />
+                    <span class="workspace-root-name">{root().name}</span>
+                    <div class="workspace-root-actions">
+                      <Show when={props.onRefreshRoot}>
+                        <button
+                          class="workspace-root-btn"
+                          aria-label="Refresh"
+                          title="Refresh"
+                          onClick={(e: MouseEvent) => { e.stopPropagation(); props.onRefreshRoot!(root().id); }}
+                        >
+                          <IconRefreshCw width={12} height={12} />
+                        </button>
+                      </Show>
+                      <Show when={props.onCloseRoot}>
+                        <button
+                          class="workspace-root-btn"
+                          aria-label="Close"
+                          title="Close"
+                          onClick={(e: MouseEvent) => { e.stopPropagation(); props.onCloseRoot!(root().id); }}
+                        >
+                          <IconX width={12} height={12} />
+                        </button>
+                      </Show>
+                    </div>
+                  </div>
+                  <Show when={!root().collapsed}>
+                    <For each={root().entries}>
+                      {(entry) => (
+                        <FileTreeItem
+                          depth={1}
+                          entry={entry}
+                          expandAction={expandAction()}
+                          focusedPath={rootFocusedPath()}
+                          forceExpand={isFiltering()}
+                          selectedPath={rootSelectedPath()}
+                          onSelect={(e) => props.onSelect(e, root().id)}
+                        />
+                      )}
+                    </For>
+                  </Show>
+                </>
+              );
+            }}
+          </Index>
+        </Show>
       </div>
     </nav>
   );

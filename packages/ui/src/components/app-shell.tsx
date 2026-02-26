@@ -37,17 +37,17 @@ interface AppShellProps {
   toolbarRootName: string;
 
   // Platform callbacks
-  onCloseFolder?: () => void;
+  onCloseRoot?: (rootId: string) => void;
   onGoBack: () => void;
   onGoForward: () => void;
-  onLoadFile: (entry: FSEntry) => void;
+  onLoadFile: (entry: FSEntry, rootId: string) => void;
   onNavigate: (path: string, fragment?: string | null) => void;
   onOpenFolder?: () => void;
   onOpenRecentFile?: (recentFile: RecentFile) => void | Promise<void>;
   onOpenRecentFolder?: (path: string) => void | Promise<void>;
+  onRefreshRoot?: (rootId: string) => void;
   onWindowDragStart?: () => void | Promise<void>;
   onWindowTitleDoubleClick?: () => void | Promise<void>;
-  onRefreshTree?: () => void;
 
   // Platform-specific content (extension: FileAccessWarning wrapper)
   contentWrapper?: (content: JSX.Element) => JSX.Element;
@@ -134,37 +134,44 @@ export function AppShell(props: AppShellProps) {
             editorMode={s.editorMode()}
             hasFile={s.hasFile()}
             hasRoot={props.hasRoot}
+            inWindowFrame={!!props.windowFrameToolbar}
+            recentFiles={s.recentFiles()}
+            recentFolders={s.recentFolders()}
             showEditorTabs={props.showEditorTabs}
             showNavButtons={props.showNavButtons}
+            showRecentHistory={!!props.showRecentHistory}
             sidebarVisible={s.sidebarVisible()}
             themeMode={s.themeMode()}
             tocVisible={s.tocVisible()}
-            inWindowFrame={!!props.windowFrameToolbar}
-            onWindowDragStart={props.onWindowDragStart}
-            onWindowTitleDoubleClick={props.onWindowTitleDoubleClick}
-            onCloseFolder={props.onCloseFolder}
             onEditorModeChange={(m) => s.setEditorMode(m)}
             onExportPdf={props.showPdfExport !== false ? s.handleExportPdf : undefined}
             onGoBack={props.onGoBack}
             onGoForward={props.onGoForward}
             onOpenFolder={props.onOpenFolder}
+            onOpenRecentFile={props.onOpenRecentFile}
+            onOpenRecentFolder={props.onOpenRecentFolder}
             onThemeChange={s.handleThemeChange}
             onToggleSidebar={() => s.setSidebarVisible((v) => !v)}
             onToggleToc={() => s.setTocVisible((v) => !v)}
+            onWindowDragStart={props.onWindowDragStart}
+            onWindowTitleDoubleClick={props.onWindowTitleDoubleClick}
           />
         </Show>
         <div class="main" ref={mainRef}>
           <Show when={props.showSidebar}>
             <aside class="sidebar" style={{ width: `${s.sidebarWidth()}px` }}>
               <FileTree
-                entries={s.tree()}
+                roots={s.rootsList()}
                 selectedPath={s.selectedFile()?.path ?? null}
+                selectedRootId={s.selectedRootId()}
                 showAllDirs={s.showAllDirs()}
                 showAllFiles={s.showAllFiles()}
-                onSelect={(entry) => props.onLoadFile(entry)}
-                onRefreshTree={props.onRefreshTree}
-                onToggleShowAllDirs={props.onRefreshTree ? () => s.setShowAllDirs((v) => !v) : undefined}
-                onToggleShowAllFiles={props.onRefreshTree ? () => s.setShowAllFiles((v) => !v) : undefined}
+                onCloseRoot={props.onCloseRoot}
+                onRefreshRoot={props.onRefreshRoot}
+                onSelect={(entry, rootId) => props.onLoadFile(entry, rootId)}
+                onToggleRootCollapsed={(id) => s.toggleRootCollapsed(id)}
+                onToggleShowAllDirs={props.onRefreshRoot ? () => s.setShowAllDirs((v) => !v) : undefined}
+                onToggleShowAllFiles={props.onRefreshRoot ? () => s.setShowAllFiles((v) => !v) : undefined}
               />
             </aside>
             <div class="resize-handle" onDblClick={s.onResizeReset} onMouseDown={(e) => s.onResizeStart(e, appRef)} />

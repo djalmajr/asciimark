@@ -4,15 +4,14 @@ import { openDirectory, readTree, writeFile } from "./fs.ts";
 import type { FileWatcher } from "./watcher.ts";
 
 interface FolderDeps {
-  resetNavigation: () => void;
-  rootPath: Accessor<string | null>;
-  setRootPath: Setter<string | null>;
+  rootPaths: Accessor<Map<string, string>>;
+  setRootPaths: Setter<Map<string, string>>;
   state: AppState;
   watcher: FileWatcher;
 }
 
 export function createFolder(deps: FolderDeps) {
-  const { resetNavigation, rootPath, setRootPath, state, watcher } = deps;
+  const { rootPaths, setRootPaths, state, watcher } = deps;
 
   function getPathName(path: string) {
     const normalizedPath = path.replace(/\\/g, "/");
@@ -21,17 +20,35 @@ export function createFolder(deps: FolderDeps) {
   }
 
   async function openFolderPath(path: string): Promise<boolean> {
+    // If this root is already open, just select it
+    if (rootPaths().has(path)) {
+      state.setSelectedRootId(path);
+      return true;
+    }
+
     try {
       state.setLoading(true);
       const entries = await readTree(path);
-      setRootPath(path);
-      state.setRootName(getPathName(path));
-      state.setTree(entries);
+
+      // Add to rootPaths map
+      setRootPaths((prev) => {
+        const next = new Map(prev);
+        next.set(path, path);
+        return next;
+      });
+
+      // Add root to state
+      state.addRoot({
+        collapsed: false,
+        entries,
+        id: path,
+        name: getPathName(path),
+      });
+
+      state.setSelectedRootId(path);
       state.setSidebarVisible(true);
       state.setShowAllDirs(false);
       state.setShowAllFiles(false);
-      state.resetState();
-      resetNavigation();
       state.pushRecentFolder(path);
       return true;
     } catch (e) {
@@ -53,40 +70,49 @@ export function createFolder(deps: FolderDeps) {
     }
   }
 
-  async function refreshTree() {
-    const root = rootPath();
-    if (!root) return;
+  async function refreshRoot(rootId: string) {
+    const rootPath = rootPaths().get(rootId);
+    if (!rootPath) return;
     try {
-      const entries = await readTree(root);
+      const entries = await readTree(rootPath);
       const currentPath = state.selectedFile()?.path;
-      state.setTree(entries);
+      state.updateRootEntries(rootId, entries);
 
-      // If selected file was deleted, clear the selection
-      if (currentPath && !state.findEntryByPath(currentPath)) {
+      // If selected file was in this root and was deleted, clear the selection
+      if (currentPath && state.selectedRootId() === rootId && !state.findEntryByPath(currentPath, rootId)) {
         state.setSelectedFile(null);
         state.setHtml("");
       }
     } catch (e) {
-      console.error("Failed to refresh tree:", e);
+      console.error("Failed to refresh root:", e);
     }
   }
 
-  function handleCloseFolder() {
-    setRootPath(null);
-    state.resetState();
-    state.setRootName("");
-    state.setTree([]);
-    resetNavigation();
-    watcher.destroy();
+  function handleCloseRoot(rootId: string) {
+    // Remove from rootPaths map
+    setRootPaths((prev) => {
+      const next = new Map(prev);
+      next.delete(rootId);
+      return next;
+    });
+
+    // Remove from state (this handles selectedRootId cleanup)
+    state.removeRoot(rootId);
+
+    // If no roots left, destroy watcher
+    if (rootPaths().size === 0) {
+      watcher.destroy();
+    }
   }
 
   async function handleEditorSave() {
     const entry = state.selectedFile();
-    const root = rootPath();
-    if (!entry || !root) return;
+    const rootId = state.selectedRootId();
+    const rootPath = rootId ? rootPaths().get(rootId) : null;
+    if (!entry || !rootPath) return;
 
     try {
-      const absolutePath = `${root}/${entry.path}`;
+      const absolutePath = `${rootPath}/${entry.path}`;
       const content = state.editorContent();
       await writeFile(absolutePath, content);
       state.setSavedContent(content);
@@ -96,10 +122,11 @@ export function createFolder(deps: FolderDeps) {
   }
 
   return {
-    handleCloseFolder,
+    getPathName,
+    handleCloseRoot,
     handleEditorSave,
     handleOpenFolder,
     openFolderPath,
-    refreshTree,
+    refreshRoot,
   };
 }

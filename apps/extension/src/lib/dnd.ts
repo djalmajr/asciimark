@@ -1,25 +1,27 @@
-import type { Setter } from "solid-js";
+import type { Accessor, Setter } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import { isSupportedFile } from "@asciimark/core/utils.ts";
 import type { AppState } from "@asciimark/ui/composables/create-app-state.ts";
 import { setHashFromPath } from "./hash.ts";
 import {
   readTree,
-  saveDirectoryHandle,
+  saveDirectoryHandles,
   buildTreeFromFiles,
   buildFileMap,
 } from "./fs.ts";
 
 interface DndDeps {
   isUrlMode: boolean;
-  loadFileContent: (entry: FSEntry, pushHistory?: boolean) => Promise<void>;
+  loadFileContent: (entry: FSEntry, pushHistory?: boolean, force?: boolean, rootId?: string) => Promise<void>;
+  rootHandles: Accessor<Map<string, FileSystemDirectoryHandle>>;
   setFallbackFileMap: Setter<Map<string, File> | null>;
   setRootHandle: Setter<FileSystemDirectoryHandle | null>;
+  setRootHandles: Setter<Map<string, FileSystemDirectoryHandle>>;
   state: AppState;
 }
 
 export function createDnd(deps: DndDeps) {
-  const { isUrlMode, loadFileContent, setFallbackFileMap, setRootHandle, state } = deps;
+  const { isUrlMode, loadFileContent, setFallbackFileMap, setRootHandle, setRootHandles, state } = deps;
 
   function handleDragOver(e: DragEvent) {
     e.preventDefault();
@@ -45,19 +47,40 @@ export function createDnd(deps: DndDeps) {
       try {
         const handle = await (firstItem as any).getAsFileSystemHandle();
         if (handle.kind === "directory") {
+          const rootId = handle.name;
+
+          // Add handle to rootHandles
+          setRootHandles((prev) => {
+            const next = new Map(prev);
+            next.set(rootId, handle);
+            return next;
+          });
+
+          // Keep backward compat rootHandle
           setRootHandle(handle);
-          state.setRootName(handle.name);
           setFallbackFileMap(null);
-          await saveDirectoryHandle(handle);
+
+          // Add as a new root
+          state.addRoot({
+            collapsed: false,
+            entries: [],
+            id: rootId,
+            name: handle.name,
+          });
+          state.setSelectedRootId(rootId);
+
+          // Persist all handles
+          await saveDirectoryHandles(deps.rootHandles());
+
+          // Load entries
           state.setLoading(true);
           const entries = await readTree(handle);
-          state.setTree(entries);
+          state.updateRootEntries(rootId, entries);
           state.setLoading(false);
+
           state.setSelectedFile(null);
           state.setHtml("");
           setHashFromPath(null);
-          state.setNavStack([]);
-          state.setNavIndex(-1);
           return;
         }
         if (handle.kind === "file") {

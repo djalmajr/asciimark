@@ -30,6 +30,7 @@
     --toolbar-bg: 220 14% 97%;
     --sidebar-bg: 220 14% 96%;
     --bg-hover: 220 13% 93%;
+    --bg-hover-deep: 220 13% 87%;
     --bg-selected: 183 66% 90%;
     --brand-glow-1: 188 60% 44%;
     --brand-glow-2: 175 67% 37%;
@@ -63,6 +64,7 @@
     --toolbar-bg: 234 20% 15%;
     --sidebar-bg: 235 21% 13%;
     --bg-hover: 234 18% 20%;
+    --bg-hover-deep: 234 18% 26%;
     --bg-selected: 178 37% 22%;
     --brand-glow-1: 173 51% 57%;
     --brand-glow-2: 188 60% 44%;
@@ -240,7 +242,8 @@ body:has(.app.window-frame-toolbar) .recent-item-main,
 body:has(.app.window-frame-toolbar) .recent-item-remove,
 body:has(.app.window-frame-toolbar) .search-nav-btn,
 body:has(.app.window-frame-toolbar) .toc-panel-options,
-body:has(.app.window-frame-toolbar) .tree-item {
+body:has(.app.window-frame-toolbar) .tree-item,
+body:has(.app.window-frame-toolbar) .workspace-root-header {
   cursor: default !important;
 }
 
@@ -415,6 +418,83 @@ body:has(.app.window-frame-toolbar) .tree-item {
   font-size: 13px;
   text-align: center;
 }
+
+/* === Workspace Root Headers === */
+.workspace-root-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  user-select: none;
+}
+
+.workspace-root-header:hover {
+  background: hsl(var(--bg-hover));
+}
+
+.workspace-root-active {
+  color: hsl(var(--foreground));
+}
+
+.workspace-root-chevron {
+  display: flex;
+  transition: transform 0.15s;
+}
+
+.workspace-root-chevron-open {
+  transform: rotate(90deg);
+}
+
+.workspace-root-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.workspace-root-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-root-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.workspace-root-header:hover .workspace-root-actions {
+  opacity: 1;
+}
+
+.workspace-root-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.workspace-root-btn:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--bg-hover-deep));
+}
+
+
 
 .tree-item {
   display: flex;

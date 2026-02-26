@@ -15,15 +15,17 @@ import type { FileWatcher } from "./watcher.ts";
 interface FileLoaderDeps {
   fallbackFileMap: Accessor<Map<string, File> | null>;
   rootHandle: Accessor<FileSystemDirectoryHandle | null>;
+  rootHandles: Accessor<Map<string, FileSystemDirectoryHandle>>;
   state: AppState;
   watcher: FileWatcher;
 }
 
 export function createFileLoader(deps: FileLoaderDeps) {
-  const { fallbackFileMap, rootHandle, state, watcher } = deps;
+  const { fallbackFileMap, rootHandle, rootHandles, state, watcher } = deps;
 
-  async function loadFileContent(entry: FSEntry, pushHistory = true, force = false) {
-    const root = rootHandle();
+  async function loadFileContent(entry: FSEntry, pushHistory = true, force = false, rootId?: string) {
+    const targetRootId = rootId ?? state.selectedRootId();
+    const root = targetRootId ? rootHandles().get(targetRootId) ?? rootHandle() : rootHandle();
     const fileMap = fallbackFileMap();
     const isFallback = !root && !!fileMap;
     const hasDirectHandle = !root && !fileMap && (entry.handle || entry.file);
@@ -31,6 +33,11 @@ export function createFileLoader(deps: FileLoaderDeps) {
     if (!root && !fileMap && !hasDirectHandle) return;
     if (entry.kind !== "file") return;
     if (!force && state.selectedFile()?.path === entry.path) return;
+
+    // Set selected root when loading a file
+    if (targetRootId) {
+      state.setSelectedRootId(targetRootId);
+    }
 
     state.setSelectedFile(entry);
     state.setLoading(true);
@@ -41,6 +48,7 @@ export function createFileLoader(deps: FileLoaderDeps) {
       setHashFromPath(entry.path);
       state.pushNavHistory({
         entry,
+        rootId: targetRootId ?? "",
       });
     }
 

@@ -8,3 +8,17 @@ export interface FSEntry {
   file?: File;
   children?: FSEntry[];
 }
+
+/** A workspace root folder. Desktop uses absolute path as id, extension uses handle.name. */
+export interface WorkspaceRoot {
+  collapsed: boolean;
+  entries: FSEntry[];
+  id: string;
+  name: string;
+}
+
+/** A file path qualified by its workspace root id. */
+export interface QualifiedPath {
+  path: string;
+  rootId: string;
+}

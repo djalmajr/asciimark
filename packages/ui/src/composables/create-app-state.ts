@@ -4,7 +4,7 @@ import {
   onCleanup,
   onMount,
 } from "solid-js";
-import type { FSEntry } from "@asciimark/core/types.ts";
+import type { FSEntry, QualifiedPath, WorkspaceRoot } from "@asciimark/core/types.ts";
 import type { ConvertOptions } from "@asciimark/core/converter.ts";
 import {
   CodeThemes,
@@ -97,23 +97,38 @@ export function createAppState(config: AppStateConfig) {
   const [editorContent, setEditorContent] = createSignal("");
   const [savedContent, setSavedContent] = createSignal("");
 
-  // ── Tree / sidebar state ────────────────────────────────────────────────
+  // ── Workspace roots ─────────────────────────────────────────────────────
 
-  const [tree, setTree] = createSignal<FSEntry[]>([]);
+  const [roots, setRoots] = createSignal<Map<string, WorkspaceRoot>>(new Map());
+  const [selectedRootId, setSelectedRootId] = createSignal<string | null>(null);
   const [selectedFile, setSelectedFile] = createSignal<FSEntry | null>(null);
   const DEFAULT_SIDEBAR_WIDTH = 280;
   const [sidebarWidth, setSidebarWidth] = createSignal(DEFAULT_SIDEBAR_WIDTH);
   const [sidebarVisible, setSidebarVisible] = createSignal(true);
   const [showAllDirs, setShowAllDirs] = createSignal(false);
   const [showAllFiles, setShowAllFiles] = createSignal(false);
-  const [rootName, setRootName] = createSignal("");
+
+  // Derived: list of all roots
+  const rootsList = () => Array.from(roots().values());
+
+  // Derived: active root (where selected file lives)
+  const activeRoot = (): WorkspaceRoot | null => {
+    const id = selectedRootId();
+    return id ? roots().get(id) ?? null : null;
+  };
+
+  // Backward-compat: tree of active root
+  const tree = () => activeRoot()?.entries ?? [];
+
+  // Backward-compat: name of active root
+  const rootName = () => activeRoot()?.name ?? "";
 
   // ── Navigation state ────────────────────────────────────────────────────
 
   const [pendingFragment, setPendingFragment] = createSignal<string | null>(
     null,
   );
-  const [navStack, setNavStack] = createSignal<string[]>([]);
+  const [navStack, setNavStack] = createSignal<QualifiedPath[]>([]);
   const [navIndex, setNavIndex] = createSignal(-1);
 
   // ── Drag-and-drop ──────────────────────────────────────────────────────
@@ -201,7 +216,7 @@ export function createAppState(config: AppStateConfig) {
 
   // ── Tree utility ────────────────────────────────────────────────────────
 
-  function findEntryByPath(targetPath: string): FSEntry | null {
+  function findEntryByPath(targetPath: string, rootId?: string): FSEntry | null {
     function find(entries: FSEntry[], tp: string): FSEntry | null {
       for (const entry of entries) {
         if (entry.path === tp) return entry;
@@ -212,13 +227,23 @@ export function createAppState(config: AppStateConfig) {
       }
       return null;
     }
-    return find(tree(), targetPath);
+    if (rootId) {
+      const root = roots().get(rootId);
+      return root ? find(root.entries, targetPath) : null;
+    }
+    // Search all roots
+    for (const root of roots().values()) {
+      const found = find(root.entries, targetPath);
+      if (found) return found;
+    }
+    return null;
   }
 
   // ── Navigation history ──────────────────────────────────────────────────
 
   interface PushNavHistoryParams {
     entry: FSEntry;
+    rootId: string;
   }
 
   interface PushRecentFileParams {
@@ -227,9 +252,9 @@ export function createAppState(config: AppStateConfig) {
     rootPath: string;
   }
 
-  function pushNavHistory({ entry }: PushNavHistoryParams) {
+  function pushNavHistory({ entry, rootId }: PushNavHistoryParams) {
     const stack = navStack().slice(0, navIndex() + 1);
-    stack.push(entry.path);
+    stack.push({ path: entry.path, rootId });
     setNavStack(stack);
     setNavIndex(stack.length - 1);
   }
@@ -246,6 +271,68 @@ export function createAppState(config: AppStateConfig) {
       rootPath,
     });
     setRecentFiles(updated);
+  }
+
+  // ── Workspace root management ───────────────────────────────────────────
+
+  function addRoot(root: WorkspaceRoot) {
+    setRoots((prev) => {
+      const next = new Map(prev);
+      next.set(root.id, root);
+      return next;
+    });
+  }
+
+  function removeRoot(rootId: string) {
+    setRoots((prev) => {
+      const next = new Map(prev);
+      next.delete(rootId);
+      return next;
+    });
+    if (selectedRootId() === rootId) {
+      setSelectedFile(null);
+      setSelectedRootId(null);
+      setHtml("");
+      setEditorContent("");
+      setSavedContent("");
+      setEditorMode("preview");
+    }
+  }
+
+  function updateRootEntries(rootId: string, entries: FSEntry[]) {
+    setRoots((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(rootId);
+      if (existing) next.set(rootId, { ...existing, entries });
+      return next;
+    });
+  }
+
+  function toggleRootCollapsed(rootId: string) {
+    setRoots((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(rootId);
+      if (existing) next.set(rootId, { ...existing, collapsed: !existing.collapsed });
+      return next;
+    });
+  }
+
+  // Backward-compat wrapper: set tree of active root
+  function setTree(entries: FSEntry[]) {
+    const id = selectedRootId();
+    if (id) updateRootEntries(id, entries);
+  }
+
+  // Backward-compat wrapper: set name of active root
+  function setRootName(name: string) {
+    const id = selectedRootId();
+    if (!id) return;
+    setRoots((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(id);
+      if (existing) next.set(id, { ...existing, name });
+      return next;
+    });
   }
 
   // ── PDF export ──────────────────────────────────────────────────────────
@@ -387,6 +474,8 @@ export function createAppState(config: AppStateConfig) {
 
   function resetState(tocPanelRef?: HTMLElement) {
     setSelectedFile(null);
+    setSelectedRootId(null);
+    setRoots(new Map());
     setHtml("");
     setEditorContent("");
     setSavedContent("");
@@ -416,9 +505,13 @@ export function createAppState(config: AppStateConfig) {
     pendingFragment,
     recentFiles,
     recentFolders,
+    roots,
+    rootsList,
+    activeRoot,
     rootName,
     savedContent,
     selectedFile,
+    selectedRootId,
     showAllDirs,
     showAllFiles,
     sidebarVisible,
@@ -444,8 +537,10 @@ export function createAppState(config: AppStateConfig) {
     setRecentFiles,
     setRecentFolders,
     setRootName,
+    setRoots,
     setSavedContent,
     setSelectedFile,
+    setSelectedRootId,
     setShowAllDirs,
     setShowAllFiles,
     setSidebarVisible,
@@ -463,6 +558,7 @@ export function createAppState(config: AppStateConfig) {
     isDirty,
 
     // Handlers
+    addRoot,
     clearToc,
     convert,
     debouncedConvert,
@@ -483,7 +579,10 @@ export function createAppState(config: AppStateConfig) {
     pushNavHistory,
     pushRecentFile,
     pushRecentFolder,
+    removeRoot,
     resetState,
+    toggleRootCollapsed,
+    updateRootEntries,
 
     // Constants (for AppShell convenience)
     CodeThemes,

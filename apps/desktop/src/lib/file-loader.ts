@@ -12,19 +12,21 @@ import {
 import type { FileWatcher } from "./watcher.ts";
 
 interface FileLoaderDeps {
-  rootPath: Accessor<string | null>;
+  rootPaths: Accessor<Map<string, string>>;
   state: AppState;
   watcher: FileWatcher;
 }
 
 export function createFileLoader(deps: FileLoaderDeps) {
-  const { rootPath, state, watcher } = deps;
+  const { rootPaths, state, watcher } = deps;
 
-  async function loadFileContent(entry: FSEntry, pushHistory = true, force = false) {
-    const root = rootPath();
+  async function loadFileContent(entry: FSEntry, pushHistory = true, force = false, rootId?: string) {
+    const targetRootId = rootId ?? state.selectedRootId();
+    const root = targetRootId ? rootPaths().get(targetRootId) : null;
     if (!root || entry.kind !== "file") return;
-    if (!force && state.selectedFile()?.path === entry.path) return;
+    if (!force && state.selectedFile()?.path === entry.path && state.selectedRootId() === targetRootId) return;
 
+    state.setSelectedRootId(targetRootId);
     state.setSelectedFile(entry);
     state.setHtml("");
     state.setLoading(true);
@@ -32,6 +34,7 @@ export function createFileLoader(deps: FileLoaderDeps) {
     if (pushHistory) {
       state.pushNavHistory({
         entry,
+        rootId: targetRootId!,
       });
     }
 

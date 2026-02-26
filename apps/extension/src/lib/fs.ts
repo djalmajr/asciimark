@@ -307,3 +307,78 @@ export async function loadDirectoryHandle(): Promise<FileSystemDirectoryHandle |
     return null;
   }
 }
+
+/**
+ * Save multiple directory handles keyed by root ID.
+ * Also saves the list of root IDs for ordered retrieval.
+ */
+export async function saveDirectoryHandles(
+  handles: Map<string, FileSystemDirectoryHandle>,
+): Promise<void> {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const store = tx.objectStore(STORE_NAME);
+
+  // Save each handle under "root:<id>"
+  for (const [id, handle] of handles) {
+    store.put(handle, `root:${id}`);
+  }
+
+  // Save ordered list of root IDs
+  store.put(Array.from(handles.keys()), "rootIds");
+
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/**
+ * Load all saved directory handles.
+ * Migrates from legacy single "rootDir" key if multi-root data is absent.
+ */
+export async function loadDirectoryHandles(): Promise<Map<string, FileSystemDirectoryHandle>> {
+  try {
+    const db = await openDB();
+
+    // First try to load multi-root data
+    const idsRequest = await new Promise<string[] | null>((resolve) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const req = tx.objectStore(STORE_NAME).get("rootIds");
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => resolve(null);
+    });
+
+    if (idsRequest && idsRequest.length > 0) {
+      const handles = new Map<string, FileSystemDirectoryHandle>();
+      for (const id of idsRequest) {
+        const handle = await new Promise<FileSystemDirectoryHandle | null>((resolve) => {
+          const tx = db.transaction(STORE_NAME, "readonly");
+          const req = tx.objectStore(STORE_NAME).get(`root:${id}`);
+          req.onsuccess = () => resolve(req.result ?? null);
+          req.onerror = () => resolve(null);
+        });
+        if (handle) handles.set(id, handle);
+      }
+      if (handles.size > 0) return handles;
+    }
+
+    // Migration: check for legacy single "rootDir" key
+    const legacy = await new Promise<FileSystemDirectoryHandle | null>((resolve) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const req = tx.objectStore(STORE_NAME).get("rootDir");
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => resolve(null);
+    });
+
+    if (legacy) {
+      const handles = new Map<string, FileSystemDirectoryHandle>();
+      handles.set(legacy.name, legacy);
+      return handles;
+    }
+
+    return new Map();
+  } catch {
+    return new Map();
+  }
+}

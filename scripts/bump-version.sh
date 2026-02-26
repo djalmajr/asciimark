@@ -1,21 +1,39 @@
 #!/bin/bash
 set -euo pipefail
 
-VERSION="${1:-}"
+INPUT="${1:-}"
 
-if [ -z "$VERSION" ]; then
-  echo "Usage: bun run bump:app <version>"
-  echo "Example: bun run bump:app 0.3.0"
-  exit 1
-fi
-
-# Validar formato semver (x.y.z)
-if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-  echo "Error: version must be semver format (e.g. 0.3.0)"
+if [ -z "$INPUT" ]; then
+  echo "Usage: bun run bump:app <major|minor|patch|x.y.z>"
+  echo "Examples:"
+  echo "  bun run bump:app patch   # 0.3.1 -> 0.3.2"
+  echo "  bun run bump:app minor   # 0.3.1 -> 0.4.0"
+  echo "  bun run bump:app major   # 0.3.1 -> 1.0.0"
+  echo "  bun run bump:app 0.4.0"
   exit 1
 fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PKG_PATH="${ROOT}/apps/desktop/package.json"
+
+# Read current version
+CURRENT=$(bun --eval "console.log(JSON.parse(await Bun.file('${PKG_PATH}').text()).version)")
+
+if echo "$INPUT" | grep -qE '^(major|minor|patch)$'; then
+  IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+  case "$INPUT" in
+    major) VERSION="$((MAJOR + 1)).0.0" ;;
+    minor) VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
+    patch) VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+  esac
+elif echo "$INPUT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  VERSION="$INPUT"
+else
+  echo "Error: argument must be major, minor, patch, or semver (e.g. 0.3.0)"
+  exit 1
+fi
+
+echo "${CURRENT} -> ${VERSION}"
 
 # 1. apps/desktop/package.json
 bun --eval "

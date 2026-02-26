@@ -1,94 +1,68 @@
-import { createSignal } from "solid-js";
-import type { Accessor, Setter } from "solid-js";
-import type { FSEntry } from "@asciimark/core/types.ts";
+import type { Accessor } from "solid-js";
+import type { FSEntry, QualifiedPath } from "@asciimark/core/types.ts";
 import type { AppState } from "@asciimark/ui/composables/create-app-state.ts";
 import { readFileContent, readTree } from "./fs.ts";
 
-interface NavContext {
-  html: string;
-  rootName: string;
-  rootPath: string;
-  selectedFile: FSEntry | null;
-  tree: FSEntry[];
-}
-
 interface NavigationDeps {
-  loadFileContent: (entry: FSEntry, pushHistory?: boolean) => Promise<void>;
-  rootPath: Accessor<string | null>;
-  setRootPath: Setter<string | null>;
+  loadFileContent: (entry: FSEntry, pushHistory?: boolean, force?: boolean, rootId?: string) => Promise<void>;
+  rootPaths: Accessor<Map<string, string>>;
   state: AppState;
 }
 
 export function createNavigation(deps: NavigationDeps) {
-  const { loadFileContent, rootPath, setRootPath, state } = deps;
-
-  const [contextStack, setContextStack] = createSignal<NavContext[]>([]);
-  const [forwardContextStack, setForwardContextStack] = createSignal<NavContext[]>([]);
-
-  function currentContext(): NavContext {
-    return {
-      html: state.html(),
-      rootName: state.rootName(),
-      rootPath: rootPath() ?? "",
-      selectedFile: state.selectedFile(),
-      tree: state.tree(),
-    };
-  }
-
-  function restoreContext(ctx: NavContext) {
-    setRootPath(ctx.rootPath);
-    state.setRootName(ctx.rootName);
-    state.setTree(ctx.tree);
-    state.setSelectedFile(ctx.selectedFile);
-    state.setHtml(ctx.html);
-    state.setSidebarVisible(
-      ctx.tree.length > 1 || ctx.tree.some((e) => e.kind === "directory"),
-    );
-    state.setNavStack([]);
-    state.setNavIndex(-1);
-  }
+  const { loadFileContent, rootPaths, state } = deps;
 
   function canGoBack() {
-    return state.navIndex() > 0 || contextStack().length > 0;
+    return state.navIndex() > 0;
   }
 
   function canGoForward() {
-    return state.navIndex() < state.navStack().length - 1 || forwardContextStack().length > 0;
+    return state.navIndex() < state.navStack().length - 1;
   }
 
   async function handleNavigate(targetPath: string, fragment?: string | null) {
     state.setPendingFragment(fragment ?? null);
-    const root = rootPath();
+    const currentRootId = state.selectedRootId();
 
-    // Try finding in the existing tree first
-    const entry = state.findEntryByPath(targetPath);
-    if (entry && entry.kind === "file") {
-      loadFileContent(entry);
-      return;
+    // Try finding in the current root first
+    if (currentRootId) {
+      const entry = state.findEntryByPath(targetPath, currentRootId);
+      if (entry && entry.kind === "file") {
+        loadFileContent(entry, true, false, currentRootId);
+        return;
+      }
     }
 
-    // Not in tree -- try reading directly from filesystem
-    if (root) {
+    // Try finding in all roots
+    for (const root of state.rootsList()) {
+      const entry = state.findEntryByPath(targetPath, root.id);
+      if (entry && entry.kind === "file") {
+        loadFileContent(entry, true, false, root.id);
+        return;
+      }
+    }
+
+    // Not in any tree -- try filesystem fallback using the current root
+    const currentRootPath = currentRootId ? rootPaths().get(currentRootId) : null;
+    if (currentRootPath) {
       // Try as directory first
       try {
-        const absolutePath = `${root}/${targetPath}`;
+        const absolutePath = `${currentRootPath}/${targetPath}`;
         const entries = await readTree(absolutePath);
         if (entries.length > 0) {
-          // Save current context so we can go back
-          setContextStack((prev) => [...prev, currentContext()]);
-
-          setRootPath(absolutePath);
-          const dirName = targetPath.includes("/")
-            ? targetPath.substring(targetPath.lastIndexOf("/") + 1)
-            : targetPath;
-          state.setRootName(dirName);
-          state.setTree(entries);
+          // Navigate into a subdirectory — add it as a new root
+          state.addRoot({
+            collapsed: false,
+            entries,
+            id: absolutePath,
+            name: targetPath.includes("/")
+              ? targetPath.substring(targetPath.lastIndexOf("/") + 1)
+              : targetPath,
+          });
+          state.setSelectedRootId(absolutePath);
           state.setSidebarVisible(true);
           state.setSelectedFile(null);
           state.setHtml("");
-          setForwardContextStack([]);
-          state.setNavStack([]);
-          state.setNavIndex(-1);
           return;
         }
       } catch {
@@ -97,13 +71,13 @@ export function createNavigation(deps: NavigationDeps) {
 
       // Try as file
       try {
-        const absolutePath = `${root}/${targetPath}`;
+        const absolutePath = `${currentRootPath}/${targetPath}`;
         await readFileContent(absolutePath);
         const name = targetPath.includes("/")
           ? targetPath.substring(targetPath.lastIndexOf("/") + 1)
           : targetPath;
         const syntheticEntry: FSEntry = { name, kind: "file", path: targetPath };
-        loadFileContent(syntheticEntry);
+        loadFileContent(syntheticEntry, true, false, currentRootId!);
         return;
       } catch {
         // File doesn't exist at that path
@@ -116,56 +90,31 @@ export function createNavigation(deps: NavigationDeps) {
   function handleGoBack() {
     if (!canGoBack()) return;
 
-    // If at the beginning of current navStack, restore previous context
-    if (state.navIndex() <= 0 && contextStack().length > 0) {
-      const contexts = contextStack();
-      const prev = contexts[contexts.length - 1]!;
-      setForwardContextStack((fwd) => [...fwd, currentContext()]);
-      setContextStack(contexts.slice(0, -1));
-      restoreContext(prev);
-      return;
-    }
-
     const stack = state.navStack();
     const newIdx = state.navIndex() - 1;
-    const path = stack[newIdx];
-    if (path) {
-      const entry = state.findEntryByPath(path);
-      if (entry && entry.kind === "file") {
-        state.setNavIndex(newIdx);
-        loadFileContent(entry, false);
-      }
+    const qp: QualifiedPath = stack[newIdx]!;
+    const entry = state.findEntryByPath(qp.path, qp.rootId);
+    if (entry && entry.kind === "file") {
+      state.setNavIndex(newIdx);
+      loadFileContent(entry, false, false, qp.rootId);
     }
   }
 
   function handleGoForward() {
     if (!canGoForward()) return;
 
-    // If at the end of current navStack, restore forward context
-    if (state.navIndex() >= state.navStack().length - 1 && forwardContextStack().length > 0) {
-      const fwdStack = forwardContextStack();
-      const next = fwdStack[fwdStack.length - 1]!;
-      setContextStack((prev) => [...prev, currentContext()]);
-      setForwardContextStack(fwdStack.slice(0, -1));
-      restoreContext(next);
-      return;
-    }
-
     const stack = state.navStack();
     const newIdx = state.navIndex() + 1;
-    const path = stack[newIdx];
-    if (path) {
-      const entry = state.findEntryByPath(path);
-      if (entry && entry.kind === "file") {
-        state.setNavIndex(newIdx);
-        loadFileContent(entry, false);
-      }
+    const qp: QualifiedPath = stack[newIdx]!;
+    const entry = state.findEntryByPath(qp.path, qp.rootId);
+    if (entry && entry.kind === "file") {
+      state.setNavIndex(newIdx);
+      loadFileContent(entry, false, false, qp.rootId);
     }
   }
 
   function resetStacks() {
-    setContextStack([]);
-    setForwardContextStack([]);
+    // No-op — nav state is fully managed by the core state signals
   }
 
   return {

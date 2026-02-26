@@ -24,7 +24,7 @@ export function App() {
     printPage: () => invoke("print_webview"),
   });
 
-  const [rootPath, setRootPath] = createSignal<string | null>(null);
+  const [rootPaths, setRootPaths] = createSignal<Map<string, string>>(new Map());
 
   // File watcher (watches current file + includes for content changes)
   const watcher = new FileWatcher(() => {
@@ -33,36 +33,30 @@ export function App() {
   });
 
   // Create modules: loader -> navigation -> folder -> dnd
-  const loader = createFileLoader({ rootPath, state, watcher });
+  const loader = createFileLoader({ rootPaths, state, watcher });
 
   const navigation = createNavigation({
     loadFileContent: loader.loadFileContent,
-    rootPath,
-    setRootPath,
+    rootPaths,
     state,
   });
 
   const folder = createFolder({
-    resetNavigation: navigation.resetStacks,
-    rootPath,
-    setRootPath,
+    rootPaths,
+    setRootPaths,
     state,
     watcher,
   });
 
   setupTauriDnd({
+    addRoot: folder.openFolderPath,
     loadFileContent: loader.loadFileContent,
-    setRootPath,
     state,
   });
 
-  // Override canGoBack/canGoForward to account for context stacks
-  state.canGoBack = navigation.canGoBack;
-  state.canGoForward = navigation.canGoForward;
-
-  // Toggle auto-refresh (only when a folder is open)
+  // Toggle auto-refresh (only when roots are open)
   createEffect(() => {
-    if (!rootPath()) return;
+    if (rootPaths().size === 0) return;
     if (state.autoRefresh()) {
       watcher.start();
     } else {
@@ -110,7 +104,7 @@ export function App() {
       return;
     }
 
-    const entry = state.findEntryByPath(recentFile.path);
+    const entry = state.findEntryByPath(recentFile.path, recentFile.rootPath);
     if (!entry || entry.kind !== "file") {
       state.handleRemoveRecentFile(recentFile.path, recentFile.rootPath);
       return;
@@ -121,32 +115,32 @@ export function App() {
       rootName: state.rootName(),
       rootPath: recentFile.rootPath,
     });
-    await loader.loadFileContent(entry);
+    await loader.loadFileContent(entry, true, false, recentFile.rootPath);
   }
 
   return (
     <AppShell
       state={state}
-      hasRoot={!!rootPath()}
+      hasRoot={rootPaths().size > 0}
       showRecentHistory={true}
-      showEditorTabs={!!rootPath()}
-      showNavButtons={!!rootPath()}
-      showToolbar={!!rootPath()}
-      showSidebar={state.sidebarVisible() && !!rootPath()}
+      showEditorTabs={rootPaths().size > 0}
+      showNavButtons={rootPaths().size > 0}
+      showToolbar={rootPaths().size > 0}
+      showSidebar={state.sidebarVisible() && rootPaths().size > 0}
       toolbarFilePath={state.selectedFile()?.path ?? null}
       toolbarRootName={state.rootName()}
       windowFrameToolbar={true}
       onWindowDragStart={handleWindowDragStart}
       onWindowTitleDoubleClick={handleWindowTitleDoubleClick}
-      onCloseFolder={folder.handleCloseFolder}
+      onCloseRoot={(rootId) => folder.handleCloseRoot(rootId)}
       onGoBack={navigation.handleGoBack}
       onGoForward={navigation.handleGoForward}
-      onLoadFile={loader.loadFileContent}
+      onLoadFile={(entry, rootId) => loader.loadFileContent(entry, true, false, rootId)}
       onNavigate={navigation.handleNavigate}
       onOpenFolder={folder.handleOpenFolder}
       onOpenRecentFile={handleOpenRecentFile}
       onOpenRecentFolder={handleOpenRecentFolder}
-      onRefreshTree={() => folder.refreshTree()}
+      onRefreshRoot={(rootId) => folder.refreshRoot(rootId)}
     />
   );
 }

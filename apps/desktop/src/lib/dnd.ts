@@ -1,4 +1,3 @@
-import type { Setter } from "solid-js";
 import { onCleanup, onMount } from "solid-js";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { FSEntry } from "@asciimark/core/types.ts";
@@ -7,13 +6,13 @@ import type { AppState } from "@asciimark/ui/composables/create-app-state.ts";
 import { readTree } from "./fs.ts";
 
 interface TauriDndDeps {
-  loadFileContent: (entry: FSEntry, pushHistory?: boolean) => Promise<void>;
-  setRootPath: Setter<string | null>;
+  addRoot: (path: string) => Promise<boolean>;
+  loadFileContent: (entry: FSEntry, pushHistory?: boolean, force?: boolean, rootId?: string) => Promise<void>;
   state: AppState;
 }
 
 export function setupTauriDnd(deps: TauriDndDeps) {
-  const { loadFileContent, setRootPath, state } = deps;
+  const { addRoot, loadFileContent, state } = deps;
 
   onMount(() => {
     const webview = getCurrentWebviewWindow();
@@ -32,16 +31,7 @@ export function setupTauriDnd(deps: TauriDndDeps) {
           // Try reading as directory first
           const entries = await readTree(droppedPath);
           if (entries.length > 0) {
-            setRootPath(droppedPath);
-            const parts = droppedPath.replace(/\\/g, "/").split("/");
-            state.setRootName(parts[parts.length - 1] ?? droppedPath);
-            state.setTree(entries);
-            state.setSidebarVisible(true);
-            state.setSelectedFile(null);
-            state.setHtml("");
-            state.setNavStack([]);
-            state.setNavIndex(-1);
-            state.pushRecentFolder(droppedPath);
+            await addRoot(droppedPath);
             return;
           }
         } catch {
@@ -53,18 +43,16 @@ export function setupTauriDnd(deps: TauriDndDeps) {
         const fileName = normalized.split("/").pop() ?? droppedPath;
         if (isSupportedFile(fileName)) {
           const parentDir = normalized.substring(0, normalized.lastIndexOf("/"));
-          const entry: FSEntry = { name: fileName, kind: "file", path: fileName };
-          setRootPath(parentDir);
-          state.setRootName(parentDir.split("/").pop() ?? parentDir);
-          state.setTree([entry]);
-          state.setSidebarVisible(false);
-          state.pushRecentFolder(parentDir);
-          state.pushRecentFile({
-            entry,
-            rootName: state.rootName(),
-            rootPath: parentDir,
-          });
-          loadFileContent(entry);
+          const opened = await addRoot(parentDir);
+          if (opened) {
+            const entry: FSEntry = { name: fileName, kind: "file", path: fileName };
+            state.pushRecentFile({
+              entry,
+              rootName: state.rootName(),
+              rootPath: parentDir,
+            });
+            await loadFileContent(entry, true, false, parentDir);
+          }
         }
       }
     });

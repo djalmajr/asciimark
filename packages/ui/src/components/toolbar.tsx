@@ -1,7 +1,11 @@
-import { Show } from "solid-js";
+import { For, Show } from "solid-js";
+import type { RecentFile } from "@asciimark/core/recent-files.ts";
+import type { RecentFolder } from "@asciimark/core/recent-folders.ts";
 import IconArrowLeft from "~icons/lucide/arrow-left";
 import IconArrowRight from "~icons/lucide/arrow-right";
+import IconClock from "~icons/lucide/clock";
 import IconFileDown from "~icons/lucide/file-down";
+import IconFileText from "~icons/lucide/file-text";
 import IconFolder from "~icons/lucide/folder-open";
 import IconListTree from "~icons/lucide/list-tree";
 import IconMonitor from "~icons/lucide/monitor";
@@ -9,8 +13,6 @@ import IconMoon from "~icons/lucide/moon";
 import IconPanelLeft from "~icons/lucide/panel-left";
 import IconMenu from "~icons/lucide/menu";
 import IconSun from "~icons/lucide/sun";
-import IconX from "~icons/lucide/x";
-
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 import { Toggle } from "./ui/toggle.tsx";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip.tsx";
@@ -35,17 +37,21 @@ interface ToolbarProps {
   hasFile: boolean;
   hasRoot: boolean;
   inWindowFrame?: boolean;
+  recentFiles?: RecentFile[];
+  recentFolders?: RecentFolder[];
   showEditorTabs: boolean;
   showNavButtons?: boolean;
+  showRecentHistory?: boolean;
   sidebarVisible: boolean;
   themeMode: string;
   tocVisible: boolean;
-  onCloseFolder?: () => void;
   onEditorModeChange: (mode: "edit" | "split" | "preview") => void;
   onExportPdf?: () => void;
   onGoBack?: () => void;
   onGoForward?: () => void;
   onOpenFolder?: () => void;
+  onOpenRecentFile?: (recentFile: RecentFile) => void | Promise<void>;
+  onOpenRecentFolder?: (path: string) => void | Promise<void>;
   onThemeChange: (mode: string) => void;
   onToggleSidebar: () => void;
   onToggleToc: () => void;
@@ -54,6 +60,10 @@ interface ToolbarProps {
 }
 
 export function Toolbar(props: ToolbarProps) {
+  const hasRecentItems = () =>
+    !!props.showRecentHistory &&
+    ((props.recentFolders?.length ?? 0) > 0 || (props.recentFiles?.length ?? 0) > 0);
+
   function isInteractiveTarget(target: HTMLElement) {
     return target.closest(
       "button,[role='button'],[role='tab'],a,input,select,textarea,[data-no-window-drag]"
@@ -188,13 +198,42 @@ export function Toolbar(props: ToolbarProps) {
                 Open Folder
               </DropdownMenuItem>
             </Show>
-            <Show when={props.onCloseFolder}>
-              <DropdownMenuItem onSelect={props.onCloseFolder}>
-                <IconX width={14} height={14} />
-                Close Folder
-              </DropdownMenuItem>
+            <Show when={hasRecentItems()}>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <IconClock width={14} height={14} />
+                  Open Recent
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent class="w-56 max-h-64 overflow-y-auto">
+                  <Show when={(props.recentFolders?.length ?? 0) > 0}>
+                    <For each={props.recentFolders}>
+                      {(folder) => (
+                        <DropdownMenuItem onSelect={() => props.onOpenRecentFolder?.(folder.path)}>
+                          <IconFolder width={14} height={14} />
+                          {folder.name}
+                        </DropdownMenuItem>
+                      )}
+                    </For>
+                  </Show>
+                  <Show when={(props.recentFolders?.length ?? 0) > 0 && (props.recentFiles?.length ?? 0) > 0}>
+                    <DropdownMenuSeparator />
+                  </Show>
+                  <Show when={(props.recentFiles?.length ?? 0) > 0}>
+                    <For each={props.recentFiles}>
+                      {(file) => (
+                        <DropdownMenuItem onSelect={() => props.onOpenRecentFile?.(file)}>
+                          <IconFileText width={14} height={14} />
+                          {file.name}
+                        </DropdownMenuItem>
+                      )}
+                    </For>
+                  </Show>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             </Show>
-            <DropdownMenuSeparator />
+            <Show when={props.onOpenFolder || hasRecentItems()}>
+              <DropdownMenuSeparator />
+            </Show>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Show when={props.darkMode} fallback={<IconSun width={14} height={14} />}>

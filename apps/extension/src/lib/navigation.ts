@@ -10,8 +10,9 @@ interface NavigationDeps {
   canGoForward: () => boolean;
   fallbackFileMap: Accessor<Map<string, File> | null>;
   isUrlMode: boolean;
-  loadFileContent: (entry: FSEntry, pushHistory?: boolean) => Promise<void>;
+  loadFileContent: (entry: FSEntry, pushHistory?: boolean, force?: boolean, rootId?: string) => Promise<void>;
   rootHandle: Accessor<FileSystemDirectoryHandle | null>;
+  rootHandles: Accessor<Map<string, FileSystemDirectoryHandle>>;
   sourceUrl: string | null;
   state: AppState;
 }
@@ -24,6 +25,7 @@ export function createNavigation(deps: NavigationDeps) {
     isUrlMode,
     loadFileContent,
     rootHandle,
+    rootHandles,
     sourceUrl,
     state,
   } = deps;
@@ -50,11 +52,30 @@ export function createNavigation(deps: NavigationDeps) {
 
     const root = rootHandle();
     const fileMap = fallbackFileMap();
-    if (!root && !fileMap) return;
+    if (!root && !fileMap && rootHandles().size === 0) return;
 
-    // Try existing tree first
+    // Try current root first
+    const currentRootId = state.selectedRootId();
+    if (currentRootId) {
+      const entry = state.findEntryByPath(targetPath, currentRootId);
+      if (entry && entry.kind === "file") {
+        loadFileContent(entry, true, false, currentRootId);
+        return;
+      }
+    }
+
+    // Try all roots
     const entry = state.findEntryByPath(targetPath);
     if (entry && entry.kind === "file") {
+      // Find which root this entry belongs to
+      for (const wsRoot of state.rootsList()) {
+        const found = state.findEntryByPath(targetPath, wsRoot.id);
+        if (found) {
+          loadFileContent(found, true, false, wsRoot.id);
+          return;
+        }
+      }
+      // Fallback: load without specific root
       loadFileContent(entry);
       return;
     }
@@ -74,19 +95,30 @@ export function createNavigation(deps: NavigationDeps) {
       return;
     }
 
-    // Native mode: resolve from filesystem
-    try {
-      const fileHandle = await resolveFileByPath(root!, targetPath);
-      if (fileHandle) {
-        const name = targetPath.includes("/")
-          ? targetPath.substring(targetPath.lastIndexOf("/") + 1)
-          : targetPath;
-        const syntheticEntry: FSEntry = { name, kind: "file", path: targetPath, handle: fileHandle };
-        loadFileContent(syntheticEntry);
-        return;
+    // Native mode: resolve from filesystem — try current root's handle first, then all
+    const handleToTry: Array<[string, FileSystemDirectoryHandle]> = [];
+    if (currentRootId) {
+      const h = rootHandles().get(currentRootId);
+      if (h) handleToTry.push([currentRootId, h]);
+    }
+    for (const [id, h] of rootHandles()) {
+      if (id !== currentRootId) handleToTry.push([id, h]);
+    }
+
+    for (const [rId, handle] of handleToTry) {
+      try {
+        const fileHandle = await resolveFileByPath(handle, targetPath);
+        if (fileHandle) {
+          const name = targetPath.includes("/")
+            ? targetPath.substring(targetPath.lastIndexOf("/") + 1)
+            : targetPath;
+          const syntheticEntry: FSEntry = { name, kind: "file", path: targetPath, handle: fileHandle };
+          loadFileContent(syntheticEntry, true, false, rId);
+          return;
+        }
+      } catch {
+        // Try next root
       }
-    } catch {
-      // Fall through
     }
 
     console.warn(`File not found: ${targetPath}`);
@@ -98,11 +130,15 @@ export function createNavigation(deps: NavigationDeps) {
     if (hashPath) {
       const stack = state.navStack();
       const idx = state.navIndex();
-      if (hashPath === stack[idx - 1]) {
+      const prevQp = stack[idx - 1];
+      const nextQp = stack[idx + 1];
+
+      if (prevQp && hashPath === prevQp.path) {
         state.setNavIndex(idx - 1);
-      } else if (hashPath === stack[idx + 1]) {
+      } else if (nextQp && hashPath === nextQp.path) {
         state.setNavIndex(idx + 1);
       }
+
       const entry = state.findEntryByPath(hashPath);
       if (entry && entry.kind === "file") {
         loadFileContent(entry, false);
@@ -116,13 +152,13 @@ export function createNavigation(deps: NavigationDeps) {
     if (!canGoBack()) return;
     const stack = state.navStack();
     const newIdx = state.navIndex() - 1;
-    const path = stack[newIdx];
-    if (path) {
-      const entry = state.findEntryByPath(path);
+    const qp = stack[newIdx];
+    if (qp) {
+      const entry = state.findEntryByPath(qp.path, qp.rootId);
       if (entry && entry.kind === "file") {
         state.setNavIndex(newIdx);
         history.back();
-        loadFileContent(entry, false);
+        loadFileContent(entry, false, false, qp.rootId);
       }
     }
   }
@@ -131,13 +167,13 @@ export function createNavigation(deps: NavigationDeps) {
     if (!canGoForward()) return;
     const stack = state.navStack();
     const newIdx = state.navIndex() + 1;
-    const path = stack[newIdx];
-    if (path) {
-      const entry = state.findEntryByPath(path);
+    const qp = stack[newIdx];
+    if (qp) {
+      const entry = state.findEntryByPath(qp.path, qp.rootId);
       if (entry && entry.kind === "file") {
         state.setNavIndex(newIdx);
         history.forward();
-        loadFileContent(entry, false);
+        loadFileContent(entry, false, false, qp.rootId);
       }
     }
   }

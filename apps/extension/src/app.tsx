@@ -35,6 +35,8 @@ export function App() {
   // Extension-specific state
   const [rootHandle, setRootHandle] =
     createSignal<FileSystemDirectoryHandle | null>(null);
+  const [rootHandles, setRootHandles] =
+    createSignal<Map<string, FileSystemDirectoryHandle>>(new Map());
   const [fallbackFileMap, setFallbackFileMap] =
     createSignal<Map<string, File> | null>(null);
   const [urlFileName, setUrlFileName] = createSignal("");
@@ -48,7 +50,7 @@ export function App() {
   });
 
   // Create modules
-  const loader = createFileLoader({ fallbackFileMap, rootHandle, state, watcher });
+  const loader = createFileLoader({ fallbackFileMap, rootHandle, rootHandles, state, watcher });
 
   const urlMode = createUrlMode({ setFileAccessDenied, setUrlError, setUrlFileName, state });
 
@@ -56,8 +58,10 @@ export function App() {
     fallbackFileMap,
     loadFileContent: loader.loadFileContent,
     rootHandle,
+    rootHandles,
     setFallbackFileMap,
     setRootHandle,
+    setRootHandles,
     state,
   });
 
@@ -68,6 +72,7 @@ export function App() {
     isUrlMode,
     loadFileContent: loader.loadFileContent,
     rootHandle,
+    rootHandles,
     sourceUrl,
     state,
   });
@@ -75,15 +80,17 @@ export function App() {
   const dnd = createDnd({
     isUrlMode,
     loadFileContent: loader.loadFileContent,
+    rootHandles,
     setFallbackFileMap,
     setRootHandle,
+    setRootHandles,
     state,
   });
 
   // Toggle auto-refresh (folder mode watcher)
   createEffect(() => {
     if (isUrlMode) return;
-    if (!rootHandle()) return;
+    if (!rootHandle() && rootHandles().size === 0) return;
     if (state.autoRefresh()) {
       watcher.start();
     } else {
@@ -104,15 +111,17 @@ export function App() {
     folder.initFolderMode();
   }
 
+  const hasRoot = () => !!rootHandle() || rootHandles().size > 0 || !!fallbackFileMap();
+
   return (
     <AppShell
       state={state}
-      hasRoot={!!rootHandle() || !!fallbackFileMap()}
+      hasRoot={hasRoot()}
       showEditorTabs={false}
-      showNavButtons={!isUrlMode && (!!rootHandle() || !!fallbackFileMap())}
+      showNavButtons={!isUrlMode && hasRoot()}
       showPdfExport={false}
-      showSidebar={!isUrlMode && state.sidebarVisible() && (!!rootHandle() || !!fallbackFileMap())}
-      showToolbar={isUrlMode || !!rootHandle() || !!fallbackFileMap()}
+      showSidebar={!isUrlMode && state.sidebarVisible() && hasRoot()}
+      showToolbar={isUrlMode || hasRoot()}
       toolbarFilePath={isUrlMode ? displayPathFromUrl(sourceUrl!) : (state.selectedFile()?.path ?? null)}
       toolbarRootName={isUrlMode ? "" : state.rootName()}
       contentWrapper={(content) => (
@@ -120,14 +129,15 @@ export function App() {
           {content}
         </Show>
       )}
+      onCloseRoot={(rootId) => folder.closeRoot(rootId)}
       onDragLeave={dnd.handleDragLeave}
       onDragOver={dnd.handleDragOver}
       onDrop={dnd.handleDrop}
       onGoBack={navigation.handleGoBack}
       onGoForward={navigation.handleGoForward}
-      onLoadFile={(entry) => loader.loadFileContent(entry)}
+      onLoadFile={(entry, rootId) => loader.loadFileContent(entry, true, false, rootId)}
       onNavigate={navigation.handleNavigate}
-      onRefreshTree={() => folder.refreshTree()}
+      onRefreshRoot={(rootId) => folder.refreshRoot(rootId)}
     />
   );
 }
