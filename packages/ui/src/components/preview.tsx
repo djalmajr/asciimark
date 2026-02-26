@@ -208,7 +208,21 @@ function setupTocScrollTracking(container: HTMLElement, tocEl?: HTMLElement): ((
       if (currentActive.getAttribute("href") === `#${id}`) return;
       currentActive.classList.remove("toc-active");
     }
-    const link = toc!.querySelector<HTMLAnchorElement>(`a[href="#${id}"]`);
+    let link = toc!.querySelector<HTMLAnchorElement>(`a[href="#${id}"]`);
+
+    // If the link is hidden (e.g. filtered by toc-levels), find the closest visible ancestor link
+    if (link && !link.offsetParent) {
+      let parent = link.closest("ul")?.closest("li");
+      while (parent && parent !== toc) {
+        const parentLink = parent.querySelector<HTMLAnchorElement>(":scope > a[href^='#']");
+        if (parentLink && parentLink.offsetParent) {
+          link = parentLink;
+          break;
+        }
+        parent = parent.closest("ul")?.closest("li") ?? null;
+      }
+    }
+
     if (link) {
       link.classList.add("toc-active");
       currentActive = link;

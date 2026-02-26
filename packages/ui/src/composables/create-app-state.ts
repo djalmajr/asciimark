@@ -55,7 +55,7 @@ export function createAppState(config: AppStateConfig) {
   const [loading, setLoading] = createSignal(false);
   const [autoRefresh, setAutoRefresh] = createSignal(true);
   const [tocVisible, setTocVisible] = createSignal(true);
-  const [tocLevels, setTocLevels] = createSignal(2);
+  const [tocLevels, setTocLevels] = createSignal(3);
   const [themeMode, setThemeMode] = createSignal<ThemeMode>(
     config.getStoredTheme(),
   );
