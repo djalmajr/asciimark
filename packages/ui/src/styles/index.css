@@ -414,7 +414,7 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 
 .file-tree-list {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   min-height: 0;
   padding-bottom: 8px;
 }
@@ -476,6 +476,8 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 }
 
 .workspace-root-block {
+  width: max-content;
+  min-width: calc(100% - 8px);
   margin: 1px 4px;
   border: 1px dashed transparent;
   border-radius: 6px;
@@ -504,10 +506,15 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 }
 
 .workspace-root-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
+}
+
+.tree-item-wrapper {
+  width: max-content;
+  min-width: 100%;
 }
 
 .workspace-root-actions {
@@ -587,6 +594,8 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   display: flex;
   align-items: center;
   gap: 4px;
+  width: max-content;
+  min-width: calc(100% - 8px);
   padding: 4px 8px;
   cursor: pointer;
   user-select: none;
@@ -630,8 +639,8 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 }
 
 .tree-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
