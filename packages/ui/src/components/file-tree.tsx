@@ -5,11 +5,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { Switch, SwitchControl, SwitchThumb } from "./ui/switch.tsx";
 import IconChevronRight from "~icons/lucide/chevron-right";
+import CollapseIcon from "~icons/fluent/arrow-between-up-20-filled";
+import ExpandIcon from "~icons/fluent/arrow-between-down-20-filled";
 import IconSlidersHorizontal from "~icons/lucide/sliders-horizontal";
 import IconX from "~icons/lucide/x";
 import IconFolderOpen from "~icons/lucide/folder-open";
@@ -103,10 +104,12 @@ function fromRootDndId(dndId: unknown): string | null {
 export function FileTree(props: FileTreeProps) {
   const [filterText, setFilterText] = createSignal("");
   const [focusedPath, setFocusedPath] = createSignal<string | null>(null);
-  const [expandAction, setExpandAction] = createSignal<ExpandAction>({ action: "collapse", version: 0 });
+  const [expandActions, setExpandActions] = createSignal<Record<string, ExpandAction>>({});
   const [activeDragRootId, setActiveDragRootId] = createSignal<string | null>(null);
   let suppressRootClickUntil = 0;
   let navRef: HTMLDivElement | undefined;
+
+  const defaultExpandAction: ExpandAction = { action: "collapse", version: 0 };
 
   const canReorderRoots = createMemo(() => !!props.onReorderRoots && props.roots.length > 1);
 
@@ -176,6 +179,36 @@ export function FileTree(props: FileTreeProps) {
 
     const isDropTarget = () =>
       droppable.isDropTarget() && activeDragRootId() !== propsRoot.root.id;
+    const isRootCollapsed = () => propsRoot.root.collapsed;
+    const currentExpandAction = () => expandActions()[propsRoot.root.id] ?? null;
+
+    const nextRootBulkAction = (): ExpandAction["action"] => {
+      const current = currentExpandAction();
+      if (!current) {
+        return isRootCollapsed() ? "expand" : "collapse";
+      }
+      return current.action === "expand" ? "collapse" : "expand";
+    };
+
+    function triggerRootExpandAll(rootId: string) {
+      setExpandActions((prev) => {
+        const current = prev[rootId] ?? defaultExpandAction;
+        return {
+          ...prev,
+          [rootId]: { action: "expand", version: current.version + 1 },
+        };
+      });
+    }
+
+    function triggerRootCollapseAll(rootId: string) {
+      setExpandActions((prev) => {
+        const current = prev[rootId] ?? defaultExpandAction;
+        return {
+          ...prev,
+          [rootId]: { action: "collapse", version: current.version + 1 },
+        };
+      });
+    }
 
     return (
       <div
@@ -195,6 +228,12 @@ export function FileTree(props: FileTreeProps) {
           ref={draggable.ref}
           onClick={() => {
             if (Date.now() < suppressRootClickUntil) return;
+            setExpandActions((prev) => {
+              if (!(propsRoot.root.id in prev)) return prev;
+              const next = { ...prev };
+              delete next[propsRoot.root.id];
+              return next;
+            });
             props.onToggleRootCollapsed?.(propsRoot.root.id);
           }}
         >
@@ -218,6 +257,29 @@ export function FileTree(props: FileTreeProps) {
             <span class="workspace-root-name">{propsRoot.root.name}</span>
           </div>
           <div class="workspace-root-actions">
+            <button
+              class="workspace-root-btn"
+              aria-label={nextRootBulkAction() === "expand" ? "Expand all" : "Collapse all"}
+              title={nextRootBulkAction() === "expand" ? "Expand all" : "Collapse all"}
+              onClick={(e: MouseEvent) => {
+                e.stopPropagation();
+                const action = nextRootBulkAction();
+
+                if (action === "expand" && isRootCollapsed()) {
+                  props.onToggleRootCollapsed?.(propsRoot.root.id);
+                }
+
+                if (action === "expand") {
+                  triggerRootExpandAll(propsRoot.root.id);
+                } else {
+                  triggerRootCollapseAll(propsRoot.root.id);
+                }
+              }}
+            >
+              <Show when={nextRootBulkAction() === "expand"} fallback={<CollapseIcon width={14} height={14} />}>
+                <ExpandIcon width={14} height={14} />
+              </Show>
+            </button>
             <Show when={props.onRefreshRoot}>
               <button
                 class="workspace-root-btn"
@@ -228,7 +290,7 @@ export function FileTree(props: FileTreeProps) {
                   props.onRefreshRoot!(propsRoot.root.id);
                 }}
               >
-                <IconRefreshCw width={12} height={12} />
+                <IconRefreshCw width={14} height={14} />
               </button>
             </Show>
             <Show when={props.onCloseRoot}>
@@ -241,7 +303,7 @@ export function FileTree(props: FileTreeProps) {
                   props.onCloseRoot!(propsRoot.root.id);
                 }}
               >
-                <IconX width={12} height={12} />
+                <IconX width={14} height={14} />
               </button>
             </Show>
           </div>
@@ -252,7 +314,7 @@ export function FileTree(props: FileTreeProps) {
               <FileTreeItem
                 depth={1}
                 entry={entry}
-                expandAction={expandAction()}
+                expandAction={expandActions()[propsRoot.root.id] ?? defaultExpandAction}
                 focusedPath={propsRoot.rootFocusedPath()}
                 forceExpand={isFiltering()}
                 selectedPath={propsRoot.rootSelectedPath()}
@@ -284,14 +346,6 @@ export function FileTree(props: FileTreeProps) {
   const isFiltering = () => filterText().length > 0;
 
   const hasAnyEntries = () => filteredRoots().some((r) => r.entries.length > 0);
-
-  function expandAll() {
-    setExpandAction((prev) => ({ action: "expand", version: prev.version + 1 }));
-  }
-
-  function collapseAll() {
-    setExpandAction((prev) => ({ action: "collapse", version: prev.version + 1 }));
-  }
 
   function getVisibleItems(): HTMLElement[] {
     if (!navRef) return [];
@@ -427,14 +481,7 @@ export function FileTree(props: FileTreeProps) {
             <IconSlidersHorizontal width={16} height={16} />
           </DropdownMenuTrigger>
           <DropdownMenuContent>
-            <DropdownMenuItem onSelect={expandAll}>
-              Expand All
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={collapseAll}>
-              Collapse All
-            </DropdownMenuItem>
             <Show when={props.onToggleShowAllDirs || props.onToggleShowAllFiles || props.onToggleShowHiddenEntries}>
-              <DropdownMenuSeparator />
               <Show when={props.onToggleShowHiddenEntries}>
                 <DropdownMenuItem
                   closeOnSelect={false}

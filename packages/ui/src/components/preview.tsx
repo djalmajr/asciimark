@@ -31,6 +31,55 @@ function yieldToMain(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+const BLOCKED_TAGS = new Set([
+  "applet",
+  "base",
+  "embed",
+  "frame",
+  "frameset",
+  "iframe",
+  "link",
+  "meta",
+  "object",
+  "script",
+  "style",
+]);
+
+const URL_ATTRIBUTES = new Set(["action", "formaction", "href", "src", "xlink:href"]);
+
+function isUnsafeUrl(rawValue: string): boolean {
+  const normalized = rawValue.replace(/[\u0000-\u001F\u007F\s]+/g, "").toLowerCase();
+  return normalized.startsWith("javascript:")
+    || normalized.startsWith("vbscript:")
+    || normalized.startsWith("data:text/html");
+}
+
+function sanitizeHtmlFragment(input: string): string {
+  const doc = new DOMParser().parseFromString(input, "text/html");
+
+  for (const el of Array.from(doc.querySelectorAll("*"))) {
+    const tagName = el.tagName.toLowerCase();
+    if (BLOCKED_TAGS.has(tagName)) {
+      el.remove();
+      continue;
+    }
+
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith("on") || name === "srcdoc") {
+        el.removeAttribute(attr.name);
+        continue;
+      }
+
+      if (URL_ATTRIBUTES.has(name) && isUnsafeUrl(attr.value)) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  }
+
+  return doc.body.innerHTML;
+}
+
 let mermaidInitialized = false;
 
 function initMermaid(force = false) {
@@ -38,7 +87,7 @@ function initMermaid(force = false) {
   mermaid.initialize({
     startOnLoad: false,
     theme: document.documentElement.classList.contains("dark") ? "dark" : "default",
-    securityLevel: "loose",
+    securityLevel: "strict",
     fontFamily: "inherit",
   });
   mermaidInitialized = true;
@@ -148,8 +197,8 @@ async function renderKrokiBlocks(container: HTMLElement, gen: number): Promise<v
     block.setAttribute("data-processed", "true");
 
     const type = block.getAttribute("data-type") || "plantuml";
-    const source = block.textContent || "";
-    if (!source.trim()) continue;
+      const source = block.textContent || "";
+      if (!source.trim()) continue;
 
     block.textContent = "Rendering diagram...";
     block.style.color = "hsl(var(--muted-foreground))";
@@ -160,8 +209,8 @@ async function renderKrokiBlocks(container: HTMLElement, gen: number): Promise<v
       if (gen !== renderGen) return;
       block.style.color = "";
       block.style.fontStyle = "";
-      // renderKroki returns SVG from the Kroki service
-      block.innerHTML = svg;
+      // renderKroki returns SVG from an external service, sanitize before inject
+      block.innerHTML = sanitizeHtmlFragment(svg);
     } catch (e: any) {
       if (gen !== renderGen) return;
       const escaped = source.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -573,8 +622,8 @@ export function Preview(props: PreviewProps) {
   // When html becomes empty (file switch), old content stays hidden (opacity:0)
   // to preserve layout dimensions and prevent content shrink/grow shift.
   //
-  // Note: props.html comes from the converter (asciidoctor/markdown-it) which
-  // produces trusted HTML from user-owned local files.
+  // Note: props.html can come from local or remote documents.
+  // Always sanitize before injecting into the DOM.
   let pendingNewDocument = false;
 
   createEffect(() => {
@@ -596,6 +645,7 @@ export function Preview(props: PreviewProps) {
     const gen = ++renderGen;
     const isNewDocument = pendingNewDocument;
     pendingNewDocument = false;
+    const sanitizedHtml = sanitizeHtmlFragment(_html);
 
     // Shared post-swap logic: TOC handling, collapse toggles, reveal, fragment scroll
     function afterSwap(container: HTMLElement, scrollToTop: boolean, tocVis: boolean) {
@@ -647,9 +697,7 @@ export function Preview(props: PreviewProps) {
     // run highlight/mermaid/kroki in-place progressively.
     if (isNewDocument) {
       const buffer = document.createElement("div");
-      // _html comes from the converter (asciidoctor/markdown-it) which
-      // produces trusted HTML from user-owned local files.
-      buffer.innerHTML = _html;
+      buffer.innerHTML = sanitizedHtml;
 
       queueMicrotask(async () => {
         await highlightCodeBlocks(buffer, gen);
@@ -671,9 +719,7 @@ export function Preview(props: PreviewProps) {
     } else {
       const scrollContainer = articleRef!.closest(".content");
       const prevScrollTop = scrollContainer?.scrollTop ?? 0;
-      // _html comes from the converter (asciidoctor/markdown-it) which
-      // produces trusted HTML from user-owned local files.
-      articleRef!.innerHTML = _html;
+      articleRef!.innerHTML = sanitizedHtml;
       if (scrollContainer) scrollContainer.scrollTop = prevScrollTop;
 
       afterSwap(articleRef!, false, tocVis);
