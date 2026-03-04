@@ -28,7 +28,7 @@ export function createFolder(deps: FolderDeps) {
 
     try {
       state.setLoading(true);
-      const entries = await readTree(path);
+      const entries = await readTree(path, state.showHiddenEntries());
 
       // Add to rootPaths map
       setRootPaths((prev) => {
@@ -74,7 +74,7 @@ export function createFolder(deps: FolderDeps) {
     const rootPath = rootPaths().get(rootId);
     if (!rootPath) return;
     try {
-      const entries = await readTree(rootPath);
+      const entries = await readTree(rootPath, state.showHiddenEntries());
       const currentPath = state.selectedFile()?.path;
       state.updateRootEntries(rootId, entries);
 
@@ -86,6 +86,23 @@ export function createFolder(deps: FolderDeps) {
     } catch (e) {
       console.error("Failed to refresh root:", e);
     }
+  }
+
+  async function refreshAllRoots(includeHiddenEntries: boolean) {
+    const ids = Array.from(rootPaths().keys());
+    await Promise.allSettled(ids.map(async (rootId) => {
+      const rootPath = rootPaths().get(rootId);
+      if (!rootPath) return;
+
+      const entries = await readTree(rootPath, includeHiddenEntries);
+      const currentPath = state.selectedFile()?.path;
+      state.updateRootEntries(rootId, entries);
+
+      if (currentPath && state.selectedRootId() === rootId && !state.findEntryByPath(currentPath, rootId)) {
+        state.setSelectedFile(null);
+        state.setHtml("");
+      }
+    }));
   }
 
   function handleCloseRoot(rootId: string) {
@@ -127,6 +144,7 @@ export function createFolder(deps: FolderDeps) {
     handleEditorSave,
     handleOpenFolder,
     openFolderPath,
+    refreshAllRoots,
     refreshRoot,
   };
 }

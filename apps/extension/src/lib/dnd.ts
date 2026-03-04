@@ -86,7 +86,7 @@ export function createDnd(deps: DndDeps) {
 
           // Load entries
           state.setLoading(true);
-          const entries = await readTree(handle);
+          const entries = await readTree(handle, "", state.showHiddenEntries());
           state.updateRootEntries(rootId, entries);
           state.setLoading(false);
 

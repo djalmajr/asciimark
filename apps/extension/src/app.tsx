@@ -137,6 +137,7 @@ export function App() {
       onGoForward={navigation.handleGoForward}
       onLoadFile={(entry, rootId) => loader.loadFileContent(entry, true, false, rootId)}
       onNavigate={navigation.handleNavigate}
+      onToggleShowHiddenEntries={(enabled) => folder.refreshAllRoots(enabled)}
       onRefreshRoot={(rootId) => folder.refreshRoot(rootId)}
       onReorderRoots={(newOrder) => state.reorderRoots(newOrder)}
     />

@@ -26,6 +26,7 @@ interface FileTreeProps {
   roots: WorkspaceRoot[];
   selectedPath: string | null;
   selectedRootId: string | null;
+  showHiddenEntries?: boolean;
   showAllDirs?: boolean;
   showAllFiles?: boolean;
   onCloseRoot?: (rootId: string) => void;
@@ -33,6 +34,7 @@ interface FileTreeProps {
   onReorderRoots?: (newOrder: string[]) => void;
   onSelect: (entry: FSEntry, rootId: string) => void;
   onToggleRootCollapsed?: (rootId: string) => void;
+  onToggleShowHiddenEntries?: () => void;
   onToggleShowAllDirs?: () => void;
   onToggleShowAllFiles?: () => void;
 }
@@ -431,8 +433,21 @@ export function FileTree(props: FileTreeProps) {
             <DropdownMenuItem onSelect={collapseAll}>
               Collapse All
             </DropdownMenuItem>
-            <Show when={props.onToggleShowAllDirs || props.onToggleShowAllFiles}>
+            <Show when={props.onToggleShowAllDirs || props.onToggleShowAllFiles || props.onToggleShowHiddenEntries}>
               <DropdownMenuSeparator />
+              <Show when={props.onToggleShowHiddenEntries}>
+                <DropdownMenuItem
+                  closeOnSelect={false}
+                  onSelect={() => props.onToggleShowHiddenEntries?.()}
+                >
+                  <span class="flex-1">Show Hidden</span>
+                  <Switch checked={props.showHiddenEntries ?? false} class="file-tree-switch">
+                    <SwitchControl class="file-tree-switch-control">
+                      <SwitchThumb class="file-tree-switch-thumb" />
+                    </SwitchControl>
+                  </Switch>
+                </DropdownMenuItem>
+              </Show>
               <Show when={props.onToggleShowAllDirs}>
                 <DropdownMenuItem
                   closeOnSelect={false}

@@ -27,6 +27,7 @@ interface FolderDeps {
 
 export function createFolder(deps: FolderDeps) {
   const { loadFileContent, setFallbackFileMap, setRootHandle, setRootHandles, state } = deps;
+  let fallbackFiles: File[] | null = null;
 
   async function initFolderMode() {
     // Fallback mode has no persistence
@@ -77,7 +78,7 @@ export function createFolder(deps: FolderDeps) {
     state.setLoading(true);
     for (const [id, handle] of permittedHandles) {
       try {
-        const entries = await readTree(handle, "");
+        const entries = await readTree(handle, "", state.showHiddenEntries());
         state.updateRootEntries(id, entries);
       } catch {
         // Skip roots that fail to read
@@ -111,6 +112,7 @@ export function createFolder(deps: FolderDeps) {
         // Keep backward compat rootHandle pointing to last opened
         setRootHandle(handle);
         setFallbackFileMap(null);
+        fallbackFiles = null;
 
         // Add root to state
         state.addRoot({
@@ -129,12 +131,13 @@ export function createFolder(deps: FolderDeps) {
 
         // Load entries
         state.setLoading(true);
-        const entries = await readTree(handle, "");
+        const entries = await readTree(handle, "", state.showHiddenEntries());
         state.updateRootEntries(rootId, entries);
         state.setLoading(false);
       } else {
         const { rootName: name, files } = await openDirectoryFallback();
-        const { entries } = buildTreeFromFiles(files);
+        fallbackFiles = files;
+        const { entries } = buildTreeFromFiles(files, state.showHiddenEntries());
         const fileMap = buildFileMap(files);
         const rootId = name;
 
@@ -169,7 +172,7 @@ export function createFolder(deps: FolderDeps) {
     const handle = deps.rootHandles().get(rootId);
     if (!handle) return;
     try {
-      const newEntries = await readTree(handle, "");
+      const newEntries = await readTree(handle, "", state.showHiddenEntries());
       const currentPath = state.selectedFile()?.path;
       state.updateRootEntries(rootId, newEntries);
 
@@ -184,6 +187,36 @@ export function createFolder(deps: FolderDeps) {
       }
     } catch (e) {
       console.error("Failed to refresh root:", e);
+    }
+  }
+
+  async function refreshAllRoots(includeHiddenEntries: boolean) {
+    const handles = deps.rootHandles();
+    const ids = Array.from(handles.keys());
+
+    await Promise.allSettled(ids.map(async (rootId) => {
+      const handle = handles.get(rootId);
+      if (!handle) return;
+
+      const entries = await readTree(handle, "", includeHiddenEntries);
+      const currentPath = state.selectedFile()?.path;
+      state.updateRootEntries(rootId, entries);
+
+      if (currentPath && state.selectedRootId() === rootId && !state.findEntryByPath(currentPath, rootId)) {
+        state.setSelectedFile(null);
+        state.setHtml("");
+      }
+    }));
+
+    if (handles.size === 0 && fallbackFiles && state.selectedRootId()) {
+      const rootId = state.selectedRootId()!;
+      const { entries } = buildTreeFromFiles(fallbackFiles, includeHiddenEntries);
+      const currentPath = state.selectedFile()?.path;
+      state.updateRootEntries(rootId, entries);
+      if (currentPath && !state.findEntryByPath(currentPath, rootId)) {
+        state.setSelectedFile(null);
+        state.setHtml("");
+      }
     }
   }
 
@@ -211,6 +244,9 @@ export function createFolder(deps: FolderDeps) {
       }
     } else {
       setRootHandle(null);
+      if (deps.rootHandles().size === 0) {
+        fallbackFiles = null;
+      }
     }
   }
 
@@ -231,5 +267,5 @@ export function createFolder(deps: FolderDeps) {
     }
   }
 
-  return { closeRoot, handleEditorSave, handleOpenFolder, initFolderMode, refreshRoot };
+  return { closeRoot, handleEditorSave, handleOpenFolder, initFolderMode, refreshAllRoots, refreshRoot };
 }

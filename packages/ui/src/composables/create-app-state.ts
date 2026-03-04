@@ -121,6 +121,7 @@ export function createAppState(config: AppStateConfig) {
   const [sidebarVisible, setSidebarVisible] = createSignal(true);
   const [showAllDirs, setShowAllDirs] = createSignal(false);
   const [showAllFiles, setShowAllFiles] = createSignal(false);
+  const [showHiddenEntries, setShowHiddenEntries] = createSignal(false);
 
   // Derived: list of all roots ordered by rootOrder
   const rootsList = () => {
@@ -611,6 +612,7 @@ export function createAppState(config: AppStateConfig) {
     showLineNumbers,
     showAllDirs,
     showAllFiles,
+    showHiddenEntries,
     sidebarVisible,
     sidebarWidth,
     themeMode,
@@ -649,6 +651,7 @@ export function createAppState(config: AppStateConfig) {
     setShowLineNumbers,
     setShowAllDirs,
     setShowAllFiles,
+    setShowHiddenEntries,
     setSidebarVisible,
     setSidebarWidth,
     setThemeMode,

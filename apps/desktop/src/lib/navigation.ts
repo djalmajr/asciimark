@@ -48,7 +48,7 @@ export function createNavigation(deps: NavigationDeps) {
       // Try as directory first
       try {
         const absolutePath = `${currentRootPath}/${targetPath}`;
-        const entries = await readTree(absolutePath);
+        const entries = await readTree(absolutePath, state.showHiddenEntries());
         if (entries.length > 0) {
           // Navigate into a subdirectory — add it as a new root
           state.addRoot({

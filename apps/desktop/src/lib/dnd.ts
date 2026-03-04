@@ -29,7 +29,7 @@ export function setupTauriDnd(deps: TauriDndDeps) {
         const droppedPath = paths[0];
         try {
           // Try reading as directory first
-          const entries = await readTree(droppedPath);
+          const entries = await readTree(droppedPath, state.showHiddenEntries());
           if (entries.length > 0) {
             await addRoot(droppedPath);
             return;

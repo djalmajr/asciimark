@@ -46,6 +46,7 @@ interface AppShellProps {
   onOpenFolder?: () => void;
   onOpenRecentFile?: (recentFile: RecentFile) => void | Promise<void>;
   onOpenRecentFolder?: (path: string) => void | Promise<void>;
+  onToggleShowHiddenEntries?: (enabled: boolean) => void | Promise<void>;
   onRefreshRoot?: (rootId: string) => void;
   onReorderRoots?: (newOrder: string[]) => void;
   onWindowDragStart?: () => void | Promise<void>;
@@ -175,6 +176,7 @@ export function AppShell(props: AppShellProps) {
                 roots={s.rootsList()}
                 selectedPath={s.selectedFile()?.path ?? null}
                 selectedRootId={s.selectedRootId()}
+                showHiddenEntries={s.showHiddenEntries()}
                 showAllDirs={s.showAllDirs()}
                 showAllFiles={s.showAllFiles()}
                 onCloseRoot={props.onCloseRoot}
@@ -182,6 +184,13 @@ export function AppShell(props: AppShellProps) {
                 onReorderRoots={props.onReorderRoots}
                 onSelect={(entry, rootId) => props.onLoadFile(entry, rootId)}
                 onToggleRootCollapsed={(id) => s.toggleRootCollapsed(id)}
+                onToggleShowHiddenEntries={props.onToggleShowHiddenEntries
+                  ? () => {
+                    const next = !s.showHiddenEntries();
+                    s.setShowHiddenEntries(next);
+                    void props.onToggleShowHiddenEntries?.(next);
+                  }
+                  : undefined}
                 onToggleShowAllDirs={props.onRefreshRoot ? () => s.setShowAllDirs((v) => !v) : undefined}
                 onToggleShowAllFiles={props.onRefreshRoot ? () => s.setShowAllFiles((v) => !v) : undefined}
               />

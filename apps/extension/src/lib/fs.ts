@@ -50,7 +50,7 @@ export function openDirectoryFallback(): Promise<{ rootName: string; files: File
  * Build an FSEntry tree from a flat list of File objects (fallback mode).
  * Each File has webkitRelativePath like "rootDir/sub/file.adoc".
  */
-export function buildTreeFromFiles(files: File[]): { rootName: string; entries: FSEntry[] } {
+export function buildTreeFromFiles(files: File[], includeHiddenEntries = false): { rootName: string; entries: FSEntry[] } {
   // All paths start with the root folder name
   const rootName = ((files[0] as any).webkitRelativePath as string).split("/")[0] ?? "folder";
 
@@ -82,12 +82,12 @@ export function buildTreeFromFiles(files: File[]): { rootName: string; entries: 
     const entries: FSEntry[] = [];
 
     for (const [name, value] of node.entries) {
-      if (name.startsWith(".")) continue;
+      if (name.startsWith(".") && !includeHiddenEntries) continue;
       const path = parentPath ? `${parentPath}/${name}` : name;
 
       if ("entries" in value) {
         // Directory node
-        if (IGNORED_DIRS.has(name)) continue;
+        if (!includeHiddenEntries && IGNORED_DIRS.has(name)) continue;
         const children = buildEntries(value, path);
         entries.push({ name, kind: "directory", path, children });
       } else {
@@ -108,20 +108,22 @@ export function buildTreeFromFiles(files: File[]): { rootName: string; entries: 
 export async function readTree(
   dirHandle: FileSystemDirectoryHandle,
   parentPath = "",
+  includeHiddenEntries = false,
 ): Promise<FSEntry[]> {
   const entries: FSEntry[] = [];
 
   for await (const [name, handle] of dirHandle.entries()) {
     // Skip hidden files/dirs
-    if (name.startsWith(".")) continue;
+    if (name.startsWith(".") && !includeHiddenEntries) continue;
 
     const path = parentPath ? `${parentPath}/${name}` : name;
 
     if (handle.kind === "directory") {
-      if (IGNORED_DIRS.has(name)) continue;
+      if (!includeHiddenEntries && IGNORED_DIRS.has(name)) continue;
       const children = await readTree(
         handle as FileSystemDirectoryHandle,
         path,
+        includeHiddenEntries,
       );
       entries.push({ name, kind: "directory", path, handle, children });
     } else if (handle.kind === "file") {

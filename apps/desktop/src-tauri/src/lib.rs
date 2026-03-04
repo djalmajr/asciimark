@@ -26,7 +26,7 @@ const IGNORED_DIRS: &[&str] = &[
     "coverage", ".nyc_output", "tmp", "temp",
 ];
 
-fn read_dir_recursive(dir: &Path, base: &Path) -> Result<Vec<DirEntry>, String> {
+fn read_dir_recursive(dir: &Path, base: &Path, include_hidden_entries: bool) -> Result<Vec<DirEntry>, String> {
     let mut entries = Vec::new();
     let read = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
 
@@ -34,7 +34,7 @@ fn read_dir_recursive(dir: &Path, base: &Path) -> Result<Vec<DirEntry>, String> 
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name().to_string_lossy().to_string();
 
-        if name.starts_with('.') {
+        if name.starts_with('.') && !include_hidden_entries {
             continue;
         }
 
@@ -47,10 +47,10 @@ fn read_dir_recursive(dir: &Path, base: &Path) -> Result<Vec<DirEntry>, String> 
             .replace('\\', "/");
 
         if file_type.is_dir() {
-            if IGNORED_DIRS.contains(&name.as_str()) {
+            if !include_hidden_entries && IGNORED_DIRS.contains(&name.as_str()) {
                 continue;
             }
-            let children = read_dir_recursive(&entry.path(), base)?;
+            let children = read_dir_recursive(&entry.path(), base, include_hidden_entries)?;
             entries.push(DirEntry {
                 name,
                 kind: "directory".into(),
@@ -90,9 +90,9 @@ async fn open_directory_dialog(app: AppHandle) -> Result<Option<String>, String>
 }
 
 #[tauri::command]
-async fn read_dir(path: String) -> Result<Vec<DirEntry>, String> {
+async fn read_dir(path: String, include_hidden_entries: Option<bool>) -> Result<Vec<DirEntry>, String> {
     let path = PathBuf::from(&path);
-    read_dir_recursive(&path, &path)
+    read_dir_recursive(&path, &path, include_hidden_entries.unwrap_or(false))
 }
 
 #[tauri::command]
