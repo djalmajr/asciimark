@@ -12,7 +12,7 @@ import {
   ViewPlugin,
   WidgetType,
 } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, defaultHighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { findTextMatches, SearchOverlay, type SearchOptions } from "./search-overlay.tsx";
@@ -30,11 +30,14 @@ interface EditorProps {
   findTrigger: number;
   indentMode: IndentMode;
   indentSize: number;
+  redoTrigger: number;
   searchOpen: boolean;
   showInvisibles: boolean;
   showLineNumbers: boolean;
+  undoTrigger: number;
   wrapText: boolean;
   onChange: (value: string) => void;
+  onHistoryStateChange: (historyState: { canRedo: boolean; canUndo: boolean }) => void;
   onSearchOpenChange: (open: boolean) => void;
 }
 
@@ -77,6 +80,8 @@ const visibleWhitespace = ViewPlugin.fromClass(
   },
 );
 
+const EDITOR_HISTORY_MIN_DEPTH = 100;
+
 export function Editor(props: EditorProps) {
   const [searchQuery, setSearchQuery] = createSignal("");
   const [searchOptions, setSearchOptions] = createSignal<SearchOptions>({
@@ -89,7 +94,9 @@ export function Editor(props: EditorProps) {
   let containerRef: HTMLDivElement | undefined;
   let view: EditorView | undefined;
   let lastFindTrigger = props.findTrigger;
+  let lastRedoTrigger = props.redoTrigger;
   let lastSearchOpen = props.searchOpen;
+  let lastUndoTrigger = props.undoTrigger;
   let matches: SearchMatch[] = [];
 
   const themeCompartment = new Compartment();
@@ -254,6 +261,13 @@ export function Editor(props: EditorProps) {
     recomputeMatches(query, options);
   }
 
+  function emitHistoryState(state: EditorState) {
+    props.onHistoryStateChange({
+      canRedo: redoDepth(state) > 0,
+      canUndo: undoDepth(state) > 0,
+    });
+  }
+
   onMount(() => {
     if (!containerRef) return;
 
@@ -261,7 +275,7 @@ export function Editor(props: EditorProps) {
       doc: props.content,
       extensions: [
         lineNumbersCompartment.of(props.showLineNumbers ? lineNumbers() : []),
-        history(),
+        history({ minDepth: EDITOR_HISTORY_MIN_DEPTH }),
         bracketMatching(),
         highlightActiveLine(),
         syntaxHighlighting(defaultHighlightStyle),
@@ -276,6 +290,7 @@ export function Editor(props: EditorProps) {
         wrapCompartment.of(props.wrapText ? EditorView.lineWrapping : []),
         searchHighlightCompartment.of([]),
         EditorView.updateListener.of((update) => {
+          emitHistoryState(update.state);
           if (update.docChanged) {
             props.onChange(update.state.doc.toString());
             if (props.searchOpen && searchQuery()) {
@@ -287,6 +302,7 @@ export function Editor(props: EditorProps) {
     });
 
     view = new EditorView({ state, parent: containerRef });
+    emitHistoryState(state);
 
     const onWindowKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -402,6 +418,26 @@ export function Editor(props: EditorProps) {
     if (trigger === lastFindTrigger) return;
     lastFindTrigger = trigger;
     openFind();
+  });
+
+  createEffect(() => {
+    const trigger = props.undoTrigger;
+    if (trigger === lastUndoTrigger) return;
+    lastUndoTrigger = trigger;
+    if (!view) return;
+    undo(view);
+    emitHistoryState(view.state);
+    view.focus();
+  });
+
+  createEffect(() => {
+    const trigger = props.redoTrigger;
+    if (trigger === lastRedoTrigger) return;
+    lastRedoTrigger = trigger;
+    if (!view) return;
+    redo(view);
+    emitHistoryState(view.state);
+    view.focus();
   });
 
   onCleanup(() => {

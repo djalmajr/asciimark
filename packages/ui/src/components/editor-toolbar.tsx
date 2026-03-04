@@ -2,7 +2,9 @@ import IconFileText from "~icons/lucide/file-text";
 import IconIndentIncrease from "~icons/lucide/indent-increase";
 import IconListOrdered from "~icons/lucide/list-ordered";
 import IconPilcrow from "~icons/lucide/pilcrow";
+import IconRedo2 from "~icons/lucide/redo-2";
 import IconSearch from "~icons/lucide/search";
+import IconUndo2 from "~icons/lucide/undo-2";
 import { Toggle } from "./ui/toggle.tsx";
 import { Separator } from "./ui/separator.tsx";
 import {
@@ -23,8 +25,12 @@ interface EditorToolbarProps {
   indentMode: IndentMode;
   indentSize: number;
   wrapText: boolean;
+  canRedo: boolean;
+  canUndo: boolean;
+  onRedo: () => void;
   onToggleFind: () => void;
   onIndentChange: (mode: IndentMode, size: number) => void;
+  onUndo: () => void;
   onToggleShowInvisibles: () => void;
   onToggleShowLineNumbers: () => void;
   onToggleWrapText: () => void;
@@ -50,9 +56,31 @@ export function EditorToolbar(props: EditorToolbarProps) {
         </TooltipTrigger>
         <TooltipContent>Find in editor</TooltipContent>
       </Tooltip>
-
+      <Tooltip>
+        <TooltipTrigger
+          as="button"
+          class="content-toolbar-btn"
+          aria-label="Undo"
+          disabled={!props.canUndo}
+          onClick={props.onUndo}
+        >
+          <IconUndo2 width={14} height={14} />
+        </TooltipTrigger>
+        <TooltipContent>Undo</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          as="button"
+          class="content-toolbar-btn"
+          aria-label="Redo"
+          disabled={!props.canRedo}
+          onClick={props.onRedo}
+        >
+          <IconRedo2 width={14} height={14} />
+        </TooltipTrigger>
+        <TooltipContent>Redo</TooltipContent>
+      </Tooltip>
       <Separator orientation="vertical" class="content-toolbar-separator" />
-
       <Tooltip>
         <TooltipTrigger
           as={Toggle}
@@ -65,7 +93,6 @@ export function EditorToolbar(props: EditorToolbarProps) {
         </TooltipTrigger>
         <TooltipContent>Line numbers</TooltipContent>
       </Tooltip>
-
       <Tooltip>
         <TooltipTrigger
           as={Toggle}
@@ -78,7 +105,6 @@ export function EditorToolbar(props: EditorToolbarProps) {
         </TooltipTrigger>
         <TooltipContent>Show invisibles</TooltipContent>
       </Tooltip>
-
       <Tooltip>
         <TooltipTrigger
           as={Toggle}
@@ -91,9 +117,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
         </TooltipTrigger>
         <TooltipContent>Wrap text</TooltipContent>
       </Tooltip>
-
       <Separator orientation="vertical" class="content-toolbar-separator" />
-
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger

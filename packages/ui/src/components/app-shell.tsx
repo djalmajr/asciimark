@@ -1,4 +1,4 @@
-import { Show, type JSX } from "solid-js";
+import { Show, createSignal, type JSX } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import type { RecentFile } from "@asciimark/core/recent-files.ts";
 import type { AppState } from "../composables/create-app-state.ts";
@@ -69,6 +69,10 @@ export function AppShell(props: AppShellProps) {
 
   // Wire tocPanelRef for state methods that need it
   const s = props.state;
+  const [editorUndoTrigger, setEditorUndoTrigger] = createSignal(0);
+  const [editorRedoTrigger, setEditorRedoTrigger] = createSignal(0);
+  const [canUndo, setCanUndo] = createSignal(false);
+  const [canRedo, setCanRedo] = createSignal(false);
 
   function setTocExpanded(expanded: boolean) {
     if (!tocContainerRef) return;
@@ -193,13 +197,17 @@ export function AppShell(props: AppShellProps) {
                 >
                   <Show when={props.showToolbar}>
                     <EditorToolbar
+                      canRedo={canRedo()}
+                      canUndo={canUndo()}
                       showInvisibles={s.showInvisibles()}
                       showLineNumbers={s.showLineNumbers()}
                       indentMode={s.indentMode()}
                       indentSize={s.indentSize()}
                       wrapText={s.wrapText()}
+                      onRedo={() => setEditorRedoTrigger((value) => value + 1)}
                       searchOpen={s.editorSearchOpen()}
                       onToggleFind={() => s.setEditorSearchOpen((value) => !value)}
+                      onUndo={() => setEditorUndoTrigger((value) => value + 1)}
                       onIndentChange={(mode, size) => {
                         s.handleIndentModeChange(mode);
                         s.handleIndentSizeChange(size);
@@ -218,10 +226,16 @@ export function AppShell(props: AppShellProps) {
                     showInvisibles={s.showInvisibles()}
                     showLineNumbers={s.showLineNumbers()}
                     wrapText={s.wrapText()}
+                    redoTrigger={editorRedoTrigger()}
                     searchOpen={s.editorSearchOpen()}
+                    undoTrigger={editorUndoTrigger()}
                     onChange={(content) => {
                       const entry = s.selectedFile();
                       if (entry) s.debouncedConvert(content, entry.path, s._readFile ?? (() => Promise.resolve(null)));
+                    }}
+                    onHistoryStateChange={(historyState) => {
+                      setCanUndo(historyState.canUndo);
+                      setCanRedo(historyState.canRedo);
                     }}
                     onSearchOpenChange={s.setEditorSearchOpen}
                   />
