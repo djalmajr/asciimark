@@ -4,20 +4,23 @@ set -euo pipefail
 INPUT="${1:-}"
 
 if [ -z "$INPUT" ]; then
-  echo "Usage: bun run bump:app <major|minor|patch|x.y.z>"
+  echo "Usage: bun run bump:app <major|minor|patch|x.y.z[-prerelease]>"
   echo "Examples:"
-  echo "  bun run bump:app patch   # 0.3.1 -> 0.3.2"
-  echo "  bun run bump:app minor   # 0.3.1 -> 0.4.0"
-  echo "  bun run bump:app major   # 0.3.1 -> 1.0.0"
+  echo "  bun run bump:app patch       # 0.3.1 -> 0.3.2"
+  echo "  bun run bump:app minor       # 0.3.1 -> 0.4.0"
+  echo "  bun run bump:app major       # 0.3.1 -> 1.0.0"
   echo "  bun run bump:app 0.4.0"
+  echo "  bun run bump:app 0.6.0-rc.0  # explicit prerelease"
   exit 1
 fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PKG_PATH="${ROOT}/apps/desktop/package.json"
 
-# Read current version
-CURRENT=$(bun --eval "console.log(JSON.parse(await Bun.file('${PKG_PATH}').text()).version)")
+# Read current version. Strip any prerelease suffix when computing major/minor/patch
+# bumps so the math doesn't break on "0.6.0-rc.0".
+CURRENT_RAW=$(bun --eval "console.log(JSON.parse(await Bun.file('${PKG_PATH}').text()).version)")
+CURRENT="${CURRENT_RAW%%-*}"
 
 if echo "$INPUT" | grep -qE '^(major|minor|patch)$'; then
   IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
@@ -26,10 +29,11 @@ if echo "$INPUT" | grep -qE '^(major|minor|patch)$'; then
     minor) VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
     patch) VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
   esac
-elif echo "$INPUT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+# Accept x.y.z and x.y.z-prerelease (e.g. 0.6.0-rc.0, 1.2.3-beta.1, 2.0.0-alpha)
+elif echo "$INPUT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
   VERSION="$INPUT"
 else
-  echo "Error: argument must be major, minor, patch, or semver (e.g. 0.3.0)"
+  echo "Error: argument must be major, minor, patch, or semver (e.g. 0.3.0 or 0.6.0-rc.0)"
   exit 1
 fi
 

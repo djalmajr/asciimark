@@ -4,6 +4,7 @@ import type { RecentFolder } from "@asciimark/core/recent-folders.ts";
 import IconArrowLeft from "~icons/lucide/arrow-left";
 import IconArrowRight from "~icons/lucide/arrow-right";
 import IconClock from "~icons/lucide/clock";
+import IconDownload from "~icons/lucide/download";
 import IconFileDown from "~icons/lucide/file-down";
 import IconFileText from "~icons/lucide/file-text";
 import IconFolder from "~icons/lucide/folder-open";
@@ -48,6 +49,7 @@ interface ToolbarProps {
   themeMode: string;
   tocVisible: boolean;
   onEditorModeChange: (mode: "edit" | "split" | "preview") => void;
+  onCheckForUpdates?: () => void;
   onExportPdf?: () => void;
   onGoBack?: () => void;
   onGoForward?: () => void;
@@ -278,6 +280,13 @@ export function Toolbar(props: ToolbarProps) {
               <DropdownMenuItem onSelect={props.onExportPdf}>
                 <IconFileDown width={14} height={14} />
                 Export PDF
+              </DropdownMenuItem>
+            </Show>
+            <Show when={props.onCheckForUpdates}>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={props.onCheckForUpdates}>
+                <IconDownload width={14} height={14} />
+                Check for updates
               </DropdownMenuItem>
             </Show>
           </DropdownMenuContent>

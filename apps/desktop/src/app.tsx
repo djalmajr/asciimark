@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { createConverter } from "@asciimark/core/converter.ts";
 import ConvertWorker from "@asciimark/core/convert-worker.ts?worker";
 import type { RecentFile } from "@asciimark/core/recent-files.ts";
@@ -12,6 +12,7 @@ import { createFileLoader } from "./lib/file-loader.ts";
 import { createNavigation } from "./lib/navigation.ts";
 import { createFolder } from "./lib/folder.ts";
 import { setupTauriDnd } from "./lib/dnd.ts";
+import { checkForAppUpdates } from "./lib/updater.ts";
 
 const { convertAdoc, convertMarkdown } = createConverter(new ConvertWorker());
 
@@ -79,6 +80,16 @@ export function App() {
   onCleanup(() => {
     clearTimeout(autoSaveTimer);
     watcher.destroy();
+  });
+
+  // Check for app updates a few seconds after boot — silent so any network
+  // hiccup or "you're up to date" doesn't interrupt the user. The manual menu
+  // item still surfaces feedback.
+  onMount(() => {
+    const updateTimer = window.setTimeout(() => {
+      void checkForAppUpdates(true);
+    }, 3000);
+    onCleanup(() => window.clearTimeout(updateTimer));
   });
 
   async function handleWindowDragStart() {
@@ -170,6 +181,7 @@ export function App() {
       windowFrameToolbar={true}
       onWindowDragStart={handleWindowDragStart}
       onWindowTitleDoubleClick={handleWindowTitleDoubleClick}
+      onCheckForUpdates={() => checkForAppUpdates(false)}
       onCloseRoot={(rootId) => folder.handleCloseRoot(rootId)}
       onCopyPath={folder.handleCopyPath}
       onGoBack={navigation.handleGoBack}

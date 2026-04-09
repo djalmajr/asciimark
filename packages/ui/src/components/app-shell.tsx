@@ -38,6 +38,11 @@ interface AppShellProps {
   toolbarRootName: string;
 
   // Platform callbacks
+  /**
+   * Trigger a manual app-update check. Only desktop wires this; web/extension
+   * leave it undefined and the menu item is hidden.
+   */
+  onCheckForUpdates?: () => void;
   onCloseRoot?: (rootId: string) => void;
   onGoBack: () => void;
   onGoForward: () => void;
@@ -184,6 +189,7 @@ export function AppShell(props: AppShellProps) {
             editorMode={s.editorMode()}
             hasFile={s.hasFile()}
             hasRoot={props.hasRoot}
+            onCheckForUpdates={props.onCheckForUpdates}
             supportsPreview={s.previewSupported()}
             inWindowFrame={!!props.windowFrameToolbar}
             recentFiles={s.recentFiles()}
