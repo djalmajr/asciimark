@@ -12,6 +12,8 @@ import { createFileLoader } from "./lib/file-loader.ts";
 import { createNavigation } from "./lib/navigation.ts";
 import { createFolder } from "./lib/folder.ts";
 import { setupTauriDnd } from "./lib/dnd.ts";
+import { setupAppMenu } from "./lib/menu.ts";
+import { setupTray } from "./lib/tray.ts";
 import { checkForAppUpdates } from "./lib/updater.ts";
 
 const { convertAdoc, convertMarkdown } = createConverter(new ConvertWorker());
@@ -80,6 +82,34 @@ export function App() {
   onCleanup(() => {
     clearTimeout(autoSaveTimer);
     watcher.destroy();
+  });
+
+  // Native app menu (macOS menu bar, Windows/Linux window menu) and tray icon.
+  // Both are fire-and-forget; errors are logged but don't break the app.
+  onMount(() => {
+    void setupAppMenu({
+      onOpenFolder: folder.handleOpenFolder,
+      onExportPdf: () => invoke("print_webview"),
+      onCheckForUpdates: () => checkForAppUpdates(false),
+      onEditorMode: (m) => state.setEditorMode(m),
+      onToggleSidebar: () => state.setSidebarVisible((v) => !v),
+      onToggleToc: () => state.setTocVisible((v) => !v),
+      onThemeChange: (mode) => state.handleThemeChange(mode),
+      onFind: () => state.triggerPreviewFind(),
+    }).catch((e) => console.error("Failed to set up app menu:", e));
+
+    void setupTray({
+      onOpenFolder: folder.handleOpenFolder,
+    }).catch((e) => console.error("Failed to set up tray:", e));
+
+    // Close-to-tray: clicking the window X hides instead of quitting.
+    // The app keeps running in the tray. Only Cmd+Q or "Quit" from the
+    // tray menu actually terminates.
+    const win = getCurrentWindow();
+    void win.onCloseRequested(async (event) => {
+      event.preventDefault();
+      await win.hide();
+    });
   });
 
   // Check for app updates a few seconds after boot — silent so any network

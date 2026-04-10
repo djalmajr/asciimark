@@ -33,7 +33,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install system dependencies (Ubuntu)
         if: matrix.platform == 'ubuntu-22.04'
@@ -77,7 +77,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: binaries-${{ matrix.platform }}-${{ matrix.rust_targets || 'default' }}
           # NOTE: use single-extension globs only — `@actions/glob` does not
@@ -116,13 +116,13 @@ jobs:
           gh repo view "$PUBLIC_RELEASES_REPO" >/dev/null
 
       - name: Checkout source repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts
           # Don't merge — macOS arm64 and x64 generate `AsciiMark.app.tar.gz`
