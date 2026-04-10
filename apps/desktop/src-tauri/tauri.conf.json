@@ -48,6 +48,20 @@
     "resources": [
       "icons/tray-icon.png",
       "icons/tray-icon@2x.png"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown", "mdown"],
+        "mimeType": "text/markdown",
+        "role": "Editor",
+        "description": "Markdown Document"
+      },
+      {
+        "ext": ["adoc", "asciidoc", "asc", "ad"],
+        "mimeType": "text/plain",
+        "role": "Editor",
+        "description": "AsciiDoc Document"
+      }
     ]
   },
   "plugins": {

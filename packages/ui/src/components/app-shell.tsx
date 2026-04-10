@@ -126,6 +126,7 @@ export function AppShell(props: AppShellProps) {
       when={s.selectedFile()}
       fallback={
         <EmptyState
+          favorites={s.favorites()}
           hasRoot={props.hasRoot}
           onOpenFolder={props.onOpenFolder}
           onOpenRecentFile={props.onOpenRecentFile}
@@ -133,6 +134,7 @@ export function AppShell(props: AppShellProps) {
           onClearRecentHistory={s.handleClearRecentHistory}
           onRemoveRecentFile={s.handleRemoveRecentFile}
           onRemoveRecentFolder={s.handleRemoveRecentFolder}
+          onToggleFavorite={s.handleToggleFavorite}
           onWindowDragStart={props.onWindowDragStart}
           recentFiles={s.recentFiles()}
           recentFolders={s.recentFolders()}

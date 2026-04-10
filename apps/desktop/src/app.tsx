@@ -4,6 +4,7 @@ import ConvertWorker from "@asciimark/core/convert-worker.ts?worker";
 import type { RecentFile } from "@asciimark/core/recent-files.ts";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import { createAppState } from "@asciimark/ui/composables/create-app-state.ts";
 import { AppShell } from "@asciimark/ui/components/app-shell.tsx";
 import { getStoredTheme, applyTheme } from "./main.tsx";
@@ -11,6 +12,7 @@ import { FileWatcher } from "./lib/watcher.ts";
 import { createFileLoader } from "./lib/file-loader.ts";
 import { createNavigation } from "./lib/navigation.ts";
 import { createFolder } from "./lib/folder.ts";
+import { isSupportedFile } from "@asciimark/core/utils.ts";
 import { setupTauriDnd } from "./lib/dnd.ts";
 import { setupAppMenu } from "./lib/menu.ts";
 import { setupTray } from "./lib/tray.ts";
@@ -111,6 +113,56 @@ export function App() {
       await win.hide();
     });
   });
+
+  // ── File open via OS file associations ──────────────────────────────────
+  // Handles both cold start (argv) and already-running (single-instance event).
+  async function openFileByAbsolutePath(absolutePath: string): Promise<void> {
+    // Extract the directory (root) and filename from the absolute path
+    const normalized = absolutePath.replace(/\\/g, "/");
+    const lastSlash = normalized.lastIndexOf("/");
+    if (lastSlash < 0) return;
+    const dirPath = normalized.slice(0, lastSlash);
+    const fileName = normalized.slice(lastSlash + 1);
+
+    if (!isSupportedFile(fileName)) return;
+
+    // Open the parent directory as a workspace root
+    const opened = await folder.openFolderPath(dirPath);
+    if (!opened) return;
+
+    // Find the file in the tree and load it
+    const entry = state.findEntryByPath(fileName, dirPath);
+    if (entry) {
+      await loader.loadFileContent(entry, true, false, dirPath);
+    }
+  }
+
+  // Cold start: check if the app was launched with a file argument
+  onMount(() => {
+    void invoke<string[]>("get_startup_args").then((args) => {
+      const filePath = args.find((a) => !a.startsWith("-") && isSupportedFile(a));
+      if (filePath) void openFileByAbsolutePath(filePath);
+    }).catch(() => {
+      // No args or command not available
+    });
+  });
+
+  // Already running: single-instance plugin forwards file path via event
+  onMount(() => {
+    const unlisten = listen<string>("open-file", (event) => {
+      if (event.payload) void openFileByAbsolutePath(event.payload);
+    });
+    onCleanup(() => { void unlisten.then((fn) => fn()); });
+  });
+
+  // In production, block the native WebView context menu (Reload / Inspect
+  // Element). Kobalte's ContextMenu triggers call preventDefault() before this
+  // listener fires, so custom menus (file tree, etc.) keep working.
+  if (import.meta.env.PROD) {
+    document.addEventListener("contextmenu", (e) => {
+      if (!e.defaultPrevented) e.preventDefault();
+    });
+  }
 
   // Check for app updates a few seconds after boot — silent so any network
   // hiccup or "you're up to date" doesn't interrupt the user. The manual menu

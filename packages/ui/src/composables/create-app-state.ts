@@ -47,6 +47,13 @@ import {
   setStoredSyncScroll,
   setStoredWrapText,
 } from "@asciimark/core/editor-prefs.ts";
+import {
+  type FavoriteFile,
+  addFavorite,
+  getFavorites,
+  isFavorite,
+  removeFavorite,
+} from "@asciimark/core/favorites.ts";
 import { isMdFile, isSupportedFile } from "@asciimark/core/utils.ts";
 
 export type ThemeMode = "system" | "light" | "dark";
@@ -99,6 +106,9 @@ export function createAppState(config: AppStateConfig) {
   );
   const [recentFolders, setRecentFolders] = createSignal<RecentFolder[]>(
     getRecentFolders(),
+  );
+  const [favorites, setFavorites] = createSignal<FavoriteFile[]>(
+    getFavorites(),
   );
 
   // ── Editor state ────────────────────────────────────────────────────────
@@ -287,6 +297,14 @@ export function createAppState(config: AppStateConfig) {
   function handleRemoveRecentFolder(path: string) {
     const updated = removeRecentFolder(path);
     setRecentFolders(updated);
+  }
+
+  function handleToggleFavorite(file: FavoriteFile) {
+    if (isFavorite(file.path, file.rootPath, favorites())) {
+      setFavorites(removeFavorite(file.path, file.rootPath));
+    } else {
+      setFavorites(addFavorite(file));
+    }
   }
 
   function getRootFolderName(path: string) {
@@ -628,6 +646,7 @@ export function createAppState(config: AppStateConfig) {
     pendingFragment,
     previewSearchOpen,
     previewFindTrigger,
+    favorites,
     recentFiles,
     recentFolders,
     indentMode,
@@ -713,6 +732,7 @@ export function createAppState(config: AppStateConfig) {
     handleClearRecentFiles,
     handleClearRecentFolders,
     handleClearRecentHistory,
+    handleToggleFavorite,
     handleExportPdf,
     handleFontPrefsChange,
     handleIndentModeChange,

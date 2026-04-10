@@ -423,6 +423,13 @@ fn toggle_maximize_instant(window: tauri::Window) -> Result<(), String> {
     }
 }
 
+/// Return command-line args passed to the process (for file-open on cold start).
+/// On Windows/Linux, double-clicking an associated file passes the path as argv[1].
+#[tauri::command]
+fn get_startup_args() -> Vec<String> {
+    std::env::args().skip(1).collect()
+}
+
 #[tauri::command]
 fn print_webview(webview: tauri::Webview) -> Result<(), String> {
     webview.print().map_err(|e| e.to_string())
@@ -435,6 +442,18 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // When a second instance opens with file args, emit an event
+            // so the frontend can navigate to the file.
+            if let Some(path) = argv.get(1) {
+                let _ = app.emit("open-file", path.clone());
+            }
+            // Focus the existing window
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .manage(WatcherHolder(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             open_directory_dialog,
@@ -442,6 +461,7 @@ pub fn run() {
             read_file,
             read_file_relative,
             read_files_relative,
+            get_startup_args,
             toggle_maximize_instant,
             print_webview,
             write_file,
@@ -449,6 +469,20 @@ pub fn run() {
             watch_paths,
             stop_watching,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // macOS: when the OS asks the app to open a file (double-click on
+            // an associated .md/.adoc), Tauri delivers it as RunEvent::Opened.
+            // We forward the path to the frontend via an event.
+            if let tauri::RunEvent::Opened { urls } = event {
+                for url in urls {
+                    if let Ok(path) = url.to_file_path() {
+                        if let Some(path_str) = path.to_str() {
+                            let _ = app.emit("open-file", path_str.to_string());
+                        }
+                    }
+                }
+            }
+        });
 }
