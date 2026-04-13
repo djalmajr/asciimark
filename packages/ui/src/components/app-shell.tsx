@@ -12,6 +12,7 @@ import { FileTree } from "./file-tree.tsx";
 import { Preview } from "./preview.tsx";
 import { Editor } from "./editor.tsx";
 import { EmptyState } from "./empty-state.tsx";
+import { Toaster } from "./ui/toast.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -182,6 +183,7 @@ export function AppShell(props: AppShellProps) {
 
   return (
     <AppProvider state={props.state}>
+      <Toaster />
       <div
         class="app"
         classList={{

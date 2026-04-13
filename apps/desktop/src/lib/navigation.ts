@@ -3,7 +3,7 @@ import type { FSEntry, QualifiedPath } from "@asciimark/core/types.ts";
 import { makeTabId } from "@asciimark/core/tabs.ts";
 import type { AppState } from "@asciimark/ui/composables/create-app-state.ts";
 import type { TabStore } from "@asciimark/ui/composables/create-tab-store.ts";
-import { message } from "@tauri-apps/plugin-dialog";
+import { showToast } from "@asciimark/ui/components/ui/toast.tsx";
 import { readFileContent, readTree } from "./fs.ts";
 
 interface NavigationDeps {
@@ -89,7 +89,7 @@ export function createNavigation(deps: NavigationDeps) {
       }
     }
 
-    void message(`File not found: ${targetPath}`, { title: "Navigation", kind: "error" });
+    showToast({ title: "File not found", description: targetPath, variant: "destructive", duration: 4000 });
   }
 
   function navigateToStackEntry(newIdx: number) {
