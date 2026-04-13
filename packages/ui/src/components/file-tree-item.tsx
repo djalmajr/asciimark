@@ -328,7 +328,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
                 <Show when={!isDirectory() && props.onOpenInNewTab}>
                   <DropdownMenuItem class="justify-between" onSelect={() => props.onOpenInNewTab?.(props.entry)}>
                     <span>Open in New Tab</span>
-                    <span class="ml-auto text-xs tracking-widest opacity-60">Middle-click</span>
+                    <span class="ml-auto text-xs tracking-widest opacity-60"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="6" /><line x1="12" y1="7" x2="12" y2="11" /></svg></span>
                   </DropdownMenuItem>
                 </Show>
                 <DropdownMenuItem class="justify-between" onSelect={copyPath}>
@@ -356,7 +356,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
           <Show when={!isDirectory() && props.onOpenInNewTab}>
             <ContextMenuItem class="justify-between" onSelect={() => props.onOpenInNewTab?.(props.entry)}>
               <span>Open in New Tab</span>
-              <ContextMenuShortcut class="ml-0">Middle-click</ContextMenuShortcut>
+              <ContextMenuShortcut class="ml-0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="6" /><line x1="12" y1="7" x2="12" y2="11" /></svg></ContextMenuShortcut>
             </ContextMenuItem>
           </Show>
           <ContextMenuItem class="justify-between" onSelect={copyPath}>
