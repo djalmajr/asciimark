@@ -469,7 +469,7 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 
 /* === Resize Handle === */
 .resize-handle {
-  width: 4px;
+  width: 2px;
   cursor: col-resize;
   background: transparent;
   flex-shrink: 0;
@@ -477,13 +477,7 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 }
 
 .resize-handle:hover {
-  background: linear-gradient(
-    to right,
-    transparent calc(50% - 1px),
-    hsl(var(--primary)) calc(50% - 1px),
-    hsl(var(--primary)) calc(50% + 1px),
-    transparent calc(50% + 1px)
-  );
+  background: hsl(var(--primary));
 }
 
 /* === File Tree === */
