@@ -476,15 +476,9 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   bottom: 0;
   width: 3px;
   cursor: col-resize;
-  background: transparent;
   z-index: 2;
-  transition: background 0.15s;
 }
 
-.resize-handle:hover,
-.app.resizing .resize-handle {
-  background: hsl(var(--primary));
-}
 
 /* === File Tree === */
 .file-tree {
