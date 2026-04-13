@@ -481,7 +481,8 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   transition: background 0.15s;
 }
 
-.resize-handle:hover {
+.resize-handle:hover,
+.app.resizing .resize-handle {
   background: hsl(var(--primary));
 }
 
