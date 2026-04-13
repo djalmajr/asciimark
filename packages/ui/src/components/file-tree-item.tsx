@@ -5,6 +5,10 @@ import IconChevronRight from "~icons/lucide/chevron-right";
 import IconFolder from "~icons/lucide/folder";
 import IconFile from "~icons/lucide/file-text";
 import IconEllipsisVertical from "~icons/lucide/ellipsis-vertical";
+import IconClipboard from "~icons/lucide/clipboard-copy";
+import IconPencil from "~icons/lucide/pencil";
+import IconTrash from "~icons/lucide/trash-2";
+import IconExternalLink from "~icons/lucide/external-link";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -327,27 +331,27 @@ export function FileTreeItem(props: FileTreeItemProps) {
               >
                 <IconEllipsisVertical width={14} height={14} />
               </DropdownMenuTrigger>
-              <DropdownMenuContent class="min-w-44">
+              <DropdownMenuContent class="min-w-48">
                 <Show when={!isDirectory() && props.onOpenInNewTab}>
-                  <DropdownMenuItem class="justify-between" onSelect={() => props.onOpenInNewTab?.(props.entry)}>
-                    <span>Open in New Tab</span>
-                    <span class="ml-auto text-xs tracking-widest opacity-60"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="6" /><line x1="12" y1="7" x2="12" y2="11" /></svg></span>
+                  <DropdownMenuItem class="justify-between gap-3" onSelect={() => props.onOpenInNewTab?.(props.entry)}>
+                    <span class="flex items-center gap-2"><IconExternalLink width={14} height={14} /> Open in New Tab</span>
+                    <span class="ml-auto opacity-40"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="6" /><line x1="12" y1="7" x2="12" y2="11" /></svg></span>
                   </DropdownMenuItem>
                 </Show>
-                <DropdownMenuItem class="justify-between" onSelect={copyPath}>
-                  <span>Copy path</span>
-                  <span class="ml-auto text-xs tracking-widest opacity-60">{COPY_SHORTCUT_LABEL}</span>
+                <DropdownMenuItem class="justify-between gap-3" onSelect={copyPath}>
+                  <span class="flex items-center gap-2"><IconClipboard width={14} height={14} /> Copy path</span>
+                  <span class="ml-auto text-xs tracking-widest opacity-40">{COPY_SHORTCUT_LABEL}</span>
                 </DropdownMenuItem>
                 <Show when={props.onRename}>
-                  <DropdownMenuItem class="justify-between" onSelect={startRename}>
-                    <span>Rename</span>
-                    <span class="ml-auto text-xs tracking-widest opacity-60">{RENAME_SHORTCUT_LABEL}</span>
+                  <DropdownMenuItem class="justify-between gap-3" onSelect={startRename}>
+                    <span class="flex items-center gap-2"><IconPencil width={14} height={14} /> Rename</span>
+                    <span class="ml-auto text-xs tracking-widest opacity-40">{RENAME_SHORTCUT_LABEL}</span>
                   </DropdownMenuItem>
                 </Show>
                 <Show when={props.onDelete}>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem class="text-destructive" onSelect={() => props.onDelete?.(props.entry, props.rootId)}>
-                    Move to Trash
+                  <DropdownMenuItem class="gap-2" onSelect={() => props.onDelete?.(props.entry, props.rootId)}>
+                    <IconTrash width={14} height={14} /> Move to Trash
                   </DropdownMenuItem>
                 </Show>
               </DropdownMenuContent>
@@ -361,27 +365,27 @@ export function FileTreeItem(props: FileTreeItemProps) {
          * for longer items, but never shrinks past this minimum, so even the
          * widest item has visible separation.
          */}
-        <ContextMenuContent class="tree-context-menu min-w-44">
+        <ContextMenuContent class="tree-context-menu min-w-48">
           <Show when={!isDirectory() && props.onOpenInNewTab}>
-            <ContextMenuItem class="justify-between" onSelect={() => props.onOpenInNewTab?.(props.entry)}>
-              <span>Open in New Tab</span>
-              <ContextMenuShortcut class="ml-0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="6" /><line x1="12" y1="7" x2="12" y2="11" /></svg></ContextMenuShortcut>
+            <ContextMenuItem class="justify-between gap-3" onSelect={() => props.onOpenInNewTab?.(props.entry)}>
+              <span class="flex items-center gap-2"><IconExternalLink width={14} height={14} /> Open in New Tab</span>
+              <ContextMenuShortcut class="ml-0 opacity-40"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="6" /><line x1="12" y1="7" x2="12" y2="11" /></svg></ContextMenuShortcut>
             </ContextMenuItem>
           </Show>
-          <ContextMenuItem class="justify-between" onSelect={copyPath}>
-            <span>Copy path</span>
-            <ContextMenuShortcut class="ml-0">{COPY_SHORTCUT_LABEL}</ContextMenuShortcut>
+          <ContextMenuItem class="justify-between gap-3" onSelect={copyPath}>
+            <span class="flex items-center gap-2"><IconClipboard width={14} height={14} /> Copy path</span>
+            <ContextMenuShortcut class="ml-0 opacity-40">{COPY_SHORTCUT_LABEL}</ContextMenuShortcut>
           </ContextMenuItem>
           <Show when={props.onRename}>
-            <ContextMenuItem class="justify-between" onSelect={startRename}>
-              <span>Rename</span>
-              <ContextMenuShortcut class="ml-0">{RENAME_SHORTCUT_LABEL}</ContextMenuShortcut>
+            <ContextMenuItem class="justify-between gap-3" onSelect={startRename}>
+              <span class="flex items-center gap-2"><IconPencil width={14} height={14} /> Rename</span>
+              <ContextMenuShortcut class="ml-0 opacity-40">{RENAME_SHORTCUT_LABEL}</ContextMenuShortcut>
             </ContextMenuItem>
           </Show>
           <Show when={props.onDelete}>
             <ContextMenuSeparator />
-            <ContextMenuItem class="text-destructive" onSelect={() => props.onDelete?.(props.entry, props.rootId)}>
-              Move to Trash
+            <ContextMenuItem class="gap-2" onSelect={() => props.onDelete?.(props.entry, props.rootId)}>
+              <IconTrash width={14} height={14} /> Move to Trash
             </ContextMenuItem>
           </Show>
         </ContextMenuContent>
