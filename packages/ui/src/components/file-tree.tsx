@@ -14,7 +14,6 @@ import ExpandIcon from "~icons/fluent/arrow-between-down-20-filled";
 import IconSlidersHorizontal from "~icons/lucide/sliders-horizontal";
 import IconX from "~icons/lucide/x";
 import IconFolderOpen from "~icons/lucide/folder-open";
-import IconRefreshCw from "~icons/lucide/refresh-cw";
 import { isSupportedFile } from "@asciimark/core/utils.ts";
 import type { FSEntry, WorkspaceRoot } from "@asciimark/core/types.ts";
 
@@ -32,7 +31,6 @@ interface FileTreeProps {
   showAllFiles?: boolean;
   onCloseRoot?: (rootId: string) => void;
   onCopyPath?: (entry: FSEntry, rootId: string) => void | Promise<void>;
-  onRefreshRoot?: (rootId: string) => void;
   onRename?: (entry: FSEntry, rootId: string, newName: string) => Promise<void>;
   onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   onReorderRoots?: (newOrder: string[]) => void;
@@ -303,19 +301,6 @@ export function FileTree(props: FileTreeProps) {
                 <ExpandIcon width={14} height={14} />
               </Show>
             </button>
-            <Show when={props.onRefreshRoot}>
-              <button
-                class="workspace-root-btn"
-                aria-label="Refresh"
-                title="Refresh"
-                onClick={(e: MouseEvent) => {
-                  e.stopPropagation();
-                  props.onRefreshRoot!(propsRoot.root.id);
-                }}
-              >
-                <IconRefreshCw width={14} height={14} />
-              </button>
-            </Show>
             <Show when={props.onCloseRoot}>
               <button
                 class="workspace-root-btn"

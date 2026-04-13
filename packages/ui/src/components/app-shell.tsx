@@ -76,7 +76,6 @@ interface AppShellProps {
    */
   resolveImageSrc?: (src: string) => string | null;
   onToggleShowHiddenEntries?: (enabled: boolean) => void | Promise<void>;
-  onRefreshRoot?: (rootId: string) => void;
   onReorderRoots?: (newOrder: string[]) => void;
   tabStore?: TabStore;
   onActivateTab?: (tabId: string) => void;
@@ -243,7 +242,6 @@ export function AppShell(props: AppShellProps) {
                 showAllFiles={s.showAllFiles()}
                 onCloseRoot={props.onCloseRoot}
                 onCopyPath={props.onCopyPath}
-                onRefreshRoot={props.onRefreshRoot}
                 onRename={props.onRename}
                 onDelete={props.onDelete}
                 onReorderRoots={props.onReorderRoots}
@@ -258,8 +256,8 @@ export function AppShell(props: AppShellProps) {
                     void props.onToggleShowHiddenEntries?.(next);
                   }
                   : undefined}
-                onToggleShowAllDirs={props.onRefreshRoot ? () => s.setShowAllDirs((v) => !v) : undefined}
-                onToggleShowAllFiles={props.onRefreshRoot ? () => s.setShowAllFiles((v) => !v) : undefined}
+                onToggleShowAllDirs={() => s.setShowAllDirs((v) => !v)}
+                onToggleShowAllFiles={() => s.setShowAllFiles((v) => !v)}
               />
             </aside>
             <div class="resize-handle" onDblClick={s.onResizeReset} onMouseDown={(e) => s.onResizeStart(e, appRef)} />

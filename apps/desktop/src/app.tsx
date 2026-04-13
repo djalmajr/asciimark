@@ -662,7 +662,6 @@ export function App() {
       }}
       resolveImageSrc={resolveImageSrc}
       onToggleShowHiddenEntries={(enabled) => folder.refreshAllRoots(enabled)}
-      onRefreshRoot={(rootId) => folder.refreshRoot(rootId)}
       onReorderRoots={(newOrder) => state.reorderRoots(newOrder)}
     />
   );
