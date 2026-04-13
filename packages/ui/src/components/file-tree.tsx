@@ -34,6 +34,7 @@ interface FileTreeProps {
   onCopyPath?: (entry: FSEntry, rootId: string) => void | Promise<void>;
   onRefreshRoot?: (rootId: string) => void;
   onRename?: (entry: FSEntry, rootId: string, newName: string) => Promise<void>;
+  onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   onReorderRoots?: (newOrder: string[]) => void;
   onSelect: (entry: FSEntry, rootId: string) => void;
   onOpenInNewTab?: (entry: FSEntry, rootId: string) => void;
@@ -343,6 +344,7 @@ export function FileTree(props: FileTreeProps) {
                 selectedPath={propsRoot.rootSelectedPath()}
                 onCopyPath={props.onCopyPath}
                 onRename={props.onRename}
+                onDelete={props.onDelete}
                 onSelect={(e) => props.onSelect(e, propsRoot.root.id)}
                 onOpenInNewTab={props.onOpenInNewTab ? (e) => props.onOpenInNewTab!(e, propsRoot.root.id) : undefined}
                 onDoubleClickFile={props.onDoubleClickFile ? (e) => props.onDoubleClickFile!(e, propsRoot.root.id) : undefined}

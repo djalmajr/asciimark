@@ -9,6 +9,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "./ui/context-menu.tsx";
@@ -16,6 +17,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { useApp } from "../context/app-context.tsx";
@@ -46,6 +48,7 @@ interface FileTreeItemProps {
    */
   onCopyPath?: (entry: FSEntry, rootId: string) => void | Promise<void>;
   onRename?: (entry: FSEntry, rootId: string, newName: string) => Promise<void>;
+  onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   onSelect: (entry: FSEntry) => void;
   /** Open file in a new pinned tab (right-click / middle-click). */
   onOpenInNewTab?: (entry: FSEntry) => void;
@@ -341,6 +344,12 @@ export function FileTreeItem(props: FileTreeItemProps) {
                     <span class="ml-auto text-xs tracking-widest opacity-60">{RENAME_SHORTCUT_LABEL}</span>
                   </DropdownMenuItem>
                 </Show>
+                <Show when={props.onDelete}>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem class="text-destructive" onSelect={() => props.onDelete?.(props.entry, props.rootId)}>
+                    Move to Trash
+                  </DropdownMenuItem>
+                </Show>
               </DropdownMenuContent>
             </DropdownMenu>
           </Show>
@@ -369,6 +378,12 @@ export function FileTreeItem(props: FileTreeItemProps) {
               <ContextMenuShortcut class="ml-0">{RENAME_SHORTCUT_LABEL}</ContextMenuShortcut>
             </ContextMenuItem>
           </Show>
+          <Show when={props.onDelete}>
+            <ContextMenuSeparator />
+            <ContextMenuItem class="text-destructive" onSelect={() => props.onDelete?.(props.entry, props.rootId)}>
+              Move to Trash
+            </ContextMenuItem>
+          </Show>
         </ContextMenuContent>
       </ContextMenu>
       <Show when={isDirectory() && (expanded() || props.forceExpand) && props.entry.children}>
@@ -384,6 +399,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
               selectedPath={props.selectedPath}
               onCopyPath={props.onCopyPath}
               onRename={props.onRename}
+              onDelete={props.onDelete}
               onSelect={props.onSelect}
               onOpenInNewTab={props.onOpenInNewTab}
               onDoubleClickFile={props.onDoubleClickFile}

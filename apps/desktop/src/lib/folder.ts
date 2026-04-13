@@ -2,7 +2,7 @@ import type { Accessor, Setter } from "solid-js";
 import { writeText as clipboardWriteText } from "@tauri-apps/plugin-clipboard-manager";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import type { AppState } from "@asciimark/ui/composables/create-app-state.ts";
-import { openDirectory, readTree, renameFile, writeFile } from "./fs.ts";
+import { openDirectory, readTree, renameFile, trashPath, writeFile } from "./fs.ts";
 import type { FileWatcher } from "./watcher.ts";
 
 interface FolderDeps {
@@ -181,10 +181,32 @@ export function createFolder(deps: FolderDeps) {
     await refreshRoot(rootId);
   }
 
+  async function handleDelete(entry: FSEntry, rootId: string): Promise<void> {
+    const rootPath = rootPaths().get(rootId);
+    if (!rootPath) throw new Error("Root not found");
+
+    await trashPath(rootPath, entry.path);
+
+    // If the deleted entry is (or contains) the open file, clear selection
+    const sel = state.selectedFile();
+    if (sel && state.selectedRootId() === rootId) {
+      if (sel.path === entry.path || sel.path.startsWith(entry.path + "/")) {
+        state.setSelectedFile(null);
+        state.setHtml("");
+        state.setFrontmatter(null);
+        state.setEditorContent("");
+        state.setSavedContent("");
+      }
+    }
+
+    await refreshRoot(rootId);
+  }
+
   return {
     getPathName,
     handleCloseRoot,
     handleCopyPath,
+    handleDelete,
     handleEditorSave,
     handleOpenFolder,
     handleRename,

@@ -58,3 +58,10 @@ export async function renameFile(
     newRelative,
   });
 }
+
+export async function trashPath(
+  rootPath: string,
+  relative: string,
+): Promise<void> {
+  await invoke("trash_path", { root: rootPath, relative });
+}

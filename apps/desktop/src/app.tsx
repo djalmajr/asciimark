@@ -598,6 +598,28 @@ export function App() {
       onOpenRecentFile={handleOpenRecentFile}
       onOpenRecentFolder={handleOpenRecentFolder}
       onRename={folder.handleRename}
+      onDelete={async (entry, rootId) => {
+        const label = entry.kind === "directory" ? "folder" : "file";
+        const confirmed = await ask(
+          `Move "${entry.name}" to Trash?`,
+          { title: `Delete ${label}`, kind: "warning", okLabel: "Move to Trash", cancelLabel: "Cancel" },
+        );
+        if (confirmed) {
+          await folder.handleDelete(entry, rootId);
+          // Close tabs for deleted files
+          if (entry.kind === "file") {
+            const tabId = tabStore.tabs().find((t) => t.filePath === entry.path && t.rootId === rootId)?.id;
+            if (tabId) tabStore.closeTab(tabId);
+          } else {
+            // Directory deleted — close all tabs with paths under it
+            for (const tab of tabStore.tabs()) {
+              if (tab.rootId === rootId && tab.filePath.startsWith(entry.path + "/")) {
+                tabStore.closeTab(tab.id);
+              }
+            }
+          }
+        }
+      }}
       resolveImageSrc={resolveImageSrc}
       onToggleShowHiddenEntries={(enabled) => folder.refreshAllRoots(enabled)}
       onRefreshRoot={(rootId) => folder.refreshRoot(rootId)}

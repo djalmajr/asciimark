@@ -68,6 +68,7 @@ interface AppShellProps {
    * pass this; if absent, the file tree hides the Rename menu item.
    */
   onRename?: (entry: FSEntry, rootId: string, newName: string) => Promise<void>;
+  onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   /**
    * Resolve an `<img>` src in the rendered document. Desktop maps relative
    * paths to Tauri asset URLs so the webview can load files from disk.
@@ -242,6 +243,7 @@ export function AppShell(props: AppShellProps) {
                 onCopyPath={props.onCopyPath}
                 onRefreshRoot={props.onRefreshRoot}
                 onRename={props.onRename}
+                onDelete={props.onDelete}
                 onReorderRoots={props.onReorderRoots}
                 onSelect={(entry, rootId) => props.onLoadFile(entry, rootId)}
                 onOpenInNewTab={props.onOpenInNewTab}

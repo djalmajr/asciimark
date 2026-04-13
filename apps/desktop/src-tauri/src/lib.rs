@@ -188,6 +188,21 @@ async fn rename_file(
     std::fs::rename(&from, &to).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn trash_path(root: String, relative: String) -> Result<(), String> {
+    let root_path = PathBuf::from(&root);
+    let target = root_path.join(&relative);
+
+    // Sanity: target must resolve inside the workspace root
+    let root_canon = std::fs::canonicalize(&root_path).map_err(|e| e.to_string())?;
+    let target_canon = std::fs::canonicalize(&target).map_err(|e| e.to_string())?;
+    if !target_canon.starts_with(&root_canon) {
+        return Err("path escapes workspace root".into());
+    }
+
+    trash::delete(&target_canon).map_err(|e| e.to_string())
+}
+
 struct WatcherHolder(
     Mutex<Option<notify_debouncer_mini::Debouncer<notify::RecommendedWatcher>>>,
 );
@@ -489,6 +504,7 @@ pub fn run() {
             print_webview,
             write_file,
             rename_file,
+            trash_path,
             watch_paths,
             stop_watching,
         ])
