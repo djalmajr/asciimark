@@ -864,8 +864,7 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   transition: opacity 0.1s;
 }
 
-.tree-item:hover .tree-item-more,
-.tree-item-more[data-expanded] {
+.tree-item:hover .tree-item-more {
   opacity: 1;
 }
 

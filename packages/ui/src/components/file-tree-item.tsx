@@ -326,8 +326,9 @@ export function FileTreeItem(props: FileTreeItemProps) {
               </DropdownMenuTrigger>
               <DropdownMenuContent class="min-w-44">
                 <Show when={!isDirectory() && props.onOpenInNewTab}>
-                  <DropdownMenuItem onSelect={() => props.onOpenInNewTab?.(props.entry)}>
-                    Open in New Tab
+                  <DropdownMenuItem class="justify-between" onSelect={() => props.onOpenInNewTab?.(props.entry)}>
+                    <span>Open in New Tab</span>
+                    <span class="ml-auto text-xs tracking-widest opacity-60">Middle-click</span>
                   </DropdownMenuItem>
                 </Show>
                 <DropdownMenuItem class="justify-between" onSelect={copyPath}>
@@ -353,8 +354,9 @@ export function FileTreeItem(props: FileTreeItemProps) {
          */}
         <ContextMenuContent class="tree-context-menu min-w-44">
           <Show when={!isDirectory() && props.onOpenInNewTab}>
-            <ContextMenuItem onSelect={() => props.onOpenInNewTab?.(props.entry)}>
-              Open in New Tab
+            <ContextMenuItem class="justify-between" onSelect={() => props.onOpenInNewTab?.(props.entry)}>
+              <span>Open in New Tab</span>
+              <ContextMenuShortcut class="ml-0">Middle-click</ContextMenuShortcut>
             </ContextMenuItem>
           </Show>
           <ContextMenuItem class="justify-between" onSelect={copyPath}>
