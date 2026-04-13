@@ -20,6 +20,7 @@ import { setupTauriDnd } from "./lib/dnd.ts";
 import { setupAppMenu } from "./lib/menu.ts";
 import { setupTray } from "./lib/tray.ts";
 import { checkForAppUpdates } from "./lib/updater.ts";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 const { convertAdoc, convertMarkdown } = createConverter(new ConvertWorker());
 
@@ -592,6 +593,7 @@ export function App() {
       onOpenInNewTab={handleOpenInNewTab}
       onDoubleClickFile={handleOpenInNewTab}
       onNavigate={navigation.handleNavigate}
+      onOpenExternal={(url) => openUrl(url)}
       onOpenFolder={folder.handleOpenFolder}
       onOpenRecentFile={handleOpenRecentFile}
       onOpenRecentFolder={handleOpenRecentFolder}

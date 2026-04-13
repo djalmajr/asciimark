@@ -52,6 +52,7 @@ interface AppShellProps {
   onOpenInNewTab?: (entry: FSEntry, rootId: string) => void;
   onDoubleClickFile?: (entry: FSEntry, rootId: string) => void;
   onNavigate: (path: string, fragment?: string | null) => void;
+  onOpenExternal?: (url: string) => void;
   onOpenFolder?: () => void;
   onOpenRecentFile?: (recentFile: RecentFile) => void | Promise<void>;
   onOpenRecentFolder?: (path: string) => void | Promise<void>;
@@ -172,6 +173,7 @@ export function AppShell(props: AppShellProps) {
         }}
         onFragmentHandled={() => s.setPendingFragment(null)}
         onNavigate={props.onNavigate}
+        onOpenExternal={props.onOpenExternal}
         onSearchOpenChange={s.setPreviewSearchOpen}
         onTocChange={(has) => s.setHasToc(has)}
       />

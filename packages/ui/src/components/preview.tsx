@@ -529,6 +529,8 @@ interface PreviewProps {
   onFragmentHandled: () => void;
   /** Called when user clicks a document link (.adoc/.md); receives the resolved path and optional fragment */
   onNavigate: (path: string, fragment?: string | null) => void;
+  /** Open an external URL (http/https) in the system browser. Desktop-only. */
+  onOpenExternal?: (url: string) => void;
   /**
    * Resolve an `<img>` src that appears in the document into a URL the
    * webview can fetch (e.g. via Tauri's asset protocol). Should return
@@ -703,8 +705,12 @@ export function Preview(props: PreviewProps) {
     // Skip mailto links
     if (href.startsWith("mailto:")) return;
 
-    // Skip truly external links (http/https) but NOT file:// links
-    if (/^https?:\/\//i.test(href)) return;
+    // External links (http/https) → open in system browser
+    if (/^https?:\/\//i.test(href)) {
+      e.preventDefault();
+      props.onOpenExternal?.(href);
+      return;
+    }
 
     // Handle file:// links — extract path and navigate
     if (href.startsWith("file://")) {
