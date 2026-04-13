@@ -114,12 +114,26 @@ export function App() {
   });
 
   onMount(() => {
+    const pendingRoots = new Set<string>();
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-    const unlisten = listen("fs-tree-change", () => {
-      // Debounce rapid filesystem events
+    const unlisten = listen<{ paths: string[] }>("fs-tree-change", (event) => {
+      // Identify which roots were affected
+      const paths = rootPaths();
+      for (const changed of event.payload.paths) {
+        for (const [rootId, rootPath] of paths) {
+          if (changed.startsWith(rootPath)) {
+            pendingRoots.add(rootId);
+            break;
+          }
+        }
+      }
+      // Debounce — batch rapid events into a single refresh per root
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
-        void folder.refreshAllRoots(state.showHiddenEntries());
+        for (const rootId of pendingRoots) {
+          void folder.refreshRoot(rootId);
+        }
+        pendingRoots.clear();
       }, 300);
     });
     onCleanup(() => {
