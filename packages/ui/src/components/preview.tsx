@@ -702,28 +702,26 @@ export function Preview(props: PreviewProps) {
       return;
     }
 
-    // Skip mailto links
-    if (href.startsWith("mailto:")) return;
-
-    // External links (http/https) → open in system browser
-    if (/^https?:\/\//i.test(href)) {
+    // Mailto, tel, and other non-http schemes → open externally
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
       e.preventDefault();
-      props.onOpenExternal?.(href);
-      return;
-    }
-
-    // Handle file:// links — extract path and navigate
-    if (href.startsWith("file://")) {
-      if (isSupportedHref(href.replace(/^file:\/\//, ""))) {
-        e.preventDefault();
-        e.stopPropagation();
+      // http/https and other openable schemes → system browser
+      if (/^https?:\/\//i.test(href) || href.startsWith("mailto:")) {
+        props.onOpenExternal?.(href);
+      }
+      // file:// → navigate if supported document
+      if (href.startsWith("file://") && isSupportedHref(href.replace(/^file:\/\//, ""))) {
         props.onNavigate(href);
       }
+      // All other schemes (ftp, tel, slack, etc.) → blocked silently
       return;
     }
 
     // Check if it's a supported file link (.adoc, .md, .html, etc.)
-    if (!isSupportedHref(href)) return;
+    if (!isSupportedHref(href)) {
+      e.preventDefault();
+      return;
+    }
 
     e.preventDefault();
     e.stopPropagation();
