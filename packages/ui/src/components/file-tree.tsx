@@ -145,20 +145,29 @@ export function FileTree(props: FileTreeProps) {
   }
 
   // When selection changes (e.g. tab activation), ensure all ancestor
-  // directories of the selected file are expanded.
+  // directories of the selected file are expanded, then scroll into view.
   createEffect(() => {
     const sel = props.selectedPath;
     const rootId = props.selectedRootId;
-    if (!sel || !rootId || !sel.includes("/")) return;
+    if (!sel || !rootId) return;
 
-    setExpanded(produce((s) => {
-      if (!s[rootId]) s[rootId] = {};
-      const parts = sel.split("/");
-      for (let i = 1; i < parts.length; i++) {
-        const ancestor = parts.slice(0, i).join("/");
-        s[rootId]![ancestor] = true;
-      }
-    }));
+    if (sel.includes("/")) {
+      setExpanded(produce((s) => {
+        if (!s[rootId]) s[rootId] = {};
+        const parts = sel.split("/");
+        for (let i = 1; i < parts.length; i++) {
+          const ancestor = parts.slice(0, i).join("/");
+          s[rootId]![ancestor] = true;
+        }
+      }));
+    }
+
+    // Scroll the selected item into view after DOM updates
+    queueMicrotask(() => {
+      if (!navRef) return;
+      const el = navRef.querySelector<HTMLElement>(`.tree-item[data-path="${CSS.escape(sel)}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    });
   });
 
   let suppressRootClickUntil = 0;
