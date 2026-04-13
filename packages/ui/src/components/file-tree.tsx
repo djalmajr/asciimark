@@ -205,9 +205,7 @@ export function FileTree(props: FileTreeProps) {
 
     const nextRootBulkAction = (): ExpandAction["action"] => {
       const current = currentExpandAction();
-      if (!current) {
-        return isRootCollapsed() ? "expand" : "collapse";
-      }
+      if (!current) return "expand";
       return current.action === "expand" ? "collapse" : "expand";
     };
 
