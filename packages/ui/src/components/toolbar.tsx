@@ -40,6 +40,12 @@ interface ToolbarProps {
   /** Whether the current file supports preview (markdown / asciidoc). */
   supportsPreview: boolean;
   inWindowFrame?: boolean;
+  /**
+   * Render sidebar/TOC toggles and the menu dropdown on the left side of the
+   * toolbar instead of the right. Used on Windows, where the right side is
+   * occupied by the in-app caption buttons (min/max/close).
+   */
+  controlsOnLeft?: boolean;
   recentFiles?: RecentFile[];
   recentFolders?: RecentFolder[];
   showEditorTabs: boolean;
@@ -68,41 +74,144 @@ export function Toolbar(props: ToolbarProps) {
     !!props.showRecentHistory &&
     ((props.recentFolders?.length ?? 0) > 0 || (props.recentFiles?.length ?? 0) > 0);
 
-  function isInteractiveTarget(target: HTMLElement) {
-    return target.closest(
-      "button,[role='button'],[role='tab'],a,input,select,textarea,[data-no-window-drag]"
-    );
-  }
+  const renderSidebarToggle = () => (
+    <Show when={props.hasRoot}>
+      <Tooltip>
+        <TooltipTrigger
+          as={Toggle}
+          size="sm"
+          pressed={props.sidebarVisible}
+          onChange={props.onToggleSidebar}
+          aria-label="Toggle sidebar"
+        >
+          <IconPanelLeft width={16} height={16} />
+        </TooltipTrigger>
+        <TooltipContent>Toggle sidebar</TooltipContent>
+      </Tooltip>
+    </Show>
+  );
 
-  function handleMouseDown(e: MouseEvent) {
-    if (!props.inWindowFrame) return;
-    if (e.button !== 0) return;
-    if (e.detail > 1) return;
+  const renderTocToggle = () => (
+    <Show when={props.hasFile}>
+      <Tooltip>
+        <TooltipTrigger
+          as={Toggle}
+          size="sm"
+          pressed={props.tocVisible}
+          onChange={props.onToggleToc}
+          aria-label="Toggle table of contents"
+        >
+          <IconListTree width={16} height={16} />
+        </TooltipTrigger>
+        <TooltipContent>Toggle table of contents</TooltipContent>
+      </Tooltip>
+    </Show>
+  );
 
-    const target = e.target as HTMLElement | null;
-    if (!target) return;
-    if (isInteractiveTarget(target)) return;
-
-    void props.onWindowDragStart?.();
-  }
-
-  function handleDoubleClick(e: MouseEvent) {
-    if (!props.inWindowFrame) return;
-    if (e.button !== 0) return;
-
-    const target = e.target as HTMLElement | null;
-    if (!target) return;
-    if (isInteractiveTarget(target)) return;
-
-    void props.onWindowTitleDoubleClick?.();
-  }
+  const renderMenu = () => (
+    <DropdownMenu>
+        {/* No Tooltip here: Kobalte tooltips open on focus (a11y) and the
+            trigger receives focus when the dropdown opens, so tooltip +
+            menu would appear together. The icon + aria-label are enough. */}
+        <DropdownMenuTrigger
+          aria-label="Menu"
+          class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:bg-accent hover:text-accent-foreground h-8 w-8"
+        >
+          <IconMenu width={16} height={16} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent class="w-48">
+          <Show when={props.onOpenFolder}>
+            <DropdownMenuItem onSelect={props.onOpenFolder}>
+              <IconFolder width={14} height={14} />
+              Open Folder
+            </DropdownMenuItem>
+          </Show>
+          <Show when={hasRecentItems()}>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <IconClock width={14} height={14} />
+                Open Recent
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent class="w-56 max-h-64 overflow-y-auto">
+                <Show when={(props.recentFolders?.length ?? 0) > 0}>
+                  <For each={props.recentFolders}>
+                    {(folder) => (
+                      <DropdownMenuItem onSelect={() => props.onOpenRecentFolder?.(folder.path)}>
+                        <IconFolder width={14} height={14} />
+                        {folder.name}
+                      </DropdownMenuItem>
+                    )}
+                  </For>
+                </Show>
+                <Show when={(props.recentFolders?.length ?? 0) > 0 && (props.recentFiles?.length ?? 0) > 0}>
+                  <DropdownMenuSeparator />
+                </Show>
+                <Show when={(props.recentFiles?.length ?? 0) > 0}>
+                  <For each={props.recentFiles}>
+                    {(file) => (
+                      <DropdownMenuItem onSelect={() => props.onOpenRecentFile?.(file)}>
+                        <IconFileText width={14} height={14} />
+                        {file.name}
+                      </DropdownMenuItem>
+                    )}
+                  </For>
+                </Show>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </Show>
+          <Show when={props.onOpenFolder || hasRecentItems()}>
+            <DropdownMenuSeparator />
+          </Show>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Show when={props.darkMode} fallback={<IconSun width={14} height={14} />}>
+                <IconMoon width={14} height={14} />
+              </Show>
+              Theme
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent class="w-40">
+              <DropdownMenuRadioGroup
+                value={props.themeMode}
+                onChange={props.onThemeChange}
+              >
+                <DropdownMenuRadioItem value="system">
+                  <IconMonitor width={14} height={14} />
+                  System
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="light">
+                  <IconSun width={14} height={14} />
+                  Light
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="dark">
+                  <IconMoon width={14} height={14} />
+                  Dark
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <Show when={props.hasFile && props.onExportPdf}>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={props.onExportPdf}>
+              <IconFileDown width={14} height={14} />
+              Export PDF
+            </DropdownMenuItem>
+          </Show>
+          <Show when={props.onCheckForUpdates}>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={props.onCheckForUpdates}>
+              <IconDownload width={14} height={14} />
+              Check for updates
+            </DropdownMenuItem>
+          </Show>
+        </DropdownMenuContent>
+      </DropdownMenu>
+  );
 
   return (
     <header
       class="toolbar no-print"
       classList={{ "toolbar-window-frame": !!props.inWindowFrame }}
-      onMouseDown={handleMouseDown}
-      onDblClick={handleDoubleClick}
+      data-tauri-drag-region={props.inWindowFrame ? "" : undefined}
       ref={(el) => {
         const update = () => {
           const h = el.offsetHeight;
@@ -113,7 +222,12 @@ export function Toolbar(props: ToolbarProps) {
         new ResizeObserver(update).observe(el);
       }}
     >
-      <div class="toolbar-left">
+      <div class="toolbar-left" data-tauri-drag-region={props.inWindowFrame ? "" : undefined}>
+        <Show when={props.controlsOnLeft}>
+          {renderMenu()}
+          {renderSidebarToggle()}
+          {renderTocToggle()}
+        </Show>
         <Show when={props.showNavButtons}>
           <Tooltip>
             <TooltipTrigger
@@ -142,7 +256,7 @@ export function Toolbar(props: ToolbarProps) {
         </Show>
       </div>
       <Show when={props.showEditorTabs}>
-        <div class="toolbar-center">
+        <div class="toolbar-center" data-tauri-drag-region={props.inWindowFrame ? "" : undefined}>
           <Tabs
             value={props.editorMode}
             onChange={(v) => props.onEditorModeChange(v as "edit" | "split" | "preview")}
@@ -165,132 +279,12 @@ export function Toolbar(props: ToolbarProps) {
           </Tabs>
         </div>
       </Show>
-      <div class="toolbar-right">
-        <Show when={props.hasRoot}>
-          <Tooltip>
-            <TooltipTrigger
-              as={Toggle}
-              size="sm"
-              pressed={props.sidebarVisible}
-              onChange={props.onToggleSidebar}
-              aria-label="Toggle sidebar"
-            >
-              <IconPanelLeft width={16} height={16} />
-            </TooltipTrigger>
-            <TooltipContent>Toggle sidebar</TooltipContent>
-          </Tooltip>
+      <div class="toolbar-right" data-tauri-drag-region={props.inWindowFrame ? "" : undefined}>
+        <Show when={!props.controlsOnLeft}>
+          {renderSidebarToggle()}
+          {renderTocToggle()}
+          {renderMenu()}
         </Show>
-        <Show when={props.hasFile}>
-          <Tooltip>
-            <TooltipTrigger
-              as={Toggle}
-              size="sm"
-              pressed={props.tocVisible}
-              onChange={props.onToggleToc}
-              aria-label="Toggle table of contents"
-            >
-              <IconListTree width={16} height={16} />
-            </TooltipTrigger>
-            <TooltipContent>Toggle table of contents</TooltipContent>
-          </Tooltip>
-        </Show>
-        {/* Menu dropdown */}
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger
-              as={DropdownMenuTrigger}
-              class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:bg-accent hover:text-accent-foreground h-8 w-8"
-            >
-              <IconMenu width={16} height={16} />
-            </TooltipTrigger>
-            <TooltipContent>Menu</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent class="w-48">
-            <Show when={props.onOpenFolder}>
-              <DropdownMenuItem onSelect={props.onOpenFolder}>
-                <IconFolder width={14} height={14} />
-                Open Folder
-              </DropdownMenuItem>
-            </Show>
-            <Show when={hasRecentItems()}>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <IconClock width={14} height={14} />
-                  Open Recent
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent class="w-56 max-h-64 overflow-y-auto">
-                  <Show when={(props.recentFolders?.length ?? 0) > 0}>
-                    <For each={props.recentFolders}>
-                      {(folder) => (
-                        <DropdownMenuItem onSelect={() => props.onOpenRecentFolder?.(folder.path)}>
-                          <IconFolder width={14} height={14} />
-                          {folder.name}
-                        </DropdownMenuItem>
-                      )}
-                    </For>
-                  </Show>
-                  <Show when={(props.recentFolders?.length ?? 0) > 0 && (props.recentFiles?.length ?? 0) > 0}>
-                    <DropdownMenuSeparator />
-                  </Show>
-                  <Show when={(props.recentFiles?.length ?? 0) > 0}>
-                    <For each={props.recentFiles}>
-                      {(file) => (
-                        <DropdownMenuItem onSelect={() => props.onOpenRecentFile?.(file)}>
-                          <IconFileText width={14} height={14} />
-                          {file.name}
-                        </DropdownMenuItem>
-                      )}
-                    </For>
-                  </Show>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            </Show>
-            <Show when={props.onOpenFolder || hasRecentItems()}>
-              <DropdownMenuSeparator />
-            </Show>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Show when={props.darkMode} fallback={<IconSun width={14} height={14} />}>
-                  <IconMoon width={14} height={14} />
-                </Show>
-                Theme
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent class="w-40">
-                <DropdownMenuRadioGroup
-                  value={props.themeMode}
-                  onChange={props.onThemeChange}
-                >
-                  <DropdownMenuRadioItem value="system">
-                    <IconMonitor width={14} height={14} />
-                    System
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="light">
-                    <IconSun width={14} height={14} />
-                    Light
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="dark">
-                    <IconMoon width={14} height={14} />
-                    Dark
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <Show when={props.hasFile && props.onExportPdf}>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={props.onExportPdf}>
-                <IconFileDown width={14} height={14} />
-                Export PDF
-              </DropdownMenuItem>
-            </Show>
-            <Show when={props.onCheckForUpdates}>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={props.onCheckForUpdates}>
-                <IconDownload width={14} height={14} />
-                Check for updates
-              </DropdownMenuItem>
-            </Show>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
     </header>
   );

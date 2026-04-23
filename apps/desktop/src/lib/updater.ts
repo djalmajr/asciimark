@@ -47,15 +47,16 @@ export async function checkForAppUpdates(silent: boolean): Promise<void> {
     await update.downloadAndInstall();
     await relaunch();
   } catch (e) {
+    // Silent startup check: swallow transient errors (network, missing
+    // platform entry in latest.json for the current target, etc.).
+    if (silent) return;
     console.error("Update check failed:", e);
-    if (!silent) {
-      await message(
-        `Failed to check for updates: ${(e as Error)?.message ?? String(e)}`,
-        {
-          title: "AsciiMark",
-          kind: "error",
-        },
-      );
-    }
+    await message(
+      `Failed to check for updates: ${(e as Error)?.message ?? String(e)}`,
+      {
+        title: "AsciiMark",
+        kind: "error",
+      },
+    );
   }
 }

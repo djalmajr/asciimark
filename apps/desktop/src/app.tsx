@@ -155,9 +155,13 @@ export function App() {
   onMount(() => {
     // macOS traffic lights sit in the top-left corner of the overlay title
     // bar. Reserve space so toolbar controls don't overlap them.
-    // On Windows/Linux the controls are on the right — no inset needed.
+    // On Windows the custom WindowControls (min/max/close) are drawn in the
+    // top-right — reserve space for them.
     if (navigator.platform.startsWith("Mac")) {
       document.documentElement.style.setProperty("--toolbar-frame-inset-left", "78px");
+    } else if (navigator.platform.startsWith("Win")) {
+      // Custom caption buttons — 46×32 each × 3 = 138px (matches Win11 native).
+      document.documentElement.style.setProperty("--toolbar-frame-inset-right", "138px");
     }
 
     void setupAppMenu({
@@ -615,6 +619,7 @@ export function App() {
       showNavButtons={rootPaths().size > 0}
       showToolbar={rootPaths().size > 0}
       showSidebar={state.sidebarVisible() && rootPaths().size > 0}
+      showWindowControls={navigator.platform.startsWith("Win")}
       toolbarFilePath={state.selectedFile()?.path ?? null}
       toolbarRootName={state.rootName()}
       windowFrameToolbar={true}

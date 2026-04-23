@@ -22,6 +22,10 @@ export function createFolder(deps: FolderDeps) {
   }
 
   async function openFolderPath(path: string): Promise<boolean> {
+    // Normalize to forward slashes so Windows paths match the events emitted
+    // by the Rust watcher (which also normalizes slashes).
+    path = path.replace(/\\/g, "/");
+
     // If this root is already open, just select it
     if (rootPaths().has(path)) {
       state.setSelectedRootId(path);
