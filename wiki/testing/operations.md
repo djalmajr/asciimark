@@ -1,3 +1,17 @@
+---
+title: "Testing — how to run everything"
+audience: dev
+sources:
+  - repo:./package.json
+  - repo:./lefthook.yml
+  - repo:./scripts/release-check.sh
+  - repo:./scripts/release-smoke.sh
+  - repo:./scripts/coverage-snapshot.sh
+updated: 2026-05-04
+tags: [testing, runbook, lefthook, scripts]
+status: stable
+---
+
 # Testing — how to run everything
 
 Single page that lists every gate this repo ships with. Conceptual
@@ -124,7 +138,7 @@ packages/ui/src/
   composables/__property__/        stateful PBT (createTabStore)
 
 tools/loom-watcher-tests/  Loom permutation tests (sub-crate)
-docs/testing/STRATEGIES.md Strategy doc & rationale
+wiki/testing/strategies.md Strategy doc & rationale
 ```
 
 ## Strategies index → file
@@ -158,4 +172,4 @@ docs/testing/STRATEGIES.md Strategy doc & rationale
 | Audit | `bun audit` + `cargo audit` |
 
 For rationale (why each technique was adopted or rejected, what bugs
-each catches), see [`docs/testing/STRATEGIES.md`](docs/testing/STRATEGIES.md).
+each catches), see [strategies.md](strategies.md).

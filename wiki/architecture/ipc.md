@@ -1,3 +1,15 @@
+---
+title: "IPC contract"
+audience: dev
+sources:
+  - repo:./apps/desktop/src-tauri/src/lib.rs
+  - repo:./apps/desktop/src/lib/fs.ts
+  - repo:./scripts/check-ipc-contract.sh
+updated: 2026-05-04
+tags: [architecture, ipc, tauri, security]
+status: stable
+---
+
 # IPC contract
 
 The desktop frontend (`apps/desktop/src`) talks to the Rust backend

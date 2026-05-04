@@ -1,3 +1,15 @@
+---
+title: "Architecture overview"
+audience: dev
+sources:
+  - repo:./apps
+  - repo:./packages
+  - repo:./tools
+updated: 2026-05-04
+tags: [architecture, monorepo, tauri, solid]
+status: stable
+---
+
 # Architecture overview
 
 ## Workspaces

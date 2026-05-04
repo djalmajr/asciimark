@@ -1,3 +1,15 @@
+---
+title: "Test conventions"
+audience: dev
+sources:
+  - repo:./packages/core/src
+  - repo:./packages/ui/src
+  - repo:./apps/desktop/src-tauri/src
+updated: 2026-05-04
+tags: [testing, conventions, naming, file-layout]
+status: stable
+---
+
 # Test conventions
 
 ## File naming

@@ -1,3 +1,23 @@
+---
+title: "Testing Strategies"
+audience: dev
+sources:
+  - repo:./packages/core/src/__properties__/
+  - repo:./packages/core/src/__metamorphic__/
+  - repo:./packages/core/src/__diff__/
+  - repo:./packages/core/src/__conformance__/
+  - repo:./packages/core/src/__golden__/
+  - repo:./packages/core/src/__regressions__/
+  - repo:./packages/core/src/__bench__/
+  - repo:./packages/core/fuzz/
+  - repo:./apps/desktop/src-tauri/src/lib.rs
+  - repo:./apps/desktop/e2e/
+  - repo:./tools/loom-watcher-tests/
+updated: 2026-05-04
+tags: [testing, strategies, mutation, fuzzing, property-based, metamorphic]
+status: stable
+---
+
 # Testing Strategies
 
 Análise das estratégias de teste aplicáveis a este projeto, ordenadas por
