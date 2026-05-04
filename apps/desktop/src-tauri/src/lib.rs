@@ -815,8 +815,9 @@ mod tests {
 
     use std::sync::{Arc, Mutex as StdMutex};
 
-    fn collect_changes()
-    -> (Arc<StdMutex<Vec<Vec<String>>>>, impl Fn(Vec<String>) + Send + 'static + Clone) {
+    type ChangeBuffer = Arc<StdMutex<Vec<Vec<String>>>>;
+
+    fn collect_changes() -> (ChangeBuffer, impl Fn(Vec<String>) + Send + 'static + Clone) {
         let buf: Arc<StdMutex<Vec<Vec<String>>>> = Arc::new(StdMutex::new(Vec::new()));
         let buf_clone = buf.clone();
         let cb = move |changed: Vec<String>| {
@@ -923,6 +924,149 @@ mod tests {
             !any_nested,
             "non-recursive watcher leaked a descendant event: {batches:?}",
         );
+    }
+
+    // ── Property-based tests (proptest) ──────────────────────────────────
+    //
+    // Mirrors what fast-check does for the JS code in
+    // `packages/core/src/__properties__/`. proptest generates random
+    // inputs and shrinks failures to a minimal counterexample.
+    //
+    // Targets pure helpers — anything that touches a tempdir would slow
+    // down each iteration to syscall speed, defeating the point.
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 200,
+            failure_persistence: None, // we don't need .proptest-regressions
+            ..ProptestConfig::default()
+        })]
+
+        /// `resolve_within_root` must NEVER return a path outside the root
+        /// for ANY relative input that produces a successful resolution.
+        /// We model this with a tempdir + a randomly-shaped relative
+        /// (with optional `..` segments). The contract: success implies
+        /// in-root; rejection or canonicalize error is always allowed.
+        #[test]
+        fn prop_resolve_within_root_never_escapes(
+            segments in prop::collection::vec(
+                prop::string::string_regex("[a-z][a-z0-9]{0,5}").unwrap(),
+                0..6,
+            ),
+            dotdots in 0u8..6,
+        ) {
+            let dir = tempdir().unwrap();
+            let root = dir.path().join("workspace");
+            fs::create_dir(&root).unwrap();
+            // Plant a file that DEFINITELY exists so canonicalize succeeds.
+            fs::write(root.join("anchor.md"), b"x").unwrap();
+
+            let mut parts: Vec<String> = (0..dotdots).map(|_| "..".to_string()).collect();
+            parts.extend(segments.into_iter());
+            let relative = if parts.is_empty() { "anchor.md".to_string() } else { parts.join("/") };
+
+            match resolve_within_root(&root, &relative) {
+                Ok(canon) => {
+                    let root_canon = std::fs::canonicalize(&root).unwrap();
+                    prop_assert!(
+                        canon.starts_with(&root_canon),
+                        "resolve_within_root accepted {relative:?} but {canon:?} is outside {root_canon:?}",
+                    );
+                }
+                Err(_) => {
+                    // Rejection is always acceptable.
+                }
+            }
+        }
+
+        /// `read_dir_recursive` returns entries sorted with directories
+        /// before files, both groups case-insensitive ascending. This
+        /// must hold for any randomly-generated tree.
+        #[test]
+        fn prop_read_dir_sort_invariant(
+            files in prop::collection::vec(
+                prop::string::string_regex("[a-zA-Z]{1,8}\\.md").unwrap(),
+                0..10,
+            ),
+            dirs in prop::collection::vec(
+                prop::string::string_regex("[a-zA-Z]{1,8}").unwrap(),
+                0..6,
+            ),
+        ) {
+            let dir = tempdir().unwrap();
+            let root = dir.path();
+            for f in &files {
+                let _ = fs::write(root.join(f), b"x");
+            }
+            for d in &dirs {
+                let _ = fs::create_dir(root.join(d));
+            }
+
+            let entries = match read_dir_recursive(root, root, false) {
+                Ok(e) => e,
+                Err(_) => return Ok(()), // tempdir collisions in the random set are fine
+            };
+
+            // Directories must come before files.
+            let first_file_idx = entries.iter().position(|e| e.kind == "file");
+            let last_dir_idx = entries.iter().rposition(|e| e.kind == "directory");
+            if let (Some(first_file), Some(last_dir)) = (first_file_idx, last_dir_idx) {
+                prop_assert!(
+                    last_dir < first_file,
+                    "directories must precede files: entries = {:?}",
+                    entries.iter().map(|e| (&e.kind, &e.name)).collect::<Vec<_>>(),
+                );
+            }
+
+            // Within each group, names ascend case-insensitively.
+            let mut last_dir_name: Option<String> = None;
+            let mut last_file_name: Option<String> = None;
+            for e in &entries {
+                let prev = if e.kind == "directory" { &mut last_dir_name } else { &mut last_file_name };
+                let lower = e.name.to_lowercase();
+                if let Some(p) = prev {
+                    prop_assert!(
+                        p.as_str() <= lower.as_str(),
+                        "{} kind not sorted: {:?} > {:?}",
+                        e.kind, p, lower,
+                    );
+                }
+                *prev = Some(lower);
+            }
+        }
+
+        /// `rename_file_impl` either moves the file (and the source no
+        /// longer exists) or fails (and the source is unchanged). Never
+        /// both, never neither.
+        #[test]
+        fn prop_rename_file_atomicity(
+            src in prop::string::string_regex("[a-z]{1,8}").unwrap(),
+            dst in prop::string::string_regex("[a-z]{1,8}").unwrap(),
+        ) {
+            let dir = tempdir().unwrap();
+            let root = dir.path();
+            let src_name = format!("{src}.md");
+            let dst_name = format!("{dst}.md");
+            fs::write(root.join(&src_name), b"content").unwrap();
+
+            let result = rename_file_impl(root, &src_name, &dst_name);
+            let src_exists = root.join(&src_name).exists();
+            let dst_exists = root.join(&dst_name).exists();
+
+            match result {
+                Ok(()) => {
+                    if src_name != dst_name {
+                        prop_assert!(!src_exists, "successful rename must remove source");
+                    }
+                    prop_assert!(dst_exists, "successful rename must create destination");
+                }
+                Err(_) => {
+                    prop_assert!(src_exists, "failed rename must leave source intact");
+                }
+            }
+        }
     }
 
     #[test]

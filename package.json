@@ -23,6 +23,7 @@
     "test:bench": "bun run --filter '*' test:bench",
     "test:rust": "cd apps/desktop/src-tauri && cargo test",
     "test:rust:stress": "cd apps/desktop/src-tauri && cargo test --lib -- --ignored",
+    "lint:rust": "cd apps/desktop/src-tauri && cargo clippy --all-targets -- -D warnings",
     "test:loom": "cd tools/loom-watcher-tests && RUSTFLAGS=\"--cfg loom\" cargo test --release",
     "test:miri": "cd apps/desktop/src-tauri && cargo +nightly miri test --lib interpolate_frame_endpoints",
     "test:mutation:rust": "cd apps/desktop/src-tauri && cargo mutants --no-shuffle --timeout 60",
@@ -35,6 +36,8 @@
     "bench:rust": "cd apps/desktop/src-tauri && cargo bench",
     "bench:rust:read-dir": "cd apps/desktop/src-tauri && cargo bench --bench read_dir",
     "release:check": "bash scripts/release-check.sh",
+    "release:smoke": "bash scripts/release-smoke.sh",
+    "coverage:snapshot": "bash scripts/coverage-snapshot.sh",
     "test:approve": "APPROVE=1 bun test packages/core/src/__golden__",
     "test:contract": "bash scripts/check-ipc-contract.sh",
     "prepare": "lefthook install"

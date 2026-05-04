@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "qmd": {
+      "command": "/Users/djalmajr/.local/share/essential-skills/qmd/wrappers/asciimark-qmd",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

@@ -46,6 +46,9 @@ panic = "abort"
 tempfile = "3"
 criterion = { version = "0.5", default-features = false }
 tokio = { version = "1", features = ["rt", "macros"] }
+# proptest mirrors fast-check on the JS side: randomized inputs + shrinking
+# for property-based tests on the pure helpers.
+proptest = { version = "1", default-features = false, features = ["std"] }
 # `test` feature only in dev-dependencies so release builds don't carry
 # tauri::test::MockRuntime in the binary. Cargo unifies dependency features
 # at test time, so `cargo test` still has access to MockRuntime.

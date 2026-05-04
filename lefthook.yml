@@ -17,6 +17,10 @@ pre-commit:
       glob: "apps/desktop/src-tauri/**/*.rs"
       root: "apps/desktop/src-tauri"
       run: cargo test --lib
+    clippy:
+      glob: "apps/desktop/src-tauri/**/*.rs"
+      root: "apps/desktop/src-tauri"
+      run: cargo clippy --all-targets -- -D warnings
     test-ui:
       glob: "packages/ui/**/*.{ts,tsx}"
       root: "packages/ui"

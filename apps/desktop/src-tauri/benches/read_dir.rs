@@ -158,7 +158,7 @@ static FLAT_25K: LazyLock<Fixture> = LazyLock::new(|| make_flat(25_000));
 static DEEP_50: LazyLock<Fixture> = LazyLock::new(|| make_deep(50));
 static WIDE_3X4: LazyLock<Fixture> = LazyLock::new(|| make_balanced(3, 4, 3));
 static WIDE_8X4: LazyLock<Fixture> = LazyLock::new(|| make_balanced(8, 4, 5));
-static MONOREPO: LazyLock<Fixture> = LazyLock::new(|| make_monorepo());
+static MONOREPO: LazyLock<Fixture> = LazyLock::new(make_monorepo);
 
 // ─── Bench groups ───────────────────────────────────────────────────────────
 

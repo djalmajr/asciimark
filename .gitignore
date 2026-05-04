@@ -10,8 +10,15 @@ dist
 coverage
 *.lcov
 
-# bench results (machine-specific)
+# bench results (machine-specific) — but baseline.json IS committed
 **/__bench__/last-run.json
+
+# fast-check seed cache (regenerated on each run)
+**/.fast-check.json
+
+# coverage snapshots that are not gits-tracked baseline
+**/coverage-summary.json
+!**/__coverage__/baseline.json
 
 # stryker mutation testing
 **/.stryker-tmp
