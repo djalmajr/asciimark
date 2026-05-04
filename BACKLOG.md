@@ -153,3 +153,40 @@
 - [ ] Workflow CI nightly opcional para Stryker + Jazzer.js (Linux runner) — atualmente só roda local via `bun run release:check`
 - [ ] Adicionar `cargo-llvm-cov` ao `release-check.sh` com gate de threshold (falha se cair abaixo de N%)
 - [ ] Documentar no `CLAUDE.md` Section 11 ou criar `TESTING.md` com o fluxo completo (hooks, scripts, conventions de `.test.ts` vs `.vtest.tsx`)
+
+### Pending — Windows / cross-platform parity (testes e tooling)
+
+Estas pendências afetam APENAS o ambiente de desenvolvimento e os hooks
+locais — NÃO afetam o app de produção, que continua cross-platform. Anotar
+para resolver quando alguém precisar desenvolver / contribuir no Windows
+nativo (sem WSL).
+
+- [ ] **Variante PowerShell** dos scripts bash que entram no fluxo de release.
+  Hoje só rodam em macOS / Linux / WSL / Git Bash:
+    - `scripts/release-check.sh` → criar `scripts/release-check.ps1`
+    - `scripts/run-e2e.sh` → criar `scripts/run-e2e.ps1` (substituir
+      `nc -z 9223` por `Test-NetConnection`, `pkill -P` por
+      `Stop-Process -Recurse`)
+- [ ] **Test de symlink no Windows** — `resolve_within_root_rejects_symlink_escapes`
+  está atrás de `#[cfg(unix)]`. Adicionar variante com NTFS junctions ou
+  `std::os::windows::fs::symlink_dir/file` (precisa permissões de Admin
+  ou Developer Mode habilitado para criar symlinks no Windows).
+- [ ] **Stress test 100 níveis profundos** — pode estourar o `MAX_PATH`
+  do Windows (260 chars) mesmo com nomes de 1 char. Usar
+  `std::os::windows::fs::OpenOptionsExt` com prefixo `\\?\` ou cap em 50
+  níveis no Windows.
+- [ ] **`make_watcher` ignored tests** — `wait_for_event(3s)` pode flakear
+  no Windows (ReadDirectoryChangesW agrega menos que FSEvents/inotify).
+  Bumpar timeout para 5s e usar `std::sync::mpsc` com `recv_timeout`
+  em vez de polling.
+- [ ] **Bun em Windows** ainda é beta — alguns testes de filesystem podem
+  ter quirks de path handling (`C:\` vs `/`). Validar suite completa
+  numa máquina Windows.
+- [ ] **Jazzer.js Linux x64 / Node 20 only** (já documentado em
+  `packages/core/fuzz/README.md`). Mitigado pelas fast-check robustness
+  sweeps que rodam no Bun em qualquer plataforma.
+- [ ] **happy-dom** atualmente em macOS: validar que a versão 17.x
+  funciona idêntica em Linux/Windows runners (deveria — é Node-pure).
+- [ ] Adicionar `cfg(windows)` para o teste de Tauri command que usa
+  paths Unix (`/etc/hosts`) — substituir por `C:\Windows\System32\drivers\etc\hosts`
+  ou apenas pular no Windows.
