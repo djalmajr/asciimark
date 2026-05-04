@@ -28,15 +28,15 @@
     "@iconify/json": "^2.2.441",
     "@tauri-apps/cli": "^2",
     "@types/bun": "latest",
-    "memlab": "^1.1.59",
     "@types/node": "^25.3.0",
     "autoprefixer": "^10.4.24",
+    "memlab": "^1.1.59",
     "postcss": "^8.5.6",
     "tailwindcss": "3",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.9.3",
     "unplugin-icons": "^23.0.1",
-    "vite": "^7.3.1",
+    "vite": "^8.0.10",
     "vite-plugin-solid": "^2.11.10"
   }
 }
