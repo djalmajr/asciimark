@@ -237,42 +237,6 @@ export async function readFileByPathFallback(
   return await file.text();
 }
 
-/**
- * Read all files in the tree into a flat map of path -> content.
- * Used for pre-loading includes.
- */
-export async function readAllFiles(
-  dirHandle: FileSystemDirectoryHandle,
-  parentPath = "",
-): Promise<Map<string, string>> {
-  const files = new Map<string, string>();
-
-  for await (const [name, handle] of dirHandle.entries()) {
-    if (name.startsWith(".")) continue;
-    const path = parentPath ? `${parentPath}/${name}` : name;
-
-    if (handle.kind === "directory") {
-      const nested = await readAllFiles(
-        handle as FileSystemDirectoryHandle,
-        path,
-      );
-      for (const [k, v] of nested) {
-        files.set(k, v);
-      }
-    } else if (handle.kind === "file") {
-      try {
-        const file = await (handle as FileSystemFileHandle).getFile();
-        const content = await file.text();
-        files.set(path, content);
-      } catch {
-        // Skip unreadable files
-      }
-    }
-  }
-
-  return files;
-}
-
 // IndexedDB persistence for directory handle
 const DB_NAME = "asciimark";
 const STORE_NAME = "handles";
@@ -298,20 +262,6 @@ export async function saveDirectoryHandle(
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
-}
-
-export async function loadDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
-  try {
-    const db = await openDB();
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const request = tx.objectStore(STORE_NAME).get("rootDir");
-    return new Promise((resolve) => {
-      request.onsuccess = () => resolve(request.result ?? null);
-      request.onerror = () => resolve(null);
-    });
-  } catch {
-    return null;
-  }
 }
 
 /**

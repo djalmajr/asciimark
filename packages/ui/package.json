@@ -24,13 +24,10 @@
     "@kobalte/core": "^0.13.11",
     "@mdit/plugin-alert": "^0.22.4",
     "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "codemirror": "^6.0.2",
     "katex": "^0.16.22",
     "mermaid": "^11.12.3",
     "prismjs": "^1.30.0",
-    "solid-js": "^1.9.11",
-    "tailwind-merge": "^3.5.0"
+    "solid-js": "^1.9.11"
   },
   "devDependencies": {
     "@iconify/json": "^2.2.441",

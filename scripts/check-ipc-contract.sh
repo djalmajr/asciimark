@@ -32,9 +32,15 @@ if [ -z "$RUST_COMMANDS" ]; then
   exit 1
 fi
 
-# Extract every command name invoked from the frontend.
-FRONT_COMMANDS=$(grep -rohE "invoke[<(][^,)]*['\"]([a-z_][a-z0-9_]*)['\"]" "$FRONTEND_DIR" \
-  | grep -oE "['\"][a-z_][a-z0-9_]*['\"]" \
+# Extract every command name invoked from the frontend. We have to handle
+# generic forms like `invoke<Record<string, string>>("cmd", …)` where the
+# generic contains commas — a single regex can't match the closing `>` and
+# stop before the second `,`. Instead we strip the generic block first
+# (`invoke<...>(`) → `invoke(`, then capture the first string literal arg.
+FRONT_COMMANDS=$(grep -rohE 'invoke[<(][^"'"'"']*["'"'"']([a-z_][a-z0-9_]*)["'"'"']' "$FRONTEND_DIR" \
+  | sed -E 's/invoke<[^(]*\(/invoke(/' \
+  | grep -oE 'invoke\([^"'"'"']*["'"'"']([a-z_][a-z0-9_]*)["'"'"']' \
+  | grep -oE '["'"'"']([a-z_][a-z0-9_]*)["'"'"']' \
   | tr -d "'\"" | sort -u || true)
 
 EXIT=0

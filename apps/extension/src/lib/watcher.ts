@@ -1,7 +1,7 @@
 // Auto-refresh watcher using polling (file content only)
 import { getFileLastModified, resolveFileByPath } from "./fs.ts";
 
-export interface WatchTarget {
+interface WatchTarget {
   /** The main file handle */
   fileHandle: FileSystemFileHandle;
   /** Additional file paths to watch (includes) */
