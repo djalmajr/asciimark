@@ -97,6 +97,62 @@ same amount of time regardless.
   again, a tag is dead weight. Tag (or push, if you do) only after
   the new version goes live.
 
+## Web Store submission text (justifications)
+
+The dev console asks for three free-text justifications on every
+review. Reuse and **adapt** these templates — don't paste verbatim
+without re-checking against the current `manifest.json`. The
+permissions and host list have changed across releases (v1.2.x asked
+for `<all_urls>`; v1.3.0 asks only for `kroki.io`), so out-of-date
+copy can stall the review.
+
+### Storage permission (~200 chars)
+
+> Used by the content script to cache the active tab's file text via
+> `chrome.storage.session` so the viewer page can render it after the
+> redirect. Local-only — never transmitted externally.
+
+### Host permission (~330 chars)
+
+Re-check `manifest.json::host_permissions` before submitting. As of
+v1.3.0 the only entry is `https://kroki.io/*`:
+
+> Required to send plain-text diagram source (PlantUML, Graphviz,
+> Mermaid, etc.) via POST to `https://kroki.io` for SVG rendering.
+> No other host is requested. File content from `.adoc`/`.md` pages
+> is captured by the content script using activeTab semantics (no
+> host permission needed) and rendered locally — only diagram blocks
+> reach kroki.io, and the response is a static SVG. No JavaScript
+> is fetched.
+
+### Remote code use ("Sim, estou usando código remoto" + justification)
+
+This is the field that rejected v1.2.0. The mitigation is the build
+hardener in `apps/extension/vite.config.ts` — keep the language
+explicit about it because the static analyzer at the Web Store still
+greps the bundle for CDN URLs:
+
+> This extension does not load or execute any remotely hosted
+> JavaScript code. All scripts are bundled locally via Vite at build
+> time.
+>
+> The only external request made at runtime is to `https://kroki.io`
+> (declared in host_permissions), a public open-source diagram
+> rendering API. The extension sends plain-text diagram source (e.g.
+> PlantUML, Graphviz) via POST and receives back a static SVG — no
+> JavaScript is fetched or executed.
+>
+> The bundle includes Asciidoctor.js, an open-source
+> AsciiDoc-to-HTML converter compiled from Ruby via Opal. Its
+> built-in HTML5 templates contain CDN URL strings
+> (cdnjs.cloudflare.com, fonts.googleapis.com, cdn.mathjax.org,
+> etc.) used only for standalone HTML export — a feature this
+> extension does not use. Our build pipeline
+> (`apps/extension/vite.config.ts`) explicitly strips and rewrites
+> these fragments at compile time, so the shipped bundle contains
+> zero remote-JavaScript URLs. We grep the output before every
+> release and the count is 0.
+
 ## Asciidoctor.js & MathJax fragment stripping
 
 The extension's CSP forbids remote scripts (Manifest V3). Asciidoctor
