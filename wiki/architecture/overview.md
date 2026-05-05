@@ -53,6 +53,18 @@ asciimark/                    bun workspace root
 - **`packages/ui/src/composables/create-app-state.ts`**: the rest of
   app state — fonts, theme, sidebar, navigation. NOT yet covered by
   tests beyond what tab-store touches.
+- **`packages/ui/src/composables/create-pane-store.ts` +
+  `create-pane-manager.ts`**: split-panes data model. Each
+  `PaneStore` owns the per-document signals (html, editorContent,
+  savedContent, frontmatter, editorMode, selectedFile, selectedRootId,
+  loading) plus its own `TabStore`. `PaneManager` owns the list (max
+  2), the active index, and the splitter ratio (clamped to
+  [0.1, 0.9], persisted to localStorage). `AppState`'s per-document
+  signals are proxy getters/setters that delegate to
+  `paneManager.activePane()`, so existing consumers don't need to
+  know about panes. The layout (`PaneView` rendered in a `<For>`
+  loop inside `AppShell`) reads pane signals directly so two panes
+  can show different files simultaneously.
 - **`packages/core/src/file-index.ts` + `fuzzy.ts`**: the Quick Open
   (Cmd/Ctrl+P) ranker. `flattenWorkspace` turns the hierarchical
   `WorkspaceRoot[]` (multi-root supported) into a flat `IndexedFile[]`;

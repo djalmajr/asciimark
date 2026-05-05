@@ -617,6 +617,36 @@ export function App() {
         },
       },
       {
+        id: "view.splitEditor",
+        group: "View",
+        title: "Split Editor",
+        shortcut: { mac: ["⌘", "\\"], other: ["Ctrl", "\\"] },
+        when: () => hasRoot && state.paneManager.panes().length < 2,
+        run: () => {
+          state.paneManager.splitFromActive();
+        },
+      },
+      {
+        id: "view.focusFirstPane",
+        group: "View",
+        title: "Focus First Pane",
+        shortcut: { mac: ["⌘", "1"], other: ["Ctrl", "1"] },
+        when: () => state.paneManager.panes().length > 1,
+        run: () => {
+          state.paneManager.setActivePane(0);
+        },
+      },
+      {
+        id: "view.focusSecondPane",
+        group: "View",
+        title: "Focus Second Pane",
+        shortcut: { mac: ["⌘", "2"], other: ["Ctrl", "2"] },
+        when: () => state.paneManager.panes().length > 1,
+        run: () => {
+          state.paneManager.setActivePane(1);
+        },
+      },
+      {
         id: "help.shortcuts",
         group: "Help",
         title: "Show Keyboard Shortcuts",
@@ -824,6 +854,25 @@ export function App() {
       if (mod && !e.shiftKey && e.key === "/") {
         e.preventDefault();
         setShortcutsHelpVisible((v) => !v);
+      }
+
+      // Cmd/Ctrl+\\: split the editor into a second pane (or collapse
+      // back when already split — toggle behaviour matches Cmd/Ctrl+P).
+      if (mod && !e.shiftKey && e.key === "\\") {
+        if (rootPaths().size === 0) return;
+        e.preventDefault();
+        if (state.paneManager.panes().length >= 2) {
+          state.paneManager.collapseRightPane();
+        } else {
+          state.paneManager.splitFromActive();
+        }
+      }
+
+      // Cmd/Ctrl+1 / Cmd/Ctrl+2: focus pane N (only meaningful when split).
+      if (mod && !e.shiftKey && (e.key === "1" || e.key === "2")) {
+        if (state.paneManager.panes().length < 2) return;
+        e.preventDefault();
+        state.paneManager.setActivePane(e.key === "1" ? 0 : 1);
       }
 
       // Cmd/Ctrl+Shift+T: reopen last closed tab

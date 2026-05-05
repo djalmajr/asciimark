@@ -2,6 +2,61 @@
 
 Operations on this wiki, newest first.
 
+## [2026-05-04] feature | Split editor (2-pane workspace)
+
+### Pages updated
+- `wiki/architecture/overview.md` — added PaneStore/PaneManager
+  section under "Code paths that matter".
+
+### Code added (out-of-band)
+- `packages/ui/src/composables/create-pane-store.ts` — per-pane
+  signals + bundled TabStore. Pane signals are the per-document
+  truth; tab content lives on the TabState instances inside the
+  pane's TabStore.
+- `packages/ui/src/composables/create-pane-manager.ts` — list of
+  panes (max 2), active index, splitter ratio with localStorage
+  persistence, `splitFromActive` / `collapseRightPane` /
+  `setActivePane` actions.
+- `packages/ui/src/composables/__property__/create-pane-manager.stateful.test.ts`
+  — 6 invariants under random sequences of split / collapse /
+  focus / setRatio (200 iterations each).
+- `packages/ui/src/components/pane-view.tsx` — wraps the
+  editor / preview / inner-toolbar markup that used to live inline
+  inside `AppShell`. One PaneView per pane. Per-pane editor
+  controls (undo/redo triggers, history flags, sync-scroll,
+  scroll-to-line) live inside it.
+- `packages/ui/src/components/pane-splitter.tsx` — 8px draggable
+  divider, double-click resets to 0.5.
+- 2 new e2e cases in `apps/desktop/e2e/specs/palettes.webview.test.ts`
+  driving Cmd/Ctrl+\\ split + Cmd/Ctrl+1/2 focus via Tauri MCP.
+
+### Decisions
+- AppState `editorMode`, `selectedFile`, `html`, `editorContent`,
+  `savedContent`, `frontmatter`, `loading`, `selectedRootId` became
+  proxies that route to `paneManager.activePane()`. Existing
+  consumers (Editor, Preview, file-loader, navigation, toolbar)
+  see the same API and don't know about panes.
+- Closed-tabs LIFO is **not** per-pane — reopen always brings the
+  most-recently-closed tab to the active pane.
+- `selectedRootId` per-pane (each pane can be browsing a different
+  root). The file-tree sidebar follows the active pane's root.
+- Persistence: out of scope for the MVP. The single-pane v1
+  schema continues to be written by `tabStore.persistSession`
+  and consumed on startup. Splitting + reload returns to a single
+  pane with the persisted tabs in pane 0; pane 1's tabs are lost.
+  Schema v2 (with `panes: PersistedPane[]`) is a follow-up.
+- Watcher: still singleton, follows active pane. Editing a file
+  in pane 1 while pane 0 is active won't auto-refresh pane 1's
+  preview until the user focuses pane 1. Acceptable trade-off
+  for MVP; a `WatcherCoordinator` is a follow-up.
+
+### Shortcuts added
+- `Cmd/Ctrl+\\` — split editor / collapse.
+- `Cmd/Ctrl+1` / `Cmd/Ctrl+2` — focus pane.
+- 3 entries in the Command Palette ("Split Editor",
+  "Focus First Pane", "Focus Second Pane") and 3 entries in the
+  Shortcuts Help modal.
+
 ## [2026-05-04] feature | Quick Open (Cmd/Ctrl+P fuzzy file finder)
 
 ### Pages updated

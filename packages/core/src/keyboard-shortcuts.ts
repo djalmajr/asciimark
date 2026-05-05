@@ -95,6 +95,27 @@ export const SHORTCUTS: readonly ShortcutDescriptor[] = [
     description: "Find in Files: search content across the workspace",
     keys: { mac: ["⌘", "⇧", "F"], other: ["Ctrl", "Shift", "F"] },
   },
+  // Split editor — second pane side by side with independent tabs +
+  // editor mode. Toggle: with one pane open, splits; with two open,
+  // collapses back to single-pane.
+  {
+    id: "view.splitEditor",
+    group: "Tabs",
+    description: "Split editor (toggle): open a second pane side by side",
+    keys: { mac: ["⌘", "\\"], other: ["Ctrl", "\\"] },
+  },
+  {
+    id: "view.focusFirstPane",
+    group: "Tabs",
+    description: "Focus the first pane",
+    keys: { mac: ["⌘", "1"], other: ["Ctrl", "1"] },
+  },
+  {
+    id: "view.focusSecondPane",
+    group: "Tabs",
+    description: "Focus the second pane",
+    keys: { mac: ["⌘", "2"], other: ["Ctrl", "2"] },
+  },
   // ── Help ────────────────────────────────────────────────────────────────
   {
     id: "help.shortcuts",

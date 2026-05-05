@@ -298,6 +298,104 @@ describe("desktop palettes (Cmd/Ctrl+P family)", () => {
     );
   });
 
+  it("Cmd/Ctrl+\\\\ splits the editor into two panes; Cmd/Ctrl+\\\\ again collapses", async () => {
+    if (!bridge) return;
+
+    // Open a file first so there's something to split into.
+    await clickFirstSupportedFile(bridge);
+    await expectEventually(async () =>
+      ((await bridge!.evalJs(
+        `document.querySelectorAll(".pane-view").length`,
+      )) as number) === 1,
+    );
+
+    // Cmd/Ctrl+\\ → second pane appears.
+    const isMac = (await bridge.evalJs("navigator.platform.startsWith('Mac')")) === true;
+    await bridge.evalJs(
+      `window.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "\\\\",
+        metaKey: ${isMac}, ctrlKey: ${!isMac},
+        bubbles: true, cancelable: true,
+      }))`,
+    );
+    await expectEventually(async () =>
+      ((await bridge!.evalJs(`document.querySelectorAll(".pane-view").length`)) as number) === 2,
+    );
+    const splitterCount = (await bridge.evalJs(
+      `document.querySelectorAll(".pane-splitter").length`,
+    )) as number;
+    expect(splitterCount).toBe(1);
+
+    // Active pane indicator follows: split focuses pane 1.
+    const activeIndex = (await bridge.evalJs(
+      `document.querySelector(".pane-view-active")?.dataset?.paneIndex ?? null`,
+    )) as string | null;
+    expect(activeIndex).toBe("1");
+
+    // Cmd/Ctrl+\\ toggles back to single-pane.
+    await bridge.evalJs(
+      `window.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "\\\\",
+        metaKey: ${isMac}, ctrlKey: ${!isMac},
+        bubbles: true, cancelable: true,
+      }))`,
+    );
+    await expectEventually(async () =>
+      ((await bridge!.evalJs(`document.querySelectorAll(".pane-view").length`)) as number) === 1,
+    );
+  });
+
+  it("Cmd/Ctrl+1 / Cmd/Ctrl+2 switch focus between split panes", async () => {
+    if (!bridge) return;
+
+    await clickFirstSupportedFile(bridge);
+    const isMac = (await bridge.evalJs("navigator.platform.startsWith('Mac')")) === true;
+
+    // Open the split.
+    await bridge.evalJs(
+      `window.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "\\\\", metaKey: ${isMac}, ctrlKey: ${!isMac}, bubbles: true, cancelable: true,
+      }))`,
+    );
+    await expectEventually(async () =>
+      ((await bridge!.evalJs(`document.querySelectorAll(".pane-view").length`)) as number) === 2,
+    );
+
+    // Cmd/Ctrl+1 focuses pane 0.
+    await bridge.evalJs(
+      `window.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "1", metaKey: ${isMac}, ctrlKey: ${!isMac}, bubbles: true, cancelable: true,
+      }))`,
+    );
+    await expectEventually(async () =>
+      (await bridge!.evalJs(
+        `document.querySelector(".pane-view-active")?.dataset?.paneIndex ?? null`,
+      )) === "0",
+    );
+
+    // Cmd/Ctrl+2 focuses pane 1.
+    await bridge.evalJs(
+      `window.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "2", metaKey: ${isMac}, ctrlKey: ${!isMac}, bubbles: true, cancelable: true,
+      }))`,
+    );
+    await expectEventually(async () =>
+      (await bridge!.evalJs(
+        `document.querySelector(".pane-view-active")?.dataset?.paneIndex ?? null`,
+      )) === "1",
+    );
+
+    // Collapse split when done so the next test starts clean.
+    await bridge.evalJs(
+      `window.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "\\\\", metaKey: ${isMac}, ctrlKey: ${!isMac}, bubbles: true, cancelable: true,
+      }))`,
+    );
+    await expectEventually(async () =>
+      ((await bridge!.evalJs(`document.querySelectorAll(".pane-view").length`)) as number) === 1,
+    );
+  });
+
   it("Find in Files: empty query collapses the result panel — only the input shows", async () => {
     if (!bridge) return;
     await pressShortcut(bridge, "f", true);

@@ -42,13 +42,20 @@ describe("keyboard-shortcuts", () => {
   it("groupShortcuts preserves the catalog order inside each group", () => {
     const grouped = groupShortcuts();
     const tabs = grouped.get("Tabs") ?? [];
-    expect(tabs.map((s) => s.id)).toEqual([
+    // The first 5 are the canonical tab shortcuts; the trailing 3 are
+    // the split-pane controls (added once split panes shipped — they
+    // are conceptually still "Tabs" because they manage panes which
+    // hold tab groups).
+    expect(tabs.map((s) => s.id).slice(0, 5)).toEqual([
       "tab.new",
       "tab.close",
       "tab.reopen",
       "tab.next",
       "tab.prev",
     ]);
+    expect(tabs.map((s) => s.id)).toContain("view.splitEditor");
+    expect(tabs.map((s) => s.id)).toContain("view.focusFirstPane");
+    expect(tabs.map((s) => s.id)).toContain("view.focusSecondPane");
   });
 
   it("shortcut ids are unique across the entire catalog", () => {
