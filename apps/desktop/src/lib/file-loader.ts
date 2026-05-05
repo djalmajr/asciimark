@@ -21,20 +21,34 @@ export function createFileLoader(deps: FileLoaderDeps) {
   const { rootPaths, state, watcher } = deps;
 
   async function loadFileContent(entry: FSEntry, pushHistory = true, force = false, rootId?: string) {
-    const targetRootId = rootId ?? state.selectedRootId();
+    // Pin the target pane at call time. AppState's per-doc setters
+    // (setHtml, setEditorContent, …) are proxies that route to
+    // `paneManager.activePane()` on each call — without pinning, a
+    // pane switch between this function's await points would route
+    // the convert result to the wrong pane (the original symptom:
+    // "intro.adoc shows blank preview" when the user clicked another
+    // pane mid-conversion). Writing directly to the captured pane
+    // keeps the load atomic from the user's perspective: the file
+    // they asked for lands where they asked for it.
+    const targetPane = state.paneManager.activePane();
+    const targetRootId = rootId ?? targetPane.selectedRootId();
     const root = targetRootId ? rootPaths().get(targetRootId) : null;
     if (!root || entry.kind !== "file") return;
-    const isSameFile = state.selectedFile()?.path === entry.path && state.selectedRootId() === targetRootId;
+    const isSameFile =
+      targetPane.selectedFile()?.path === entry.path
+      && targetPane.selectedRootId() === targetRootId;
     if (!force && isSameFile) return;
 
-    state.setSelectedRootId(targetRootId);
-    state.setSelectedFile(entry);
+    targetPane.setSelectedRootId(targetRootId);
+    targetPane.setSelectedFile(entry);
     if (!isSameFile) {
-      state.setHtml("");
+      targetPane.setHtml("");
     }
-    state.setLoading(true);
+    targetPane.setLoading(true);
 
     if (pushHistory) {
+      // Nav stack lives on AppState (global) — same handler whether
+      // we're pinning the pane or not.
       state.pushNavHistory({
         entry,
         rootId: targetRootId!,
@@ -52,10 +66,10 @@ export function createFileLoader(deps: FileLoaderDeps) {
       // and open straight in the editor. The createEffect in app state forces
       // editor mode to "edit" because previewSupported() turns false.
       if (!isSupportedFile(entry.path)) {
-        state.setHtml("");
-        state.setFrontmatter(null);
-        state.setEditorContent(content);
-        state.setSavedContent(content);
+        targetPane.setHtml("");
+        targetPane.setFrontmatter(null);
+        targetPane.setEditorContent(content);
+        targetPane.setSavedContent(content);
         watcher.setTarget({ filePath: absolutePath, includePaths: [], rootPath: root });
         if (state.autoRefresh()) watcher.start();
         return;
@@ -85,10 +99,10 @@ export function createFileLoader(deps: FileLoaderDeps) {
       // Yield again before DOM update to prevent long frame
       await new Promise((r) => setTimeout(r, 0));
 
-      state.setHtml(result.html);
-      state.setFrontmatter(result.frontmatter);
-      state.setEditorContent(content);
-      state.setSavedContent(content);
+      targetPane.setHtml(result.html);
+      targetPane.setFrontmatter(result.frontmatter);
+      targetPane.setEditorContent(content);
+      targetPane.setSavedContent(content);
 
       const baseDirPath = entry.path.includes("/")
         ? entry.path.substring(0, entry.path.lastIndexOf("/"))
@@ -108,9 +122,9 @@ export function createFileLoader(deps: FileLoaderDeps) {
       }
     } catch (e) {
       console.error("Failed to convert file:", e);
-      state.setHtml(`<div class="error">Error converting file: ${e}</div>`);
+      targetPane.setHtml(`<div class="error">Error converting file: ${e}</div>`);
     } finally {
-      state.setLoading(false);
+      targetPane.setLoading(false);
     }
   }
 
