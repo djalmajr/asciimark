@@ -446,7 +446,7 @@ export function GuidePage() {
                 <td>Open the keyboard-shortcuts modal</td>
               </tr>
               <tr>
-                <td><code>Cmd/Ctrl+\\</code></td>
+                <td><code>Cmd/Ctrl+\</code></td>
                 <td>Toggle the second pane (split / collapse)</td>
               </tr>
               <tr>
