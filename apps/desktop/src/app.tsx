@@ -10,7 +10,7 @@ import { invoke } from "./lib/chaos-invoke.ts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { createAppState } from "@asciimark/ui/composables/create-app-state.ts";
-import { createTabStore } from "@asciimark/ui/composables/create-tab-store.ts";
+import type { TabStore } from "@asciimark/ui/composables/create-tab-store.ts";
 import { AppShell } from "@asciimark/ui/components/app-shell.tsx";
 import { getStoredTheme, applyTheme } from "./main.tsx";
 import { FileWatcher } from "./lib/watcher.ts";
@@ -38,11 +38,13 @@ export function App() {
     printPage: () => invoke("print_webview"),
   });
 
-  // TabStore now binds to a PaneStore-shaped slice. Until Phase 1c
-  // (split panes wiring), AppState still owns those signals directly,
-  // and structurally satisfies the PaneViewSlice contract — so we
-  // pass it as the pane.
-  const tabStore = createTabStore({ pane: state });
+  // TabStore lives inside each PaneStore (see `createPaneStore`). The
+  // host treats whichever pane is currently active as the "default"
+  // tab store — read/write operations route there. As panes change
+  // focus or split open, this accessor naturally flips with them.
+  // Wrapped as a function (not a captured const) so the activePane
+  // dependency stays reactive inside Solid effects.
+  const tabStore = (): TabStore => state.paneManager.activePane().tabs;
 
   const [rootPaths, setRootPaths] = createSignal<Map<string, string>>(new Map());
 
@@ -69,7 +71,7 @@ export function App() {
 
     try {
       await loader.loadFileContent(file, false, true);
-      tabStore.updateActiveTabContent({
+      tabStore().updateActiveTabContent({
         editorContent: state.editorContent(),
         savedContent: state.savedContent(),
         html: state.html(),
@@ -212,7 +214,7 @@ export function App() {
       onExportPdf: () => invoke("print_webview"),
       onCheckForUpdates: () => checkForAppUpdates(false),
       onCloseTab: () => {
-        const activeTab = tabStore.activeTabId();
+        const activeTab = tabStore().activeTabId();
         if (activeTab) handleCloseTab(activeTab);
       },
       onEditorMode: (m) => state.setEditorMode(m),
@@ -383,7 +385,7 @@ export function App() {
     const paths = rootPaths();
     if (paths.size === 0 || sessionRestored) return;
 
-    const session = tabStore.getPersistedSession();
+    const session = tabStore().getPersistedSession();
     if (!session || session.tabs.length === 0) {
       sessionRestored = true;
       return;
@@ -405,11 +407,11 @@ export function App() {
       if (!entry || entry.kind !== "file") continue;
 
       const isActive = persisted.id === session.activeTabId;
-      tabStore.openTab(entry, persisted.rootId, { background: true });
+      tabStore().openTab(entry, persisted.rootId, { background: true });
 
       // Mark all restored tabs as needing content load
-      const tabId = tabStore.tabs().find((t) => t.filePath === persisted.filePath && t.rootId === persisted.rootId)?.id;
-      if (tabId) tabStore.markTabNeedsLoad(tabId);
+      const tabId = tabStore().tabs().find((t) => t.filePath === persisted.filePath && t.rootId === persisted.rootId)?.id;
+      if (tabId) tabStore().markTabNeedsLoad(tabId);
 
       if (isActive) {
         activeEntry = entry;
@@ -421,19 +423,19 @@ export function App() {
     if (activeEntry && activeRootId) {
       void (async () => {
         await loader.loadFileContent(activeEntry!, false, false, activeRootId!);
-        tabStore.updateActiveTabContent({
+        tabStore().updateActiveTabContent({
           editorContent: state.editorContent(),
           savedContent: state.savedContent(),
           html: state.html(),
           frontmatter: state.frontmatter(),
         });
         // Activate after content is loaded
-        const tabId = tabStore.tabs().find((t) => t.filePath === activeEntry!.path && t.rootId === activeRootId)?.id;
+        const tabId = tabStore().tabs().find((t) => t.filePath === activeEntry!.path && t.rootId === activeRootId)?.id;
         if (tabId) handleActivateTab(tabId);
       })();
-    } else if (tabStore.tabs().length > 0) {
+    } else if (tabStore().tabs().length > 0) {
       // No active tab from session — activate the first
-      void handleActivateTab(tabStore.tabs()[0]!.id);
+      void handleActivateTab(tabStore().tabs()[0]!.id);
     }
   });
 
@@ -442,8 +444,8 @@ export function App() {
     const win = getCurrentWindow();
     const unlisten = win.onFocusChanged((focused) => {
       if (!focused.payload) {
-        tabStore.snapshotActiveTab();
-        tabStore.persistSession();
+        tabStore().snapshotActiveTab();
+        tabStore().persistSession();
       }
     });
     onCleanup(() => { void unlisten.then((fn) => fn()); });
@@ -453,9 +455,9 @@ export function App() {
 
   /** Single click: load file in the active tab (replacing its content). */
   async function handleLoadFileWithTab(entry: import("@asciimark/core/types.ts").FSEntry, rootId: string) {
-    tabStore.loadInActiveTab(entry, rootId);
+    tabStore().loadInActiveTab(entry, rootId);
     await loader.loadFileContent(entry, true, false, rootId);
-    tabStore.updateActiveTabContent({
+    tabStore().updateActiveTabContent({
       editorContent: state.editorContent(),
       savedContent: state.savedContent(),
       html: state.html(),
@@ -465,9 +467,9 @@ export function App() {
 
   /** Open in New Tab / middle-click / double-click: always create a new tab. */
   async function handleOpenInNewTab(entry: import("@asciimark/core/types.ts").FSEntry, rootId: string) {
-    tabStore.openTab(entry, rootId);
+    tabStore().openTab(entry, rootId);
     await loader.loadFileContent(entry, true, false, rootId);
-    tabStore.updateActiveTabContent({
+    tabStore().updateActiveTabContent({
       editorContent: state.editorContent(),
       savedContent: state.savedContent(),
       html: state.html(),
@@ -635,7 +637,7 @@ export function App() {
   /** "+" button: create an empty tab (shows empty state). */
   function handleNewTab() {
     // Snapshot current tab, then clear state for the empty tab
-    tabStore.snapshotActiveTab();
+    tabStore().snapshotActiveTab();
 
     // Create a minimal empty tab
     const emptyEntry: import("@asciimark/core/types.ts").FSEntry = {
@@ -644,7 +646,7 @@ export function App() {
       path: "",
     };
     const rootId = state.selectedRootId() ?? "";
-    tabStore.openTab(emptyEntry, rootId);
+    tabStore().openTab(emptyEntry, rootId);
 
     state.setSelectedFile(null);
     state.setHtml("");
@@ -655,13 +657,13 @@ export function App() {
   }
 
   async function handleActivateTab(tabId: string) {
-    const tab = tabStore.getTab(tabId);
+    const tab = tabStore().getTab(tabId);
     if (!tab) return;
 
     isTabSwitching = true;
     clearTimeout(autoSaveTimer);
 
-    tabStore.activateTab(tabId);
+    tabStore().activateTab(tabId);
 
     // Set the selected file/root from the tab
     const entry = state.findEntryByPath(tab.filePath, tab.rootId);
@@ -673,7 +675,7 @@ export function App() {
     // If the tab needs content loaded (restored from session or reopened)
     if (tab.needsLoad && entry) {
       await loader.loadFileContent(entry, false, false, tab.rootId);
-      tabStore.updateActiveTabContent({
+      tabStore().updateActiveTabContent({
         editorContent: state.editorContent(),
         savedContent: state.savedContent(),
         html: state.html(),
@@ -698,11 +700,11 @@ export function App() {
   }
 
   async function handleCloseTab(tabId: string) {
-    const tab = tabStore.getTab(tabId);
+    const tab = tabStore().getTab(tabId);
     if (!tab) return;
 
     // For the active tab, check live dirty state; for others, check cached
-    const isDirty = tabId === tabStore.activeTabId()
+    const isDirty = tabId === tabStore().activeTabId()
       ? state.isDirty()
       : tab.editorContent !== tab.savedContent;
 
@@ -715,10 +717,10 @@ export function App() {
       if (!discard) return;
     }
 
-    tabStore.closeTab(tabId);
+    tabStore().closeTab(tabId);
 
     // After close, activate the new active tab
-    const newActive = tabStore.getActiveTab();
+    const newActive = tabStore().getActiveTab();
     if (newActive) {
       const entry = state.findEntryByPath(newActive.filePath, newActive.rootId);
       if (entry) {
@@ -740,7 +742,7 @@ export function App() {
   // Close tabs when a root is closed
   const originalCloseRoot = folder.handleCloseRoot;
   folder.handleCloseRoot = (rootId: string) => {
-    tabStore.closeTabsByRoot(rootId);
+    tabStore().closeTabsByRoot(rootId);
     originalCloseRoot(rootId);
   };
 
@@ -755,9 +757,9 @@ export function App() {
     await originalRename(entry, rootId, newName);
 
     // Update any tabs pointing to the renamed file
-    for (const tab of tabStore.tabs()) {
+    for (const tab of tabStore().tabs()) {
       if (tab.rootId === rootId && tab.filePath === oldPath) {
-        tabStore.updateTabFile(tab.id, newPath, newName);
+        tabStore().updateTabFile(tab.id, newPath, newName);
       }
     }
   };
@@ -770,7 +772,7 @@ export function App() {
 
       // Cmd/Ctrl+W: close active tab
       if (mod && e.key === "w" && !e.shiftKey) {
-        const activeTab = tabStore.activeTabId();
+        const activeTab = tabStore().activeTabId();
         if (activeTab) {
           e.preventDefault();
           handleCloseTab(activeTab);
@@ -827,7 +829,7 @@ export function App() {
       // Cmd/Ctrl+Shift+T: reopen last closed tab
       if (mod && e.shiftKey && e.key === "t") {
         e.preventDefault();
-        const reopened = tabStore.reopenClosedTab();
+        const reopened = tabStore().reopenClosedTab();
         if (reopened) {
           void handleActivateTab(reopened.id);
         }
@@ -836,8 +838,8 @@ export function App() {
       // Ctrl+Tab / Ctrl+Shift+Tab: cycle tabs
       if (e.ctrlKey && e.key === "Tab") {
         e.preventDefault();
-        const tabs = tabStore.tabs();
-        const activeId = tabStore.activeTabId();
+        const tabs = tabStore().tabs();
+        const activeId = tabStore().activeTabId();
         if (tabs.length < 2 || !activeId) return;
         const currentIdx = tabs.findIndex((t) => t.id === activeId);
         const nextIdx = e.shiftKey
@@ -871,7 +873,7 @@ export function App() {
       onWindowDragStart={handleWindowDragStart}
       onWindowTitleDoubleClick={handleWindowTitleDoubleClick}
       onCheckForUpdates={() => checkForAppUpdates(false)}
-      tabStore={tabStore}
+      tabStore={tabStore()}
       onActivateTab={handleActivateTab}
       onCloseTab={handleCloseTab}
       onNewTab={handleNewTab}
@@ -915,14 +917,14 @@ export function App() {
         if (confirmed) {
           await folder.handleDelete(entry, rootId);
           // Close ALL tabs for deleted files (including duplicates)
-          const tabsToClose = tabStore.tabs().filter((t) =>
+          const tabsToClose = tabStore().tabs().filter((t) =>
             t.rootId === rootId && (
               t.filePath === entry.path ||
               (entry.kind === "directory" && t.filePath.startsWith(entry.path + "/"))
             ),
           );
           for (const tab of tabsToClose) {
-            tabStore.closeTab(tab.id);
+            tabStore().closeTab(tab.id);
           }
         }
       }}

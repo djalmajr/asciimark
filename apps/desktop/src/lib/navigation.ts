@@ -10,12 +10,15 @@ interface NavigationDeps {
   loadFileContent: (entry: FSEntry, pushHistory?: boolean, force?: boolean, rootId?: string) => Promise<void>;
   rootPaths: Accessor<Map<string, string>>;
   state: AppState;
-  tabStore?: TabStore;
+  /** Accessor returning the currently-active pane's TabStore. We pass a
+   *  function (not a value) so navigation always operates on whichever
+   *  pane is in focus when the user fires a back/forward / link click. */
+  tabStore?: () => TabStore;
   onActivateTab?: (tabId: string) => void;
 }
 
 export function createNavigation(deps: NavigationDeps) {
-  const { loadFileContent, rootPaths, state, tabStore, onActivateTab } = deps;
+  const { loadFileContent, rootPaths, state, tabStore: getTabStore, onActivateTab } = deps;
 
   function canGoBack() {
     return state.navIndex() > 0;
@@ -101,7 +104,8 @@ export function createNavigation(deps: NavigationDeps) {
     state.setNavIndex(newIdx);
 
     // If tabs are active, check if the target is already in a tab
-    if (tabStore && onActivateTab) {
+    if (getTabStore && onActivateTab) {
+      const tabStore = getTabStore();
       const tabId = makeTabId(qp.rootId, qp.path);
       const tab = tabStore.getTab(tabId);
       if (tab) {

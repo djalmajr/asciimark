@@ -3,8 +3,10 @@ import {
   createSignal,
   onCleanup,
   onMount,
+  type Setter,
 } from "solid-js";
 import type { FSEntry, QualifiedPath, WorkspaceRoot } from "@asciimark/core/types.ts";
+import { createPaneManager, type PaneManager } from "./create-pane-manager.ts";
 import type { ConvertOptions, ConvertResult } from "@asciimark/core/converter.ts";
 import type { Frontmatter } from "@asciimark/core/frontmatter.ts";
 import {
@@ -64,17 +66,39 @@ interface AppStateConfig {
   convertMarkdown: (opts: ConvertOptions) => Promise<ConvertResult>;
   getStoredTheme: () => ThemeMode;
   printPage?: () => void | Promise<void>;
+  /** When provided, the per-document signals on AppState (html,
+   *  editorContent, …) proxy through this manager's active pane. The
+   *  Phase 1 hosts pass an explicit instance; falling back to a fresh
+   *  manager keeps standalone callers (tests, the storybook ext if
+   *  any) working without any boilerplate. */
+  paneManager?: PaneManager;
 }
 
 export { FontFamilies, FontSizes };
 
 export function createAppState(config: AppStateConfig) {
+  // ── Pane manager (per-document signals proxy through here) ─────────────
+  // Per the split-panes feature plan, every signal that describes
+  // "the file being viewed" — html, editorContent, savedContent,
+  // frontmatter, editorMode, selectedFile, selectedRootId, loading —
+  // lives inside the PaneStore for whichever pane is currently active.
+  // AppState exposes proxy getters/setters with the same names so
+  // existing consumers (Editor, Preview, file-loader, navigation)
+  // don't need to know about panes.
+  const paneManager: PaneManager = config.paneManager ?? createPaneManager();
+
   // ── Core signals ────────────────────────────────────────────────────────
 
-  const [html, setHtml] = createSignal("");
-  const [frontmatter, setFrontmatter] = createSignal<Frontmatter | null>(null);
+  const html = (): string => paneManager.activePane().html();
+  const setHtml = ((value: unknown) =>
+    (paneManager.activePane().setHtml as (v: unknown) => unknown)(value)) as Setter<string>;
+  const frontmatter = (): Frontmatter | null => paneManager.activePane().frontmatter();
+  const setFrontmatter = ((value: unknown) =>
+    (paneManager.activePane().setFrontmatter as (v: unknown) => unknown)(value)) as Setter<Frontmatter | null>;
   const [editingPath, setEditingPath] = createSignal<string | null>(null);
-  const [loading, setLoading] = createSignal(false);
+  const loading = (): boolean => paneManager.activePane().loading();
+  const setLoading = ((value: unknown) =>
+    (paneManager.activePane().setLoading as (v: unknown) => unknown)(value)) as Setter<boolean>;
   const [autoRefresh, setAutoRefresh] = createSignal(true);
   const [tocVisible, setTocVisible] = createSignal(true);
   const [tocLevels, setTocLevels] = createSignal(3);
@@ -113,7 +137,9 @@ export function createAppState(config: AppStateConfig) {
 
   // ── Editor state ────────────────────────────────────────────────────────
 
-  const [editorMode, setEditorMode] = createSignal<"edit" | "split" | "preview">("preview");
+  const editorMode = (): "edit" | "split" | "preview" => paneManager.activePane().editorMode();
+  const setEditorMode = ((value: unknown) =>
+    (paneManager.activePane().setEditorMode as (v: unknown) => unknown)(value)) as Setter<"edit" | "split" | "preview">;
   const editorVisible = () => editorMode() !== "preview";
   const [showLineNumbers, setShowLineNumbers] = createSignal(getStoredLineNumbers());
   const [showInvisibles, setShowInvisibles] = createSignal(getStoredShowInvisibles());
@@ -123,15 +149,23 @@ export function createAppState(config: AppStateConfig) {
   const [editorFindTrigger, setEditorFindTrigger] = createSignal(0);
   const [wrapText, setWrapText] = createSignal(getStoredWrapText());
   const [syncScroll, setSyncScroll] = createSignal(getStoredSyncScroll());
-  const [editorContent, setEditorContent] = createSignal("");
-  const [savedContent, setSavedContent] = createSignal("");
+  const editorContent = (): string => paneManager.activePane().editorContent();
+  const setEditorContent = ((value: unknown) =>
+    (paneManager.activePane().setEditorContent as (v: unknown) => unknown)(value)) as Setter<string>;
+  const savedContent = (): string => paneManager.activePane().savedContent();
+  const setSavedContent = ((value: unknown) =>
+    (paneManager.activePane().setSavedContent as (v: unknown) => unknown)(value)) as Setter<string>;
 
   // ── Workspace roots ─────────────────────────────────────────────────────
 
   const [roots, setRoots] = createSignal<Map<string, WorkspaceRoot>>(new Map());
   const [rootOrder, setRootOrder] = createSignal<string[]>([]);
-  const [selectedRootId, setSelectedRootId] = createSignal<string | null>(null);
-  const [selectedFile, setSelectedFile] = createSignal<FSEntry | null>(null);
+  const selectedRootId = (): string | null => paneManager.activePane().selectedRootId();
+  const setSelectedRootId = ((value: unknown) =>
+    (paneManager.activePane().setSelectedRootId as (v: unknown) => unknown)(value)) as Setter<string | null>;
+  const selectedFile = (): FSEntry | null => paneManager.activePane().selectedFile();
+  const setSelectedFile = ((value: unknown) =>
+    (paneManager.activePane().setSelectedFile as (v: unknown) => unknown)(value)) as Setter<FSEntry | null>;
   const DEFAULT_SIDEBAR_WIDTH = 280;
   const [sidebarWidth, setSidebarWidth] = createSignal(DEFAULT_SIDEBAR_WIDTH);
   const [sidebarVisible, setSidebarVisible] = createSignal(true);
@@ -656,6 +690,11 @@ export function createAppState(config: AppStateConfig) {
   // ── Return ──────────────────────────────────────────────────────────────
 
   return {
+    // Pane manager — exposed so the layout (AppShell) can render
+    // PaneView per pane and the host (app.tsx) can wire shortcuts
+    // to splitFromActive / setActivePane.
+    paneManager,
+
     // Signals (getter + setter)
     autoRefresh,
     darkMode,

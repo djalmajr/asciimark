@@ -1,6 +1,7 @@
 import { createSignal, type Setter } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import type { Frontmatter } from "@asciimark/core/frontmatter.ts";
+import { createTabStore, type TabStore } from "./create-tab-store.ts";
 
 export type EditorMode = "edit" | "split" | "preview";
 
@@ -9,8 +10,9 @@ export type EditorMode = "edit" | "split" | "preview";
  * the editor and converted-HTML content, the editor mode, and the
  * loading flag. Workspace data (roots, recents, theme, fonts) stays
  * outside on `AppState` because there's only one workspace tree at a
- * time. The TabStore is attached separately so the pane owns its own
- * tab list and snapshot/restore logic.
+ * time. The TabStore composes on top of this slice — it's bundled
+ * into the PaneStore so each pane carries its own tab list (see
+ * `createPaneStore` below).
  */
 export interface PaneViewSlice {
   editorContent: () => string;
@@ -40,13 +42,15 @@ export interface PaneViewSlice {
 
 export interface PaneStore extends PaneViewSlice {
   paneId: string;
+  /** TabStore scoped to this pane. Each pane has its own tab list,
+   *  active tab, and closed-tabs LIFO. */
+  tabs: TabStore;
 }
 
 /**
- * Build a fresh `PaneStore` with empty content. Caller attaches a
- * TabStore separately (see `createTabStore`) — this keeps the
- * dependency one-way: TabStore needs a pane to snapshot to/from, but
- * the pane doesn't need to know the TabStore exists.
+ * Build a fresh `PaneStore` with empty content and an attached
+ * TabStore. The TabStore captures the slice's setters at creation
+ * time so its snapshot/restore writes back to THIS pane's signals.
  */
 export function createPaneStore(paneId: string): PaneStore {
   const [editorContent, setEditorContent] = createSignal("");
@@ -58,8 +62,7 @@ export function createPaneStore(paneId: string): PaneStore {
   const [selectedRootId, setSelectedRootId] = createSignal<string | null>(null);
   const [loading, setLoading] = createSignal(false);
 
-  return {
-    paneId,
+  const slice: PaneViewSlice = {
     editorContent,
     setEditorContent,
     savedContent,
@@ -76,5 +79,13 @@ export function createPaneStore(paneId: string): PaneStore {
     setSelectedRootId,
     loading,
     setLoading,
+  };
+
+  const tabs = createTabStore({ pane: slice });
+
+  return {
+    paneId,
+    ...slice,
+    tabs,
   };
 }
