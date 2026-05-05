@@ -37,6 +37,10 @@ interface EditorProps {
   syncScrollActive: boolean;
   syncScrollTargetRatio: number | null;
   syncScrollTargetVersion: number;
+  /** Set this and bump `scrollToLineVersion` to scroll the editor to a
+   *  specific 0-indexed line. Used by the Go-to-Symbol palette. */
+  scrollToLine?: number | null;
+  scrollToLineVersion?: number;
   undoTrigger: number;
   wrapText: boolean;
   onChange: (value: string) => void;
@@ -101,6 +105,7 @@ export function Editor(props: EditorProps) {
   let lastRedoTrigger = props.redoTrigger;
   let lastSearchOpen = props.searchOpen;
   let lastSyncScrollTargetVersion = props.syncScrollTargetVersion;
+  let lastScrollToLineVersion = props.scrollToLineVersion ?? 0;
   let lastUndoTrigger = props.undoTrigger;
   let matches: SearchMatch[] = [];
   let suppressScrollCallback = false;
@@ -477,6 +482,33 @@ export function Editor(props: EditorProps) {
     if (!view) return;
     undo(view);
     emitHistoryState(view.state);
+    view.focus();
+  });
+
+  // Go-to-Symbol scroll: caller bumps `scrollToLineVersion` with the
+  // 0-indexed line set in `scrollToLine`. We dispatch a CodeMirror
+  // selection + scrollIntoView so the line is centered AND focused.
+  createEffect(() => {
+    const targetVersion = props.scrollToLineVersion ?? 0;
+    if (targetVersion === lastScrollToLineVersion) return;
+    lastScrollToLineVersion = targetVersion;
+    if (!view) return;
+
+    const lineIndex = props.scrollToLine ?? null;
+    if (lineIndex === null || lineIndex < 0) return;
+
+    const total = view.state.doc.lines;
+    // Lines are 1-indexed in CodeMirror's `doc.line(n)` API, but our
+    // descriptor uses 0-indexed lines (matches everything else in the
+    // codebase). Clamp to the valid range to survive a stale palette
+    // pointing past EOF.
+    const cmLine = Math.min(Math.max(1, lineIndex + 1), total);
+    const lineInfo = view.state.doc.line(cmLine);
+
+    view.dispatch({
+      selection: { anchor: lineInfo.from, head: lineInfo.from },
+      effects: EditorView.scrollIntoView(lineInfo.from, { y: "center" }),
+    });
     view.focus();
   });
 

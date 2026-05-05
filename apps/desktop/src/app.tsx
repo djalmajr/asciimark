@@ -1,7 +1,9 @@
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { createConverter } from "@asciimark/core/converter.ts";
 import ConvertWorker from "@asciimark/core/convert-worker.ts?worker";
-import type { RecentFile } from "@asciimark/core/recent-files.ts";
+import type { IndexedFile } from "@asciimark/core/file-index.ts";
+import type { Command } from "@asciimark/core/command-palette.ts";
+import { getRecentFiles, type RecentFile } from "@asciimark/core/recent-files.ts";
 import { makeTabId } from "@asciimark/core/tabs.ts";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "./lib/chaos-invoke.ts";
@@ -21,6 +23,7 @@ import { setupTauriDnd } from "./lib/dnd.ts";
 import { setupAppMenu } from "./lib/menu.ts";
 import { setupTray } from "./lib/tray.ts";
 import { checkForAppUpdates } from "./lib/updater.ts";
+import { findInFiles } from "./lib/fs.ts";
 import { WindowControls } from "./components/window-controls.tsx";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -38,6 +41,19 @@ export function App() {
   const tabStore = createTabStore({ state });
 
   const [rootPaths, setRootPaths] = createSignal<Map<string, string>>(new Map());
+
+  // Quick Open (Cmd/Ctrl+P) overlay visibility — owned here so the keyboard
+  // handler can toggle it without round-tripping through AppShell.
+  const [quickOpenVisible, setQuickOpenVisible] = createSignal(false);
+  const [recentFilesVersion, setRecentFilesVersion] = createSignal(0);
+  // Shortcuts help (Cmd/Ctrl+/ + toolbar menu item) — same pattern.
+  const [shortcutsHelpVisible, setShortcutsHelpVisible] = createSignal(false);
+  // Command palette (Cmd/Ctrl+Shift+P).
+  const [commandPaletteVisible, setCommandPaletteVisible] = createSignal(false);
+  // Symbol palette (Cmd/Ctrl+Shift+O).
+  const [symbolPaletteVisible, setSymbolPaletteVisible] = createSignal(false);
+  // Find in Files (Cmd/Ctrl+Shift+F).
+  const [findInFilesVisible, setFindInFilesVisible] = createSignal(false);
 
   // Flag to suppress auto-save during tab switches
   let isTabSwitching = false;
@@ -455,6 +471,163 @@ export function App() {
     });
   }
 
+  // Quick Open (Cmd/Ctrl+P) — recents set keyed by `${rootId}::${path}` so
+  // the fuzzy ranker can boost recently-opened files. In desktop the rootId
+  // equals the absolute root path (set by `folder.openFolderPath`), so the
+  // keys map 1:1 with `RecentFile.{rootPath, path}`.
+  const quickOpenRecents = createMemo<ReadonlySet<string>>(() => {
+    recentFilesVersion(); // bump key forces re-read after a Quick Open pick
+    return new Set(getRecentFiles().map((f) => `${f.rootPath}::${f.path}`));
+  });
+
+  async function handleQuickOpenSelect(file: IndexedFile) {
+    setQuickOpenVisible(false);
+    const entry = state.findEntryByPath(file.path, file.rootId);
+    if (!entry || entry.kind !== "file") return;
+
+    state.pushRecentFile({
+      entry,
+      rootName: file.rootName,
+      rootPath: file.rootId,
+    });
+    setRecentFilesVersion((v) => v + 1);
+    await handleOpenInNewTab(entry, file.rootId);
+  }
+
+  // Command palette catalog. Built reactively so `when()` predicates can
+  // see live signals (hasFile, hasRoot, …). Each command's `run` calls
+  // straight into the host's existing handlers — no new logic, just
+  // surfacing what's already wired into the toolbar dropdown.
+  const commandCatalog = createMemo<Command[]>(() => {
+    const hasRoot = rootPaths().size > 0;
+    const hasFile = !!state.selectedFile();
+    return [
+      {
+        id: "file.openFolder",
+        group: "File",
+        title: "Open Folder…",
+        shortcut: { mac: ["⌘", "O"], other: ["Ctrl", "O"] },
+        run: () => folder.handleOpenFolder(),
+      },
+      {
+        id: "file.exportPdf",
+        group: "File",
+        title: "Export PDF",
+        when: () => hasFile,
+        run: () => state.handleExportPdf(),
+      },
+      {
+        id: "view.toggleSidebar",
+        group: "View",
+        title: "Toggle Sidebar",
+        when: () => hasRoot,
+        run: () => {
+          state.setSidebarVisible((v) => !v);
+        },
+      },
+      {
+        id: "view.toggleHidden",
+        group: "View",
+        title: "Toggle Hidden Files",
+        when: () => hasRoot,
+        run: () => folder.refreshAllRoots(!state.showHiddenEntries()),
+      },
+      {
+        id: "view.editorMode.edit",
+        group: "View",
+        title: "Editor Mode: Edit",
+        when: () => hasFile,
+        run: () => {
+          state.setEditorMode("edit");
+        },
+      },
+      {
+        id: "view.editorMode.split",
+        group: "View",
+        title: "Editor Mode: Split",
+        when: () => hasFile && state.previewSupported(),
+        run: () => {
+          state.setEditorMode("split");
+        },
+      },
+      {
+        id: "view.editorMode.preview",
+        group: "View",
+        title: "Editor Mode: Preview",
+        when: () => hasFile && state.previewSupported(),
+        run: () => {
+          state.setEditorMode("preview");
+        },
+      },
+      {
+        id: "theme.system",
+        group: "Theme",
+        title: "Theme: System",
+        run: () => {
+          state.setThemeMode("system");
+        },
+      },
+      {
+        id: "theme.light",
+        group: "Theme",
+        title: "Theme: Light",
+        run: () => {
+          state.setThemeMode("light");
+        },
+      },
+      {
+        id: "theme.dark",
+        group: "Theme",
+        title: "Theme: Dark",
+        run: () => {
+          state.setThemeMode("dark");
+        },
+      },
+      {
+        id: "workspace.refresh",
+        group: "Workspace",
+        title: "Refresh Workspace",
+        when: () => hasRoot,
+        run: () => folder.refreshAllRoots(state.showHiddenEntries()),
+      },
+      {
+        id: "nav.goToSymbol",
+        group: "Workspace",
+        title: "Go to Symbol in File…",
+        shortcut: { mac: ["⌘", "⇧", "O"], other: ["Ctrl", "Shift", "O"] },
+        when: () => hasFile,
+        run: () => {
+          setSymbolPaletteVisible(true);
+        },
+      },
+      {
+        id: "nav.findInFiles",
+        group: "Workspace",
+        title: "Find in Files…",
+        shortcut: { mac: ["⌘", "⇧", "F"], other: ["Ctrl", "Shift", "F"] },
+        when: () => hasRoot,
+        run: () => {
+          setFindInFilesVisible(true);
+        },
+      },
+      {
+        id: "help.shortcuts",
+        group: "Help",
+        title: "Show Keyboard Shortcuts",
+        shortcut: { mac: ["⌘", "/"], other: ["Ctrl", "/"] },
+        run: () => {
+          setShortcutsHelpVisible(true);
+        },
+      },
+      {
+        id: "help.checkForUpdates",
+        group: "Help",
+        title: "Check for Updates",
+        run: () => checkForAppUpdates(false),
+      },
+    ];
+  });
+
   /** "+" button: create an empty tab (shows empty state). */
   function handleNewTab() {
     // Snapshot current tab, then clear state for the empty tab
@@ -606,6 +779,47 @@ export function App() {
         handleNewTab();
       }
 
+      // Cmd/Ctrl+P: open the Quick Open overlay. preventDefault stops the
+      // webview from triggering its native print dialog (Ctrl+P), even when
+      // the workspace is empty — leaking the print dialog there would be a
+      // worse surprise than the shortcut doing nothing.
+      if (mod && !e.shiftKey && e.key === "p") {
+        e.preventDefault();
+        if (rootPaths().size === 0) return;
+        setQuickOpenVisible((v) => !v);
+      }
+
+      // Cmd/Ctrl+Shift+P: open the command palette. Available even when
+      // no workspace is open — some commands (Open Folder, Theme) are
+      // workspace-agnostic.
+      if (mod && e.shiftKey && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        setCommandPaletteVisible((v) => !v);
+      }
+
+      // Cmd/Ctrl+Shift+O: open the Go-to-Symbol palette. Only useful when
+      // a file is open — silent no-op otherwise.
+      if (mod && e.shiftKey && (e.key === "o" || e.key === "O")) {
+        e.preventDefault();
+        if (!state.selectedFile()) return;
+        setSymbolPaletteVisible((v) => !v);
+      }
+
+      // Cmd/Ctrl+Shift+F: open the Find in Files panel. Requires a workspace.
+      if (mod && e.shiftKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        if (rootPaths().size === 0) return;
+        setFindInFilesVisible((v) => !v);
+      }
+
+      // Cmd/Ctrl+/: toggle the keyboard shortcuts help modal. CodeMirror's
+      // default + history keymaps don't bind Mod-/ in editor.tsx so this is
+      // safe even with focus inside the editor.
+      if (mod && !e.shiftKey && e.key === "/") {
+        e.preventDefault();
+        setShortcutsHelpVisible((v) => !v);
+      }
+
       // Cmd/Ctrl+Shift+T: reopen last closed tab
       if (mod && e.shiftKey && e.key === "t") {
         e.preventDefault();
@@ -657,6 +871,23 @@ export function App() {
       onActivateTab={handleActivateTab}
       onCloseTab={handleCloseTab}
       onNewTab={handleNewTab}
+      quickOpenOpen={quickOpenVisible()}
+      quickOpenRecents={quickOpenRecents()}
+      onQuickOpenSelect={handleQuickOpenSelect}
+      onQuickOpenClose={() => setQuickOpenVisible(false)}
+      shortcutsHelpOpen={shortcutsHelpVisible()}
+      onShortcutsHelpOpen={() => setShortcutsHelpVisible(true)}
+      onShortcutsHelpClose={() => setShortcutsHelpVisible(false)}
+      commandPaletteOpen={commandPaletteVisible()}
+      commandCatalog={commandCatalog()}
+      onCommandPaletteClose={() => setCommandPaletteVisible(false)}
+      symbolPaletteOpen={symbolPaletteVisible()}
+      onSymbolPaletteClose={() => setSymbolPaletteVisible(false)}
+      findInFilesOpen={findInFilesVisible()}
+      findInFilesSearch={(rootId, query, opts) =>
+        findInFiles(rootId, query, { caseSensitive: opts.caseSensitive })
+      }
+      onFindInFilesClose={() => setFindInFilesVisible(false)}
       onCloseRoot={(rootId) => folder.handleCloseRoot(rootId)}
       onCopyPath={folder.handleCopyPath}
       onGoBack={navigation.handleGoBack}

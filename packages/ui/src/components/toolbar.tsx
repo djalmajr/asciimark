@@ -8,6 +8,7 @@ import IconDownload from "~icons/lucide/download";
 import IconFileDown from "~icons/lucide/file-down";
 import IconFileText from "~icons/lucide/file-text";
 import IconFolder from "~icons/lucide/folder-open";
+import IconKeyboard from "~icons/lucide/keyboard";
 import IconListTree from "~icons/lucide/list-tree";
 import IconMonitor from "~icons/lucide/monitor";
 import IconMoon from "~icons/lucide/moon";
@@ -56,6 +57,9 @@ interface ToolbarProps {
   tocVisible: boolean;
   onEditorModeChange: (mode: "edit" | "split" | "preview") => void;
   onCheckForUpdates?: () => void;
+  /** Open the keyboard shortcuts help modal. Wired to a menu item; if
+   *  omitted the item is hidden. */
+  onShortcutsHelp?: () => void;
   onExportPdf?: () => void;
   onGoBack?: () => void;
   onGoForward?: () => void;
@@ -194,6 +198,13 @@ export function Toolbar(props: ToolbarProps) {
             <DropdownMenuItem onSelect={props.onExportPdf}>
               <IconFileDown width={14} height={14} />
               Export PDF
+            </DropdownMenuItem>
+          </Show>
+          <Show when={props.onShortcutsHelp}>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={props.onShortcutsHelp}>
+              <IconKeyboard width={14} height={14} />
+              Keyboard shortcuts
             </DropdownMenuItem>
           </Show>
           <Show when={props.onCheckForUpdates}>

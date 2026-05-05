@@ -130,6 +130,22 @@ async fn read_dir(path: String, include_hidden_entries: Option<bool>) -> Result<
 }
 
 #[tauri::command]
+async fn find_in_files(
+    root: String,
+    query: String,
+    case_sensitive: Option<bool>,
+    include_hidden_entries: Option<bool>,
+) -> Result<Vec<FileMatch>, String> {
+    let root = PathBuf::from(&root);
+    find_in_files_impl(
+        &root,
+        &query,
+        case_sensitive.unwrap_or(false),
+        include_hidden_entries.unwrap_or(false),
+    )
+}
+
+#[tauri::command]
 async fn read_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
@@ -183,6 +199,141 @@ pub fn read_files_relative_impl(
         }
     }
     result
+}
+
+/// One line that matches a Find-in-Files query. `path` is workspace-relative
+/// with forward slashes (matches `DirEntry::path`). `line_number` is
+/// 0-indexed so the frontend can feed it directly to the editor's
+/// scrollToLine prop. `column_start`/`column_end` are byte offsets inside
+/// `line_text` for highlighting.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct FileMatch {
+    pub path: String,
+    pub line_number: usize,
+    pub line_text: String,
+    pub column_start: usize,
+    pub column_end: usize,
+}
+
+/// Cap on results per query. Exists to bound the IPC response size and to
+/// keep the UI list rendering tractable. The frontend shows a
+/// "+N more matches" hint when this fires.
+pub const FIND_IN_FILES_RESULT_LIMIT: usize = 500;
+/// Files larger than this are skipped — Find in Files is for prose, not
+/// for grep-ing through node bundles or generated assets that escaped the
+/// IGNORED_DIRS list.
+pub const FIND_IN_FILES_FILE_SIZE_LIMIT: u64 = 1_000_000;
+/// Heuristic: NUL byte in the first 8KB → treat as binary, skip.
+const FIND_IN_FILES_BINARY_PROBE: usize = 8 * 1024;
+
+/// Walk `root` recursively and collect every line that contains `query`.
+/// Honors `case_sensitive`; an empty query short-circuits to an empty
+/// result. Hidden / always-ignored directories are skipped on the same
+/// terms as `read_dir_recursive`. Stops as soon as `FIND_IN_FILES_RESULT_LIMIT`
+/// matches have been accumulated. Public for testability.
+pub fn find_in_files_impl(
+    root: &Path,
+    query: &str,
+    case_sensitive: bool,
+    include_hidden_entries: bool,
+) -> Result<Vec<FileMatch>, String> {
+    let mut results = Vec::new();
+    if query.is_empty() {
+        return Ok(results);
+    }
+
+    let needle: String = if case_sensitive {
+        query.to_string()
+    } else {
+        query.to_lowercase()
+    };
+
+    let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if results.len() >= FIND_IN_FILES_RESULT_LIMIT {
+            break;
+        }
+        let read = match std::fs::read_dir(&dir) {
+            Ok(r) => r,
+            Err(_) => continue, // skip unreadable subtree, don't fail the whole search
+        };
+        for entry in read.flatten() {
+            if results.len() >= FIND_IN_FILES_RESULT_LIMIT {
+                break;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') && !include_hidden_entries {
+                continue;
+            }
+            let file_type = match entry.file_type() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            if file_type.is_dir() {
+                if ALWAYS_IGNORED_DIRS.contains(&name.as_str()) {
+                    continue;
+                }
+                if !include_hidden_entries && HIDDEN_TOOL_DIRS.contains(&name.as_str()) {
+                    continue;
+                }
+                stack.push(entry.path());
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            let path = entry.path();
+            let metadata = match path.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if metadata.len() > FIND_IN_FILES_FILE_SIZE_LIMIT {
+                continue;
+            }
+            let bytes = match std::fs::read(&path) {
+                Ok(b) => b,
+                Err(_) => continue,
+            };
+            // Binary heuristic: NUL byte in the prefix.
+            let probe_end = bytes.len().min(FIND_IN_FILES_BINARY_PROBE);
+            if bytes[..probe_end].contains(&0u8) {
+                continue;
+            }
+            let content = match String::from_utf8(bytes) {
+                Ok(s) => s,
+                Err(_) => continue, // non-UTF-8: skip silently
+            };
+
+            let rel_path = match path.strip_prefix(root) {
+                Ok(p) => p.to_string_lossy().replace('\\', "/"),
+                Err(_) => continue,
+            };
+
+            for (line_number, line) in content.lines().enumerate() {
+                if results.len() >= FIND_IN_FILES_RESULT_LIMIT {
+                    break;
+                }
+                let haystack: String = if case_sensitive {
+                    line.to_string()
+                } else {
+                    line.to_lowercase()
+                };
+                let column = match haystack.find(&needle) {
+                    Some(c) => c,
+                    None => continue,
+                };
+                results.push(FileMatch {
+                    path: rel_path.clone(),
+                    line_number,
+                    line_text: line.to_string(),
+                    column_start: column,
+                    column_end: column + needle.len(),
+                });
+            }
+        }
+    }
+
+    Ok(results)
 }
 
 /// Resolve `relative` against `root` and confirm the result still lives
@@ -602,6 +753,7 @@ pub fn run() {
             read_file,
             read_file_relative,
             read_files_relative,
+            find_in_files,
             get_startup_args,
             set_dock_visible,
             toggle_maximize_instant,
@@ -1067,6 +1219,57 @@ mod tests {
                 }
             }
         }
+
+        /// `find_in_files_impl` invariants under random workspace shape:
+        ///   - the result list size is always ≤ FIND_IN_FILES_RESULT_LIMIT.
+        ///   - every match's path stays inside the root (no escapes).
+        ///   - every match's column slice equals the (case-folded) query.
+        ///   - line_number / column_start / column_end are consistent with
+        ///     the recorded `line_text`.
+        #[test]
+        fn prop_find_in_files_invariants(
+            file_count in 0usize..6,
+            line_count in 0usize..40,
+            query in prop::string::string_regex("[a-z]{1,5}").unwrap(),
+            case_sensitive in any::<bool>(),
+        ) {
+            let dir = tempdir().unwrap();
+            let root = dir.path();
+            for i in 0..file_count {
+                let lines: Vec<String> = (0..line_count)
+                    .map(|j| {
+                        if (i + j) % 3 == 0 {
+                            format!("prefix {query} suffix line {j}")
+                        } else {
+                            format!("noise content line {j}")
+                        }
+                    })
+                    .collect();
+                fs::write(root.join(format!("f{i}.md")), lines.join("\n")).unwrap();
+            }
+
+            let matches = find_in_files_impl(root, &query, case_sensitive, false).unwrap();
+            prop_assert!(matches.len() <= FIND_IN_FILES_RESULT_LIMIT);
+
+            let needle = if case_sensitive { query.clone() } else { query.to_lowercase() };
+
+            for m in &matches {
+                // Path is workspace-relative — must not contain `..` or
+                // start with `/`.
+                prop_assert!(!m.path.contains(".."));
+                prop_assert!(!m.path.starts_with('/'));
+
+                // Column offsets are consistent with line_text.
+                prop_assert!(m.column_start <= m.line_text.len());
+                prop_assert!(m.column_end <= m.line_text.len());
+                prop_assert!(m.column_end > m.column_start);
+
+                // The slice at the recorded columns matches the (case-folded) query.
+                let slice = &m.line_text[m.column_start..m.column_end];
+                let folded = if case_sensitive { slice.to_string() } else { slice.to_lowercase() };
+                prop_assert_eq!(folded, needle.clone());
+            }
+        }
     }
 
     #[test]
@@ -1440,5 +1643,161 @@ mod tests {
         let end = interpolate_frame(a, b, 1.0);
         assert!((end.origin.x - 100.0).abs() < 1e-9);
         assert!((end.size.height - 300.0).abs() < 1e-9);
+    }
+
+    // ── find_in_files_impl ──────────────────────────────────────────────
+
+    fn write_file(path: &Path, content: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, content).unwrap();
+    }
+
+    #[test]
+    fn find_in_files_returns_one_match_per_line_containing_query() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        write_file(&root.join("a.md"), "alpha\nbeta\ngamma\nbeta again\n");
+        write_file(&root.join("b.md"), "no match here");
+
+        let matches = find_in_files_impl(root, "beta", true, false).unwrap();
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0].line_number, 1);
+        assert_eq!(matches[0].line_text, "beta");
+        assert_eq!(matches[0].column_start, 0);
+        assert_eq!(matches[0].column_end, 4);
+        assert_eq!(matches[1].line_number, 3);
+        assert_eq!(matches[1].line_text, "beta again");
+    }
+
+    #[test]
+    fn find_in_files_empty_query_returns_no_results() {
+        // Mutation captured: removing the early return would walk the
+        // entire tree and produce a Match per line. The result MUST be
+        // empty for the empty query — UI relies on this to avoid
+        // spamming the panel while the user is still typing.
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        write_file(&root.join("a.md"), "anything\nat all\n");
+
+        assert_eq!(find_in_files_impl(root, "", true, false).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn find_in_files_case_sensitivity_toggle_changes_results() {
+        // Mutation captured: ignoring the `case_sensitive` flag (always
+        // case-insensitive or always case-sensitive) breaks one of the
+        // two assertions below.
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        write_file(&root.join("a.md"), "Apple\napple\nAPPLE\n");
+
+        let sensitive = find_in_files_impl(root, "Apple", true, false).unwrap();
+        assert_eq!(sensitive.len(), 1);
+        assert_eq!(sensitive[0].line_number, 0);
+
+        let insensitive = find_in_files_impl(root, "Apple", false, false).unwrap();
+        assert_eq!(insensitive.len(), 3);
+    }
+
+    #[test]
+    fn find_in_files_skips_always_ignored_dirs() {
+        // node_modules / target etc. must never be searched even with
+        // include_hidden_entries=true — they would freeze the IPC.
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        write_file(&root.join("node_modules").join("dep.md"), "needle inside dep\n");
+        write_file(&root.join("real.md"), "needle inside real\n");
+
+        let matches = find_in_files_impl(root, "needle", true, true).unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].path, "real.md");
+    }
+
+    #[test]
+    fn find_in_files_respects_include_hidden_for_dotdirs() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        write_file(&root.join(".git").join("HEAD"), "needle\n");
+        write_file(&root.join("real.md"), "needle\n");
+
+        let off = find_in_files_impl(root, "needle", true, false).unwrap();
+        assert_eq!(off.len(), 1);
+        assert_eq!(off[0].path, "real.md");
+
+        let on = find_in_files_impl(root, "needle", true, true).unwrap();
+        assert_eq!(on.len(), 2);
+    }
+
+    #[test]
+    fn find_in_files_skips_files_larger_than_size_limit() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let big = "needle\n".repeat((FIND_IN_FILES_FILE_SIZE_LIMIT as usize / 7) + 100);
+        write_file(&root.join("big.md"), &big);
+        write_file(&root.join("small.md"), "needle\n");
+
+        let matches = find_in_files_impl(root, "needle", true, false).unwrap();
+        // Only small.md was scanned.
+        assert!(matches.iter().all(|m| m.path == "small.md"));
+        assert_eq!(matches.len(), 1);
+    }
+
+    #[test]
+    fn find_in_files_skips_binary_files() {
+        // Mutation captured: dropping the NUL-byte probe would attempt to
+        // UTF-8 decode the binary blob, fail, and skip — but it would
+        // first DO the decode work. We assert no result, which holds
+        // either way. So this test is really documenting the
+        // intent: skip without full decode.
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let mut bin = b"head\x00needle\x00tail\n".to_vec();
+        bin.extend_from_slice(&[0u8; 200]);
+        fs::write(root.join("blob.bin"), bin).unwrap();
+        write_file(&root.join("text.md"), "needle\n");
+
+        let matches = find_in_files_impl(root, "needle", true, false).unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].path, "text.md");
+    }
+
+    #[test]
+    fn find_in_files_emits_paths_with_forward_slashes() {
+        // Windows uses backslashes; the contract with the frontend is
+        // forward slashes everywhere (matches `read_dir_recursive`).
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        write_file(&root.join("a").join("b").join("c.md"), "needle\n");
+
+        let matches = find_in_files_impl(root, "needle", true, false).unwrap();
+        assert_eq!(matches.len(), 1);
+        assert!(!matches[0].path.contains('\\'));
+        assert_eq!(matches[0].path, "a/b/c.md");
+    }
+
+    #[test]
+    fn find_in_files_caps_at_result_limit() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        // 600 lines that all match — well above the 500 cap.
+        let content = "needle\n".repeat(600);
+        write_file(&root.join("big.md"), &content);
+
+        let matches = find_in_files_impl(root, "needle", true, false).unwrap();
+        assert_eq!(matches.len(), FIND_IN_FILES_RESULT_LIMIT);
+    }
+
+    #[test]
+    fn find_in_files_column_offsets_point_at_the_match() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        write_file(&root.join("a.md"), "prefix needle suffix\n");
+
+        let matches = find_in_files_impl(root, "needle", true, false).unwrap();
+        assert_eq!(matches.len(), 1);
+        let m = &matches[0];
+        assert_eq!(&m.line_text[m.column_start..m.column_end], "needle");
     }
 }

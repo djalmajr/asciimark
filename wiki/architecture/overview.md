@@ -53,6 +53,15 @@ asciimark/                    bun workspace root
 - **`packages/ui/src/composables/create-app-state.ts`**: the rest of
   app state — fonts, theme, sidebar, navigation. NOT yet covered by
   tests beyond what tab-store touches.
+- **`packages/core/src/file-index.ts` + `fuzzy.ts`**: the Quick Open
+  (Cmd/Ctrl+P) ranker. `flattenWorkspace` turns the hierarchical
+  `WorkspaceRoot[]` (multi-root supported) into a flat `IndexedFile[]`;
+  `fuzzyFilter` wraps `fzf-for-js` (~30KB, MIT) with a basename bonus
+  and a recents boost. The overlay component lives at
+  `packages/ui/src/components/quick-open.tsx` and is rendered through
+  `<AppShell>` props; the host (`apps/desktop/src/app.tsx`) owns the
+  open/closed signal so the keyboard handler can toggle it without
+  going through context.
 
 ## Worker boundaries
 

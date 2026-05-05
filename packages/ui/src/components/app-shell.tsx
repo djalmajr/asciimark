@@ -1,6 +1,7 @@
-import { Show, createEffect, createSignal, type JSX } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, type JSX } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import type { RecentFile } from "@asciimark/core/recent-files.ts";
+import { flattenWorkspace, type IndexedFile } from "@asciimark/core/file-index.ts";
 import type { AppState } from "../composables/create-app-state.ts";
 import type { TabStore } from "../composables/create-tab-store.ts";
 import { AppProvider } from "../context/app-context.tsx";
@@ -14,6 +15,13 @@ import { Editor } from "./editor.tsx";
 import { EmptyState } from "./empty-state.tsx";
 import { Toaster } from "./ui/toast.tsx";
 import { ConfirmDialog } from "./confirm-dialog.tsx";
+import { QuickOpen } from "./quick-open.tsx";
+import { ShortcutsHelp } from "./shortcuts-help.tsx";
+import { CommandPalette } from "./command-palette.tsx";
+import type { Command } from "@asciimark/core/command-palette.ts";
+import { SymbolPalette } from "./symbol-palette.tsx";
+import { extractHeadings, type Heading } from "@asciimark/core/headings.ts";
+import { FindInFiles, type FileMatch, type MatchSelection } from "./find-in-files.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -98,6 +106,50 @@ interface AppShellProps {
   onWindowDragStart?: () => void | Promise<void>;
   onWindowTitleDoubleClick?: () => void | Promise<void>;
 
+  /**
+   * Quick Open (Cmd/Ctrl+P) overlay state. The host owns the open/closed
+   * boolean and the recents set so platforms without a recents store can
+   * keep the overlay working without changes here.
+   */
+  quickOpenOpen?: boolean;
+  quickOpenRecents?: ReadonlySet<string>;
+  onQuickOpenSelect?: (file: IndexedFile) => void;
+  onQuickOpenClose?: () => void;
+
+  /** Shortcuts help (Cmd/Ctrl+/) modal state. Host-owned for the same
+   *  reason as Quick Open. */
+  shortcutsHelpOpen?: boolean;
+  onShortcutsHelpClose?: () => void;
+  /** Toolbar fires this when the user picks "Keyboard shortcuts" from the
+   *  hamburger menu. AppShell flips the host's open signal via this. */
+  onShortcutsHelpOpen?: () => void;
+
+  /** Command palette (Cmd/Ctrl+Shift+P). Same host-owned pattern. The
+   *  catalog is built by the host because the side-effects bound to
+   *  each command (open dialog, invoke IPC, mutate signals) are
+   *  host-only. */
+  commandPaletteOpen?: boolean;
+  commandCatalog?: readonly Command[];
+  onCommandPaletteClose?: () => void;
+
+  /** Go-to-Symbol palette (Cmd/Ctrl+Shift+O). AppShell extracts headings
+   *  from the active file's editor content; the host only owns the
+   *  open/close toggle. */
+  symbolPaletteOpen?: boolean;
+  onSymbolPaletteClose?: () => void;
+
+  /** Find in Files (Cmd/Ctrl+Shift+F). AppShell renders the modal; the
+   *  host provides the search function (typically the IPC client) and
+   *  the close handler. The id of the active root is read from the
+   *  current state so the host doesn't have to thread it. */
+  findInFilesOpen?: boolean;
+  findInFilesSearch?: (
+    rootId: string,
+    query: string,
+    options: { caseSensitive: boolean },
+  ) => Promise<FileMatch[]>;
+  onFindInFilesClose?: () => void;
+
   // Platform-specific content (extension: FileAccessWarning wrapper)
   contentWrapper?: (content: JSX.Element) => JSX.Element;
 
@@ -122,6 +174,10 @@ export function AppShell(props: AppShellProps) {
   const [canRedo, setCanRedo] = createSignal(false);
   const [editorSyncTargetRatio, setEditorSyncTargetRatio] = createSignal<number | null>(null);
   const [editorSyncTargetVersion, setEditorSyncTargetVersion] = createSignal(0);
+  // Go-to-Symbol target line + version. The Editor watches `version` for
+  // changes (so the same line can be jumped to twice in a row).
+  const [editorScrollToLine, setEditorScrollToLine] = createSignal<number | null>(null);
+  const [editorScrollToLineVersion, setEditorScrollToLineVersion] = createSignal(0);
   const [previewSyncTargetRatio, setPreviewSyncTargetRatio] = createSignal<number | null>(null);
   const [previewSyncTargetVersion, setPreviewSyncTargetVersion] = createSignal(0);
 
@@ -196,10 +252,84 @@ export function AppShell(props: AppShellProps) {
     </Show>
   );
 
+  // Lazily flatten the workspace only while the Quick Open overlay is open.
+  // `state.rootsList` is reactive, so the memo refreshes when files are
+  // added or roots change underneath an open overlay.
+  const quickOpenFiles = createMemo<IndexedFile[]>(() => {
+    if (!props.quickOpenOpen) return [];
+    return flattenWorkspace(s.rootsList());
+  });
+
+  // Symbol palette source: parse headings from the active file's editor
+  // content, dispatched by extension. Computed lazily — only when the
+  // overlay is open. Falls back to empty when no file is selected.
+  const symbolHeadings = createMemo<Heading[]>(() => {
+    if (!props.symbolPaletteOpen) return [];
+    const file = s.selectedFile();
+    if (!file) return [];
+    return extractHeadings(file.path, s.editorContent());
+  });
+
+  // Find-in-Files match selected → open the file via the host's
+  // `onLoadFile` and bump the editor's scrollToLine so the line is
+  // centered. The bump is deferred a microtask to give Solid time to
+  // flush the file load (which includes a fetch + convert pass) before
+  // the editor receives the new content.
+  function handleFindInFilesSelect(selection: MatchSelection) {
+    const entry = s.findEntryByPath(selection.path, selection.rootId);
+    if (entry && entry.kind === "file") {
+      props.onLoadFile(entry, selection.rootId);
+      // Wait two ticks so the editor receives the new doc, then jump.
+      queueMicrotask(() => {
+        setTimeout(() => {
+          setEditorScrollToLine(selection.line);
+          setEditorScrollToLineVersion((v) => v + 1);
+        }, 0);
+      });
+    }
+    props.onFindInFilesClose?.();
+  }
+
   return (
     <AppProvider state={props.state}>
       <Toaster />
       <ConfirmDialog />
+      <QuickOpen
+        open={!!props.quickOpenOpen}
+        files={quickOpenFiles()}
+        recents={props.quickOpenRecents}
+        onSelect={(file) => props.onQuickOpenSelect?.(file)}
+        onClose={() => props.onQuickOpenClose?.()}
+      />
+      <ShortcutsHelp
+        open={!!props.shortcutsHelpOpen}
+        onClose={() => props.onShortcutsHelpClose?.()}
+      />
+      <CommandPalette
+        open={!!props.commandPaletteOpen}
+        commands={props.commandCatalog ?? []}
+        onClose={() => props.onCommandPaletteClose?.()}
+      />
+      <SymbolPalette
+        open={!!props.symbolPaletteOpen}
+        headings={symbolHeadings()}
+        onSelect={(heading) => {
+          // Jump the editor to the heading line. Bumping `version`
+          // forces the createEffect inside the Editor to dispatch even
+          // when the same line is jumped to twice in a row.
+          setEditorScrollToLine(heading.line);
+          setEditorScrollToLineVersion((v) => v + 1);
+          props.onSymbolPaletteClose?.();
+        }}
+        onClose={() => props.onSymbolPaletteClose?.()}
+      />
+      <FindInFiles
+        open={!!props.findInFilesOpen}
+        rootId={s.selectedRootId()}
+        search={props.findInFilesSearch ?? (() => Promise.resolve([]))}
+        onSelect={handleFindInFilesSelect}
+        onClose={() => props.onFindInFilesClose?.()}
+      />
       <div
         class="app"
         classList={{
@@ -220,6 +350,7 @@ export function AppShell(props: AppShellProps) {
             hasFile={s.hasFile()}
             hasRoot={props.hasRoot}
             onCheckForUpdates={props.onCheckForUpdates}
+            onShortcutsHelp={props.onShortcutsHelpOpen}
             supportsPreview={s.previewSupported()}
             inWindowFrame={!!props.windowFrameToolbar}
             controlsOnLeft={!!props.showWindowControls}
@@ -329,6 +460,8 @@ export function AppShell(props: AppShellProps) {
                     syncScrollActive={syncScrollActive()}
                     syncScrollTargetRatio={editorSyncTargetRatio()}
                     syncScrollTargetVersion={editorSyncTargetVersion()}
+                    scrollToLine={editorScrollToLine()}
+                    scrollToLineVersion={editorScrollToLineVersion()}
                     redoTrigger={editorRedoTrigger()}
                     searchOpen={s.editorSearchOpen()}
                     undoTrigger={editorUndoTrigger()}

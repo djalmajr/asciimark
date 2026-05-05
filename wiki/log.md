@@ -2,6 +2,36 @@
 
 Operations on this wiki, newest first.
 
+## [2026-05-04] feature | Quick Open (Cmd/Ctrl+P fuzzy file finder)
+
+### Pages updated
+- `wiki/architecture/overview.md` — added `file-index.ts`/`fuzzy.ts`/
+  `quick-open.tsx` to the "Code paths that matter" section.
+
+### Code added (out-of-band, not a wiki ingest)
+- `packages/core/src/file-index.ts` — `flattenWorkspace`.
+- `packages/core/src/fuzzy.ts` — `fuzzyFilter` wrapping `fzf-for-js`.
+- `packages/core/src/file-index.test.ts` (6 domain rules) and
+  `packages/core/src/fuzzy.test.ts` (8 domain rules with explicit
+  mutation-survival comments — verified that mutating `NAME_BONUS=0`
+  and `RECENT_BONUS=0` each fail one test).
+- `packages/core/src/__properties__/{file-index,fuzzy}.property.test.ts`
+  — fast-check sweeps (4 + 5 properties).
+- `packages/ui/src/components/quick-open.tsx` — Solid overlay using
+  `<Portal>`, no new primitive installed (matches the in-document
+  `search-overlay.tsx` pattern).
+- `packages/ui/src/components/quick-open.vtest.tsx` — 10 vtest cases.
+
+### Tests skipped, with rationale
+- Stateful PBT for QuickOpen UI (originally on the plan):
+  `quick-open` has 3 internal signals (`open`, `query`, `activeIndex`)
+  with no concurrency or persistent mutation paths. The class of bugs
+  stateful PBT catches (sequence-dependent corruption) does not exist
+  here. The fuzzy ranking invariants — which DO benefit from random
+  sequences — are covered by `fuzzy.property.test.ts`. The wiki's
+  Tier 1 #4 strategy explicitly targets `createTabStore` for this
+  pattern, not Quick Open.
+
 ## [2026-05-04] lint | health check
 
 ### Automatic fixes

@@ -65,3 +65,34 @@ export async function trashPath(
 ): Promise<void> {
   await invoke("trash_path", { root: rootPath, relative });
 }
+
+export interface FileMatch {
+  /** Workspace-relative, forward-slash path. */
+  path: string;
+  /** 0-indexed line in the source file. */
+  line_number: number;
+  /** Verbatim text of the matched line (no normalization). */
+  line_text: string;
+  /** Byte offset where the match begins inside `line_text`. */
+  column_start: number;
+  /** Byte offset where the match ends (exclusive). */
+  column_end: number;
+}
+
+export interface FindInFilesOptions {
+  caseSensitive?: boolean;
+  includeHiddenEntries?: boolean;
+}
+
+export async function findInFiles(
+  rootPath: string,
+  query: string,
+  options: FindInFilesOptions = {},
+): Promise<FileMatch[]> {
+  return await invoke<FileMatch[]>("find_in_files", {
+    root: rootPath,
+    query,
+    caseSensitive: options.caseSensitive ?? false,
+    includeHiddenEntries: options.includeHiddenEntries ?? false,
+  });
+}

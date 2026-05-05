@@ -1271,6 +1271,418 @@ mark.search-highlight.search-active {
   outline-color: hsl(211 72% 55% / 0.8);
 }
 
+/* === Quick Open (Cmd/Ctrl+P fuzzy file finder) === */
+.quick-open-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 18vh;
+  background: hsl(var(--foreground) / 0.18);
+  backdrop-filter: blur(2px);
+}
+
+.quick-open-panel {
+  width: min(640px, calc(100vw - 32px));
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--popover));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  box-shadow: 0 12px 32px hsl(0 0% 0% / 0.25);
+  overflow: hidden;
+}
+
+.quick-open-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.quick-open-input {
+  width: 100%;
+  padding: 12px 38px 12px 14px;
+  font-size: 14px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  outline: none;
+}
+
+.quick-open-input::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+.quick-open-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+
+.quick-open-clear:hover {
+  background: hsl(var(--bg-hover));
+  color: hsl(var(--foreground));
+}
+
+.quick-open-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.quick-open-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.quick-open-row-active {
+  background: hsl(var(--accent) / 0.7);
+}
+
+.quick-open-row-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quick-open-row-meta {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quick-open-row-root {
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+
+.quick-open-row-sep {
+  opacity: 0.6;
+}
+
+mark.quick-open-hit {
+  background: hsl(188 65% 86% / 0.55);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0;
+  font-weight: 700;
+}
+
+.dark mark.quick-open-hit {
+  background: hsl(211 52% 24% / 0.55);
+}
+
+.quick-open-empty {
+  padding: 14px;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+}
+
+.command-palette-shortcut {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.symbol-palette-prefix {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* === Find in Files (Cmd/Ctrl+Shift+F) === */
+.find-in-files-panel {
+  width: min(720px, calc(100vw - 32px));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--popover));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  box-shadow: 0 12px 32px hsl(0 0% 0% / 0.25);
+  overflow: hidden;
+}
+
+.find-in-files-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.find-in-files-input-wrap {
+  flex: 1 1 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.find-in-files-header .quick-open-input {
+  flex: 1 1 auto;
+  border-bottom: none;
+  padding: 8px 28px 8px 0;
+}
+
+.find-in-files-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+
+.find-in-files-clear:hover {
+  background: hsl(var(--bg-hover));
+  color: hsl(var(--foreground));
+}
+
+.find-in-files-option {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.find-in-files-option input[type="checkbox"] {
+  margin: 0;
+}
+
+.find-in-files-status {
+  padding: 6px 14px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  border-bottom: 1px solid hsl(var(--border));
+  min-height: 26px;
+}
+
+.find-in-files-error {
+  color: hsl(0 70% 60%);
+}
+
+.find-in-files-results {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.find-in-files-group {
+  padding: 4px 0;
+}
+
+.find-in-files-file {
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.find-in-files-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.find-in-files-line {
+  display: flex;
+  gap: 8px;
+  padding: 3px 14px 3px 28px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.find-in-files-line-active {
+  background: hsl(var(--accent) / 0.7);
+}
+
+.find-in-files-line-number {
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+  min-width: 32px;
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.find-in-files-snippet {
+  flex: 1 1 auto;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.find-in-files-context {
+  color: hsl(var(--foreground) / 0.85);
+}
+
+/* === Shortcuts Help (Cmd/Ctrl+/ modal) === */
+.shortcuts-help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: hsl(var(--foreground) / 0.18);
+  backdrop-filter: blur(2px);
+}
+
+.shortcuts-help-panel {
+  width: min(560px, calc(100vw - 32px));
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--popover));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  box-shadow: 0 12px 32px hsl(0 0% 0% / 0.25);
+  overflow: hidden;
+}
+
+.shortcuts-help-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.shortcuts-help-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.shortcuts-help-platform {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+.shortcuts-help-body {
+  padding: 8px 18px 14px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.shortcuts-help-group {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.shortcuts-help-group:first-child {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.shortcuts-help-group-title {
+  margin: 8px 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--muted-foreground) / 0.7);
+  font-weight: 500;
+}
+
+.shortcuts-help-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shortcuts-help-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.shortcuts-help-desc {
+  flex: 1 1 auto;
+}
+
+.shortcuts-help-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.shortcuts-help-key-sep {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+kbd.shortcuts-help-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
 /* === Diagram Viewer (Mermaid/Kroki lightbox) === */
 .diagram-viewer-overlay {
   position: fixed;
