@@ -28,6 +28,9 @@ pre-commit:
     contract-ipc:
       glob: "{apps/desktop/src-tauri/src/**/*.rs,apps/desktop/src/**/*.{ts,tsx}}"
       run: bash scripts/check-ipc-contract.sh
+    i18n-parity:
+      glob: "packages/i18n/messages/*.json"
+      run: bun scripts/i18n-check.ts
 
 pre-push:
   parallel: false
@@ -42,6 +45,8 @@ pre-push:
     test-ui:
       root: "packages/ui"
       run: bunx vitest run --config vitest.config.ts
+    i18n-parity:
+      run: bun scripts/i18n-check.ts
 
 ## `bun run release:check` invokes the heavy gate (mutation testing,
 ## benchmarks, full UI render tests, end-to-end). Run manually before

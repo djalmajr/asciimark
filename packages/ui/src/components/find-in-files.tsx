@@ -1,5 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
 
 export interface FileMatch {
   path: string;
@@ -188,14 +190,14 @@ export function FindInFiles(props: FindInFilesProps) {
     <Show when={props.open}>
       <Portal>
         <div class="quick-open-backdrop" onMouseDown={handleBackdropClick}>
-          <div class="find-in-files-panel" role="dialog" aria-label="Find in files">
+          <div class="find-in-files-panel" role="dialog" aria-label={(useLocale(), m.find_in_files_placeholder())}>
             <div class="find-in-files-header">
               <div class="find-in-files-input-wrap">
                 <input
                   ref={inputRef}
                   class="quick-open-input"
                   type="text"
-                  placeholder="Search content across the workspace…"
+                  placeholder={(useLocale(), m.find_in_files_placeholder())}
                   value={query()}
                   onInput={(event) => setQuery(event.currentTarget.value)}
                   onKeyDown={handleKeyDown}
@@ -231,7 +233,7 @@ export function FindInFiles(props: FindInFilesProps) {
                   checked={caseSensitive()}
                   onChange={(event) => setCaseSensitive(event.currentTarget.checked)}
                 />
-                Case sensitive
+                {(useLocale(), m.find_in_files_case_sensitive())}
               </label>
             </div>
             <Show when={query().length > 0 || error()}>
@@ -242,8 +244,8 @@ export function FindInFiles(props: FindInFilesProps) {
                 </Show>
                 <Show when={!searching() && !error() && query().length > 0}>
                   {results().length === 0
-                    ? "No matches"
-                    : `${results().length} match${results().length === 1 ? "" : "es"} in ${grouped().length} file${grouped().length === 1 ? "" : "s"}`}
+                    ? (useLocale(), m.find_in_files_no_results())
+                    : (useLocale(), m.find_in_files_results_summary({ count: String(results().length), fileCount: String(grouped().length) }))}
                 </Show>
               </div>
               <ul class="find-in-files-results" role="listbox">

@@ -1,4 +1,6 @@
 import { Show, createSignal, createEffect, onMount, onCleanup } from "solid-js";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
 import mermaid from "mermaid";
 import Prism from "prismjs";
 import "prismjs/components/prism-markup";
@@ -918,7 +920,7 @@ export function Preview(props: PreviewProps) {
       <DiagramViewer svg={viewerSvg()} onClose={() => setViewerSvg(null)} />
       <div class="preview">
         <Show when={props.loading}>
-          <div class="preview-loading">Converting...</div>
+          <div class="preview-loading">{(useLocale(), m.preview_loading())}</div>
         </Show>
         <Show when={props.frontmatter && Object.keys(props.frontmatter).length > 0}>
           <FrontmatterPanel

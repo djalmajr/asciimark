@@ -2415,3 +2415,52 @@ kbd.shortcuts-help-key {
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.6);
 }
+
+/* === Release notes inside <UpdateAvailableDialog> === */
+.release-notes-body h1,
+.release-notes-body h2,
+.release-notes-body h3 {
+  font-weight: 600;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+.release-notes-body h1 { font-size: 1.05rem; margin-top: 0; }
+.release-notes-body h2 { font-size: 1rem; }
+.release-notes-body h3 { font-size: 0.9rem; }
+.release-notes-body p { margin: 8px 0; }
+.release-notes-body ul,
+.release-notes-body ol {
+  padding-left: 1.25rem;
+  margin: 6px 0;
+}
+.release-notes-body ul { list-style: disc outside; }
+.release-notes-body ol { list-style: decimal outside; }
+.release-notes-body li { margin: 2px 0; }
+.release-notes-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  padding: 1px 6px;
+  background: hsl(var(--secondary));
+  border-radius: 3px;
+}
+.release-notes-body pre {
+  background: hsl(var(--secondary));
+  padding: 8px 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.release-notes-body pre code {
+  background: transparent;
+  padding: 0;
+}
+.release-notes-body a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+}
+.release-notes-body strong { font-weight: 600; }
+.release-notes-body hr {
+  border: 0;
+  border-top: 1px solid hsl(var(--border));
+  margin: 12px 0;
+}

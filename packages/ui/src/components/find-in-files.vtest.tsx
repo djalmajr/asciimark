@@ -36,7 +36,7 @@ describe("FindInFiles", () => {
     render(() => (
       <FindInFiles open rootId="r1" search={search} onSelect={() => {}} onClose={() => {}} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "needle" } });
 
     await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
@@ -47,7 +47,7 @@ describe("FindInFiles", () => {
     render(() => (
       <FindInFiles open rootId="r1" search={makeSearch()} onSelect={() => {}} onClose={() => {}} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "needle" } });
 
     await waitFor(() => expect(screen.getByText("src/a.ts")).not.toBeNull());
@@ -61,7 +61,7 @@ describe("FindInFiles", () => {
     render(() => (
       <FindInFiles open rootId="r1" search={makeSearch()} onSelect={onSelect} onClose={() => {}} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "needle" } });
 
     await waitFor(() => expect(screen.getAllByRole("option").length).toBeGreaterThan(0));
@@ -80,7 +80,7 @@ describe("FindInFiles", () => {
     render(() => (
       <FindInFiles open rootId="r1" search={makeSearch()} onSelect={onSelect} onClose={() => {}} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "needle" } });
     await waitFor(() => expect(screen.getAllByRole("option").length).toBe(3));
 
@@ -101,7 +101,7 @@ describe("FindInFiles", () => {
     render(() => (
       <FindInFiles open rootId="r1" search={makeSearch()} onSelect={onSelect} onClose={onClose} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.keyDown(input, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSelect).not.toHaveBeenCalled();
@@ -117,7 +117,7 @@ describe("FindInFiles", () => {
     )!;
     fireEvent.click(checkbox);
 
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "needle" } });
 
     await waitFor(() =>
@@ -129,7 +129,7 @@ describe("FindInFiles", () => {
     const { baseElement } = render(() => (
       <FindInFiles open rootId="r1" search={makeSearch()} onSelect={() => {}} onClose={() => {}} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "needle" } });
     await waitFor(() =>
       expect(baseElement.querySelectorAll("mark.quick-open-hit").length).toBe(3),
@@ -141,7 +141,7 @@ describe("FindInFiles", () => {
     render(() => (
       <FindInFiles open rootId="r1" search={search} onSelect={() => {}} onClose={() => {}} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "needle" } });
     await waitFor(() => expect(screen.getByText(/No matches/i)).not.toBeNull());
   });
@@ -151,7 +151,7 @@ describe("FindInFiles", () => {
     render(() => (
       <FindInFiles open rootId="r1" search={search} onSelect={() => {}} onClose={() => {}} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "needle" } });
     await waitFor(() => expect(screen.getByText(/workspace gone/i)).not.toBeNull());
   });
@@ -165,7 +165,7 @@ describe("FindInFiles", () => {
     const { unmount } = render(() => (
       <FindInFiles open rootId="r1" search={search} onSelect={() => {}} onClose={() => {}} />
     ));
-    const input1 = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input1 = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input1, { target: { value: "needle" } });
     await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
 
@@ -181,7 +181,7 @@ describe("FindInFiles", () => {
     render(() => (
       <FindInFiles open={open()} rootId="r1" search={search} onSelect={() => {}} onClose={() => setOpen(false)} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "another" } });
     await waitFor(() =>
       expect(search).toHaveBeenCalledWith("r1", "another", { caseSensitive: false }),
@@ -192,7 +192,7 @@ describe("FindInFiles", () => {
     setOpen(true);
 
     // Query and results must still be there.
-    const inputAgain = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const inputAgain = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     expect(inputAgain.value).toBe("another");
     expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
   });
@@ -207,14 +207,14 @@ describe("FindInFiles", () => {
     render(() => (
       <FindInFiles open rootId={rootId()} search={search} onSelect={() => {}} onClose={() => {}} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "needle" } });
     await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
 
     setRootId("r2");
 
     // Switching root resets the input and the result list.
-    expect((screen.getByPlaceholderText(/Search content/i) as HTMLInputElement).value).toBe("");
+    expect((screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement).value).toBe("");
     expect(screen.queryAllByRole("option")).toHaveLength(0);
   });
 
@@ -223,7 +223,7 @@ describe("FindInFiles", () => {
     const { baseElement } = render(() => (
       <FindInFiles open rootId="r1" search={search} onSelect={() => {}} onClose={() => {}} />
     ));
-    const input = screen.getByPlaceholderText(/Search content/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search in files/i) as HTMLInputElement;
     fireEvent.input(input, { target: { value: "needle" } });
     await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
 

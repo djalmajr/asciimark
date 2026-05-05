@@ -29,20 +29,20 @@ describe("Toolbar — split editor toggle", () => {
     const { baseElement } = render(() => (
       <Toolbar {...BASE_PROPS} onToggleSplit={() => {}} isSplit={false} />
     ));
-    const btn = baseElement.querySelector('[aria-label="Toggle split editor"]');
+    const btn = baseElement.querySelector('[aria-label="Split editor"]');
     expect(btn).not.toBeNull();
   });
 
   it("hides the split toggle when onToggleSplit is omitted", () => {
     const { baseElement } = render(() => <Toolbar {...BASE_PROPS} />);
-    expect(baseElement.querySelector('[aria-label="Toggle split editor"]')).toBeNull();
+    expect(baseElement.querySelector('[aria-label="Split editor"]')).toBeNull();
   });
 
   it("hides the split toggle when no workspace is open", () => {
     const { baseElement } = render(() => (
       <Toolbar {...BASE_PROPS} hasRoot={false} onToggleSplit={() => {}} />
     ));
-    expect(baseElement.querySelector('[aria-label="Toggle split editor"]')).toBeNull();
+    expect(baseElement.querySelector('[aria-label="Split editor"]')).toBeNull();
   });
 
   it("clicking the split toggle invokes onToggleSplit exactly once", () => {
@@ -53,7 +53,7 @@ describe("Toolbar — split editor toggle", () => {
       <Toolbar {...BASE_PROPS} onToggleSplit={onToggleSplit} isSplit={false} />
     ));
     const btn = baseElement.querySelector<HTMLButtonElement>(
-      '[aria-label="Toggle split editor"]',
+      '[aria-label="Split editor"]',
     )!;
     fireEvent.click(btn);
     expect(onToggleSplit).toHaveBeenCalledTimes(1);
@@ -63,7 +63,7 @@ describe("Toolbar — split editor toggle", () => {
     const { baseElement } = render(() => (
       <Toolbar {...BASE_PROPS} onToggleSplit={() => {}} isSplit={true} />
     ));
-    const btn = baseElement.querySelector('[aria-label="Toggle split editor"]')!;
+    const btn = baseElement.querySelector('[aria-label="Split editor"]')!;
     expect(btn.getAttribute("data-pressed")).toBe("");
   });
 });

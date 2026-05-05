@@ -1,23 +1,62 @@
-import { check } from "@tauri-apps/plugin-updater";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { ask, message } from "@tauri-apps/plugin-dialog";
+import { message } from "@tauri-apps/plugin-dialog";
+import { createSignal } from "solid-js";
+import * as m from "@asciimark/i18n";
 
 /**
- * Check for an app update via the Tauri updater plugin and show a native
- * dialog when one is available.
+ * State surfaced to the host (`apps/desktop/src/app.tsx`) so it can
+ * render the in-app `<UpdateAvailableDialog>`. The native Tauri
+ * `ask()` dialog used to handle this, but it can't scroll the body
+ * — long changelogs pushed the action buttons off-screen. The
+ * custom dialog renders the notes inside a flex layout with a
+ * scrollable body and a sticky footer.
  *
- * When `silent` is true, errors and the "you're up to date" case are
- * swallowed (used for the startup check, where any noise would be
- * disruptive). When `silent` is false (manual menu action), the user gets
- * feedback in either case.
+ * Shape:
+ *   `null`  — no pending update.
+ *   object  — an update is pending; the host shows the dialog.
+ *
+ * The host wires its accept/dismiss handlers via this signal:
+ *   - `update.install()` — calls downloadAndInstall + relaunch.
+ *   - `setPending(null)` — closes the dialog.
+ */
+export interface PendingUpdate {
+  version: string;
+  currentVersion: string;
+  notes: string;
+  install: () => Promise<void>;
+}
+
+const [pendingUpdate, setPendingUpdate] = createSignal<PendingUpdate | null>(null);
+
+export const useUpdate = pendingUpdate;
+export const dismissUpdate = () => setPendingUpdate(null);
+
+// Dev-only: lets the test harness simulate a pending update without
+// actually hitting the network or installing anything. Wired via the
+// `__DEV__` helper in `app.tsx` only when `import.meta.env.DEV`.
+export function _devSetPendingUpdate(value: PendingUpdate | null): void {
+  setPendingUpdate(value);
+}
+
+/**
+ * Check for an app update via the Tauri updater plugin.
+ *
+ * On success with a pending update: surfaces the update via the
+ * `useUpdate` signal so the host renders the in-app dialog.
+ *
+ * `silent` true (startup check) — swallows "already up to date" and
+ * transient errors. `silent` false (manual check via menu/palette) —
+ * shows a native `message()` toast for both states so the user gets
+ * feedback after a manual action.
  */
 export async function checkForAppUpdates(silent: boolean): Promise<void> {
   try {
-    const update = await check();
+    const update: Update | null = await check();
 
     if (!update) {
       if (!silent) {
-        await message("You are on the latest version of AsciiMark.", {
+        await message(m.update_up_to_date(), {
           title: "AsciiMark",
           kind: "info",
         });
@@ -25,34 +64,24 @@ export async function checkForAppUpdates(silent: boolean): Promise<void> {
       return;
     }
 
-    const notes = update.body?.trim() ?? "";
-    const promptBody =
-      `AsciiMark ${update.version} is available (current: ${update.currentVersion}).`
-      + (notes ? `\n\n${notes}` : "");
-
-    const accepted = await ask(promptBody, {
-      title: "Update available",
-      kind: "info",
-      okLabel: "Install and restart",
-      cancelLabel: "Later",
+    setPendingUpdate({
+      version: update.version,
+      currentVersion: update.currentVersion,
+      notes: update.body?.trim() ?? "",
+      install: async () => {
+        // Signal the close-to-tray handler to allow the window to
+        // actually close instead of hiding. Without this, relaunch
+        // gets stuck because onCloseRequested prevents the exit.
+        (window as unknown as { __asciimark_updating?: boolean }).__asciimark_updating = true;
+        await update.downloadAndInstall();
+        await relaunch();
+      },
     });
-
-    if (!accepted) return;
-
-    // Signal the close-to-tray handler to allow the window to actually close
-    // instead of hiding. Without this, relaunch gets stuck because
-    // onCloseRequested prevents the exit.
-    (window as any).__asciimark_updating = true;
-
-    await update.downloadAndInstall();
-    await relaunch();
   } catch (e) {
-    // Silent startup check: swallow transient errors (network, missing
-    // platform entry in latest.json for the current target, etc.).
     if (silent) return;
     console.error("Update check failed:", e);
     await message(
-      `Failed to check for updates: ${(e as Error)?.message ?? String(e)}`,
+      m.update_check_failed({ message: (e as Error)?.message ?? String(e) }),
       {
         title: "AsciiMark",
         kind: "error",

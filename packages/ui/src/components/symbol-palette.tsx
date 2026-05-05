@@ -1,5 +1,7 @@
 import { Show } from "solid-js";
 import type { Heading } from "@asciimark/core/headings.ts";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
 import { Palette } from "./palette.tsx";
 
 export interface SymbolPaletteProps {
@@ -16,8 +18,8 @@ export function SymbolPalette(props: SymbolPaletteProps) {
       items={props.headings}
       filter={(query, items) => filterHeadings(query, items)}
       getKey={(h) => `${h.line}:${h.text}`}
-      placeholder="Type a heading…"
-      ariaLabel="Go to heading"
+      placeholder={(useLocale(), m.find_heading_placeholder())}
+      ariaLabel={(useLocale(), m.find_heading_placeholder())}
       emptyItemsMessage="No headings in this document"
       emptyResultsMessage="No matching heading"
       renderRow={(heading) => <Row heading={heading} />}

@@ -1,6 +1,8 @@
 import { For, Show } from "solid-js";
 import type { IndexedFile } from "@asciimark/core/file-index.ts";
 import { fuzzyFilter, type RankedResult } from "@asciimark/core/fuzzy.ts";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
 import { Palette } from "./palette.tsx";
 
 export interface QuickOpenProps {
@@ -37,8 +39,8 @@ export function QuickOpen(props: QuickOpenProps) {
         })
       }
       getKey={(result) => `${result.file.rootId}::${result.file.path}`}
-      placeholder="Type a file name…"
-      ariaLabel="Open file by name"
+      placeholder={(useLocale(), m.find_placeholder())}
+      ariaLabel={(useLocale(), m.find_placeholder())}
       emptyItemsMessage="No files in workspace"
       emptyResultsMessage="No matches"
       renderRow={(result) => <Row result={result} />}

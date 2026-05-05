@@ -7,7 +7,7 @@
 
 import type { Platform } from "./keyboard-shortcuts.ts";
 
-export type CommandGroup = "File" | "View" | "Theme" | "Workspace" | "Help";
+export type CommandGroup = "File" | "View" | "Theme" | "Workspace" | "Help" | "Language";
 
 export interface Command {
   /** Stable identifier — used by tests and to dedup the catalog. */
@@ -31,7 +31,8 @@ const GROUP_RANK: Record<CommandGroup, number> = {
   View: 1,
   Theme: 2,
   Workspace: 3,
-  Help: 4,
+  Language: 4,
+  Help: 5,
 };
 
 /**

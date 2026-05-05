@@ -19,6 +19,8 @@ import IconColumns from "~icons/lucide/columns-2";
 import IconMenu from "~icons/lucide/menu";
 import IconRefreshCw from "~icons/lucide/refresh-cw";
 import IconSun from "~icons/lucide/sun";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 import { Toggle } from "./ui/toggle.tsx";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip.tsx";
@@ -113,11 +115,11 @@ export function Toolbar(props: ToolbarProps) {
           size="sm"
           pressed={props.sidebarVisible}
           onChange={props.onToggleSidebar}
-          aria-label="Toggle sidebar"
+          aria-label={(useLocale(), m.toolbar_toggle_sidebar())}
         >
           <IconPanelLeft width={16} height={16} />
         </TooltipTrigger>
-        <TooltipContent>Toggle sidebar</TooltipContent>
+        <TooltipContent>{(useLocale(), m.toolbar_toggle_sidebar())}</TooltipContent>
       </Tooltip>
     </Show>
   );
@@ -130,11 +132,11 @@ export function Toolbar(props: ToolbarProps) {
           size="sm"
           pressed={props.tocVisible}
           onChange={props.onToggleToc}
-          aria-label="Toggle table of contents"
+          aria-label={(useLocale(), m.toolbar_toggle_toc())}
         >
           <IconListTree width={16} height={16} />
         </TooltipTrigger>
-        <TooltipContent>Toggle table of contents</TooltipContent>
+        <TooltipContent>{(useLocale(), m.toolbar_toggle_toc())}</TooltipContent>
       </Tooltip>
     </Show>
   );
@@ -147,11 +149,11 @@ export function Toolbar(props: ToolbarProps) {
           size="sm"
           pressed={!!props.isSplit}
           onChange={() => props.onToggleSplit?.()}
-          aria-label="Toggle split editor"
+          aria-label={(useLocale(), m.toolbar_split_editor())}
         >
           <IconColumns width={16} height={16} />
         </TooltipTrigger>
-        <TooltipContent>Split editor</TooltipContent>
+        <TooltipContent>{(useLocale(), m.toolbar_split_editor())}</TooltipContent>
       </Tooltip>
     </Show>
   );
@@ -162,12 +164,12 @@ export function Toolbar(props: ToolbarProps) {
         <TooltipTrigger
           as="button"
           class="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm hover:bg-accent hover:text-accent-foreground"
-          aria-label="Reload document"
+          aria-label={(useLocale(), m.toolbar_reload_document())}
           onClick={props.onReload}
         >
           <IconRefreshCw width={16} height={16} />
         </TooltipTrigger>
-        <TooltipContent>Reload document</TooltipContent>
+        <TooltipContent>{(useLocale(), m.toolbar_reload_document())}</TooltipContent>
       </Tooltip>
     </Show>
   );
@@ -178,12 +180,12 @@ export function Toolbar(props: ToolbarProps) {
         <TooltipTrigger
           as="button"
           class="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm hover:bg-accent hover:text-accent-foreground"
-          aria-label="Copy source URL"
+          aria-label={(useLocale(), m.toolbar_copy_source_url())}
           onClick={props.onCopySource}
         >
           <IconLink width={16} height={16} />
         </TooltipTrigger>
-        <TooltipContent>Copy source URL</TooltipContent>
+        <TooltipContent>{(useLocale(), m.toolbar_copy_source_url())}</TooltipContent>
       </Tooltip>
     </Show>
   );
@@ -194,12 +196,12 @@ export function Toolbar(props: ToolbarProps) {
         <TooltipTrigger
           as="button"
           class="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm hover:bg-accent hover:text-accent-foreground"
-          aria-label="Copy document content"
+          aria-label={(useLocale(), m.toolbar_copy_document_content())}
           onClick={props.onCopyContent}
         >
           <IconCopy width={16} height={16} />
         </TooltipTrigger>
-        <TooltipContent>Copy document content</TooltipContent>
+        <TooltipContent>{(useLocale(), m.toolbar_copy_document_content())}</TooltipContent>
       </Tooltip>
     </Show>
   );
@@ -213,12 +215,12 @@ export function Toolbar(props: ToolbarProps) {
         <TooltipTrigger
           as="button"
           class="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm hover:bg-accent hover:text-accent-foreground"
-          aria-label="Open folder"
+          aria-label={(useLocale(), m.toolbar_open_folder())}
           onClick={props.onOpenFolder}
         >
           <IconFolder width={16} height={16} />
         </TooltipTrigger>
-        <TooltipContent>Open folder</TooltipContent>
+        <TooltipContent>{(useLocale(), m.toolbar_open_folder())}</TooltipContent>
       </Tooltip>
     </Show>
   );
@@ -229,7 +231,7 @@ export function Toolbar(props: ToolbarProps) {
             trigger receives focus when the dropdown opens, so tooltip +
             menu would appear together. The icon + aria-label are enough. */}
         <DropdownMenuTrigger
-          aria-label="Menu"
+          aria-label={(useLocale(), m.toolbar_menu())}
           class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:bg-accent hover:text-accent-foreground h-8 w-8"
         >
           <IconMenu width={16} height={16} />
@@ -238,14 +240,14 @@ export function Toolbar(props: ToolbarProps) {
           <Show when={props.onOpenFolder}>
             <DropdownMenuItem onSelect={props.onOpenFolder}>
               <IconFolder width={14} height={14} />
-              Open Folder
+              {(useLocale(), m.menu_open_folder())}
             </DropdownMenuItem>
           </Show>
           <Show when={hasRecentItems()}>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <IconClock width={14} height={14} />
-                Open Recent
+                {(useLocale(), m.menu_open_recent())}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent class="w-56 max-h-64 overflow-y-auto">
                 <Show when={(props.recentFolders?.length ?? 0) > 0}>
@@ -282,7 +284,7 @@ export function Toolbar(props: ToolbarProps) {
               <Show when={props.darkMode} fallback={<IconSun width={14} height={14} />}>
                 <IconMoon width={14} height={14} />
               </Show>
-              Theme
+              {(useLocale(), m.menu_theme())}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent class="w-40">
               <DropdownMenuRadioGroup
@@ -291,15 +293,15 @@ export function Toolbar(props: ToolbarProps) {
               >
                 <DropdownMenuRadioItem value="system">
                   <IconMonitor width={14} height={14} />
-                  System
+                  {(useLocale(), m.menu_theme_system())}
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="light">
                   <IconSun width={14} height={14} />
-                  Light
+                  {(useLocale(), m.menu_theme_light())}
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="dark">
                   <IconMoon width={14} height={14} />
-                  Dark
+                  {(useLocale(), m.menu_theme_dark())}
                 </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuSubContent>
@@ -308,21 +310,21 @@ export function Toolbar(props: ToolbarProps) {
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={props.onExportPdf}>
               <IconFileDown width={14} height={14} />
-              Export PDF
+              {(useLocale(), m.menu_export_pdf())}
             </DropdownMenuItem>
           </Show>
           <Show when={props.onShortcutsHelp}>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={props.onShortcutsHelp}>
               <IconKeyboard width={14} height={14} />
-              Keyboard shortcuts
+              {(useLocale(), m.menu_keyboard_shortcuts())}
             </DropdownMenuItem>
           </Show>
           <Show when={props.onCheckForUpdates}>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={props.onCheckForUpdates}>
               <IconDownload width={14} height={14} />
-              Check for updates
+              {(useLocale(), m.menu_check_for_updates())}
             </DropdownMenuItem>
           </Show>
         </DropdownMenuContent>
@@ -359,25 +361,25 @@ export function Toolbar(props: ToolbarProps) {
             <TooltipTrigger
               as="button"
               class="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-30 disabled:pointer-events-none"
-              aria-label="Go back"
+              aria-label={(useLocale(), m.toolbar_go_back())}
               disabled={!props.canGoBack}
               onClick={props.onGoBack}
             >
               <IconArrowLeft width={16} height={16} />
             </TooltipTrigger>
-            <TooltipContent>Go back</TooltipContent>
+            <TooltipContent>{(useLocale(), m.toolbar_go_back())}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
               as="button"
               class="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-30 disabled:pointer-events-none"
-              aria-label="Go forward"
+              aria-label={(useLocale(), m.toolbar_go_forward())}
               disabled={!props.canGoForward}
               onClick={props.onGoForward}
             >
               <IconArrowRight width={16} height={16} />
             </TooltipTrigger>
-            <TooltipContent>Go forward</TooltipContent>
+            <TooltipContent>{(useLocale(), m.toolbar_go_forward())}</TooltipContent>
           </Tooltip>
         </Show>
       </div>
@@ -388,18 +390,18 @@ export function Toolbar(props: ToolbarProps) {
             onChange={(v) => props.onEditorModeChange(v as "edit" | "split" | "preview")}
           >
             <TabsList>
-              <TabsTrigger disabled={!props.hasFile} value="edit">Edit</TabsTrigger>
+              <TabsTrigger disabled={!props.hasFile} value="edit">{(useLocale(), m.toolbar_editor_mode_edit())}</TabsTrigger>
               <TabsTrigger
                 disabled={!props.hasFile || !props.supportsPreview}
                 value="split"
               >
-                Edit & Preview
+                {(useLocale(), m.toolbar_editor_mode_split())}
               </TabsTrigger>
               <TabsTrigger
                 disabled={!props.hasFile || !props.supportsPreview}
                 value="preview"
               >
-                Preview
+                {(useLocale(), m.toolbar_editor_mode_preview())}
               </TabsTrigger>
             </TabsList>
           </Tabs>

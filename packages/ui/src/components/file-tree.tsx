@@ -1,5 +1,7 @@
 import { createSignal, createEffect, createMemo, For, Show } from "solid-js";
 import { DragDropProvider, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/solid";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
 import { FileTreeItem } from "./file-tree-item.tsx";
 import {
   DropdownMenu,
@@ -557,7 +559,7 @@ export function FileTree(props: FileTreeProps) {
         <div class="file-tree-search-field">
           <input
             class="file-tree-search"
-            placeholder="Filter files..."
+            placeholder={(useLocale(), m.tree_filter_files())}
             type="text"
             value={filterText()}
             onInput={(e) => setFilterText(e.currentTarget.value)}
@@ -636,7 +638,7 @@ export function FileTree(props: FileTreeProps) {
         </DropdownMenu>
       </div>
       <div class="file-tree-list" ref={navRef}>
-        <Show when={hasAnyEntries()} fallback={<div class="file-tree-empty">No supported files found</div>}>
+        <Show when={hasAnyEntries()} fallback={<div class="file-tree-empty">{(useLocale(), m.tree_no_files_found())}</div>}>
           <DragDropProvider
             onDragStart={handleProviderDragStart}
             onDragEnd={handleProviderDragEnd}

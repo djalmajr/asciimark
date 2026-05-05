@@ -89,5 +89,12 @@
   "toc_title": "Table of Contents",
   "toc_expand_all": "Expand All",
   "toc_collapse_all": "Collapse All",
-  "toc_show_levels": "Show {n} Level"
+  "toc_show_levels": "Show {n} Level",
+  "update_available_title": "Update available",
+  "update_available_subtitle": "AsciiMark {version} is available (current: {current}).",
+  "update_available_no_notes": "No release notes were published with this update.",
+  "update_available_later": "Later",
+  "update_available_install": "Install and restart",
+  "update_check_failed": "Failed to check for updates: {message}",
+  "update_up_to_date": "You are on the latest version of AsciiMark."
 }

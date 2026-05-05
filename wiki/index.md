@@ -8,6 +8,8 @@ QMD semantic search instead of grepping the source tree blindly.
 - [Testing strategies](testing/strategies.md) — rationale per technique
 - [Testing operations](testing/operations.md) — how to run every gate
 - [Architecture overview](architecture/overview.md) — apps + packages
+- [i18n architecture](architecture/i18n.md) — Paraglide + Solid adapter, `(useLocale(), m.foo())` pattern, locale detection, parity gate
+- [Desktop updater](architecture/desktop-updater.md) — pending-update signal, custom scrollable modal (vs native `ask()`), tray-close coordination
 - [Performance targets](performance/targets.md) — perf gates and benches
 - [Release flow](release/flow.md) — desktop: bump → tag → publish (Tauri auto-update)
 - [Extension release](release/extension.md) — Chrome Web Store: bump → build → zip → upload

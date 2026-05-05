@@ -2,6 +2,80 @@
 
 Operations on this wiki, newest first.
 
+## [2026-05-05] doc | desktop updater modal architecture
+
+Replaced the native Tauri `ask()` dialog used for "Update available"
+with a custom Kobalte AlertDialog wrapper
+(`packages/ui/src/components/update-available-dialog.tsx`). The
+native dialog couldn't scroll its body — long changelogs pushed the
+"Install and restart" button below the fold.
+
+New layout: flex column with `max-h: 80vh`, sticky header + sticky
+footer, body scrolls independently. State surfaced via a module-level
+signal in `apps/desktop/src/lib/updater.ts` so the host renders the
+modal whenever a pending update arrives. The native `message()`
+toast is still used for the small "you're up to date" /
+"check failed" cases — saves a second custom component for content
+that doesn't need it.
+
+Wrote `architecture/desktop-updater.md` capturing:
+- Flow (startup silent vs manual; pending → modal → install →
+  relaunch).
+- Why we picked custom over native (trade-off table).
+- Hard rules (`__asciimark_updating` flag for tray-close
+  coordination; never block the startup check on user input).
+- Tech debt: standalone Release Notes dialog (currently no way to
+  read changelog of installed version), markdown rendering inside
+  the modal (today plain-text), download-progress UI.
+- Lessons: native dialogs are rigid by design — `ask()` works only
+  when the body fits in ~3 lines; long-press paths matter for tray
+  apps (the `__asciimark_updating` flag is easy to forget, hangs
+  relaunch); updater state is genuinely global, render per-pane —
+  contrast with the per-instance `renderGen` from Round 5.
+
+Linked from `index.md`.
+
+## [2026-05-05] doc | i18n tech debt + lessons learned
+
+Expanded `architecture/i18n.md` with two new sections that capture
+state we shouldn't lose:
+
+- **Technical debt**: site-not-translated (3 follow-up paths, smallest
+  is ~30 min), shortcut-descriptions decoupled from i18n, tab-bar
+  context menu English-only, MRU command palette discussion (decided
+  out of scope this session), TS declarations opt-in flag pending.
+- **Lessons learned** from this push, each tagged with cost/why:
+  Paraglide v2 `compile` deletes `--outdir`; built-in `localStorage`
+  strategy hardcodes `PARAGLIDE_LOCALE` (custom key needs adapter);
+  `setLocale({reload:false})` requires `globalVariable` strategy;
+  Tauri dev caches bundle harder than reload (already in Round 5,
+  reinforced); `(useLocale(), m.foo())` pattern non-obvious — failure
+  is silent without the comma; translating long docs is the wrong
+  cost; bundle size matters for the extension Web Store limit.
+
+The lessons are written so the *next* pass doesn't re-discover them.
+
+## [2026-05-05] doc | i18n architecture (en + pt-BR + es)
+
+Added `architecture/i18n.md` covering the Paraglide + Solid adapter
+pattern that landed across 12 components in this push. Captures:
+
+- Why the `(useLocale(), m.foo())` comma-operator pattern is required
+  (Paraglide messages are not signals; without tracking the locale
+  signal, JSX freezes on first render).
+- Locale detection cascade (localStorage → navigator.language → en).
+- Why we use `globalVariable` strategy + custom localStorage key
+  rather than Paraglide's built-in localStorage strategy (key
+  collision: PARAGLIDE_LOCALE vs asciimark-locale).
+- How to add a locale or a key (with the parity check that gates
+  pre-commit and pre-push).
+- Out-of-scope decisions: site long-form prose isn't i18n'd, core
+  shortcut descriptions stay decoupled from i18n, error logs stay
+  English.
+
+Linked from `index.md` and cross-references Round 5 (module-level
+state pitfall — same class of bug the per-instance signal avoids).
+
 ## [2026-05-05] post-mortem | Module-level renderGen broke split-pane previews
 
 A site screenshot exposed a regression: in split mode, the second

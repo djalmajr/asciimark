@@ -9,6 +9,8 @@ import {
   type ShortcutDescriptor,
   type ShortcutGroup,
 } from "@asciimark/core/keyboard-shortcuts.ts";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
 
 export interface ShortcutsHelpProps {
   open: boolean;
@@ -52,10 +54,10 @@ export function ShortcutsHelp(props: ShortcutsHelpProps) {
           <div
             class="shortcuts-help-panel"
             role="dialog"
-            aria-label="Keyboard shortcuts"
+            aria-label={(useLocale(), m.shortcuts_title())}
           >
             <div class="shortcuts-help-header">
-              <h2 class="shortcuts-help-title">Keyboard shortcuts</h2>
+              <h2 class="shortcuts-help-title">{(useLocale(), m.shortcuts_title())}</h2>
               <span class="shortcuts-help-platform">
                 {platform() === "mac" ? "macOS" : "Windows / Linux"}
               </span>

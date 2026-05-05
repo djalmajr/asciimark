@@ -89,5 +89,12 @@
   "toc_title": "Sumário",
   "toc_expand_all": "Expandir tudo",
   "toc_collapse_all": "Recolher tudo",
-  "toc_show_levels": "Mostrar {n} nível"
+  "toc_show_levels": "Mostrar {n} nível",
+  "update_available_title": "Atualização disponível",
+  "update_available_subtitle": "AsciiMark {version} está disponível (atual: {current}).",
+  "update_available_no_notes": "Nenhuma nota de versão foi publicada com esta atualização.",
+  "update_available_later": "Depois",
+  "update_available_install": "Instalar e reiniciar",
+  "update_check_failed": "Falha ao verificar atualizações: {message}",
+  "update_up_to_date": "Você está na versão mais recente do AsciiMark."
 }

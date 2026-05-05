@@ -1,6 +1,8 @@
 import { For, Show, createEffect, createMemo, createSignal, type JSX } from "solid-js";
 import { DragDropProvider, DragOverlay } from "@dnd-kit/solid";
 import type { FSEntry } from "@asciimark/core/types.ts";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
 import type { RecentFile } from "@asciimark/core/recent-files.ts";
 import { flattenWorkspace, type IndexedFile } from "@asciimark/core/file-index.ts";
 import type { AppState } from "../composables/create-app-state.ts";
@@ -564,7 +566,7 @@ export function AppShell(props: AppShellProps) {
             ref={tocPanelRef}
           >
             <div class="toc-panel-header">
-              <span class="toc-panel-title">Table of Contents</span>
+              <span class="toc-panel-title">{(useLocale(), m.toc_title())}</span>
               <DropdownMenu>
                 <DropdownMenuTrigger
                   as="button"
@@ -576,32 +578,32 @@ export function AppShell(props: AppShellProps) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
                   <DropdownMenuItem onSelect={() => setTocExpanded(true)}>
-                    Expand All
+                    {(useLocale(), m.toc_expand_all())}
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setTocExpanded(false)}>
-                    Collapse All
+                    {(useLocale(), m.toc_collapse_all())}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={() => s.setTocLevels(1)}>
-                    <span class="flex-1">Show 1 Level</span>
+                    <span class="flex-1">{(useLocale(), m.toc_show_levels({ n: "1" }))}</span>
                     <Show when={s.tocLevels() === 1}>
                       <IconCheck width={14} height={14} />
                     </Show>
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => s.setTocLevels(2)}>
-                    <span class="flex-1">Show 2 Levels</span>
+                    <span class="flex-1">{(useLocale(), m.toc_show_levels({ n: "2" }))}</span>
                     <Show when={s.tocLevels() === 2}>
                       <IconCheck width={14} height={14} />
                     </Show>
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => s.setTocLevels(3)}>
-                    <span class="flex-1">Show 3 Levels</span>
+                    <span class="flex-1">{(useLocale(), m.toc_show_levels({ n: "3" }))}</span>
                     <Show when={s.tocLevels() === 3}>
                       <IconCheck width={14} height={14} />
                     </Show>
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => s.setTocLevels(4)}>
-                    <span class="flex-1">Show 4 Levels</span>
+                    <span class="flex-1">{(useLocale(), m.toc_show_levels({ n: "4" }))}</span>
                     <Show when={s.tocLevels() === 4}>
                       <IconCheck width={14} height={14} />
                     </Show>

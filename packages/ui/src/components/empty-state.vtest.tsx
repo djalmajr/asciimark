@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@solidjs/testing-library";
+import { switchLocale } from "@asciimark/i18n/solid";
 import { EmptyState } from "./empty-state.tsx";
 
 describe("EmptyState", () => {
@@ -166,5 +167,70 @@ describe("EmptyState", () => {
     ));
     fireEvent.click(getByText("Clear"));
     expect(onClearRecentHistory).toHaveBeenCalledTimes(1);
+  });
+
+  describe("i18n", () => {
+    // Domain rule: switchLocale must propagate to JSX nodes that read
+    // `useLocale()`. The component uses the comma-operator pattern to
+    // track the locale signal and return the Paraglide message string
+    // for each visible label. If the pattern is broken (e.g. someone
+    // drops the `useLocale()` track), this test fails because the
+    // text won't change after switchLocale.
+    //
+    // Mutation-survival contracts:
+    //   - Removing `(useLocale(), …)` from any of the migrated labels
+    //     causes that label to stay in English after switchLocale,
+    //     failing the corresponding assertion below.
+    //   - Renaming `m.empty_dropzone_title` to a non-existent key
+    //     fails type-check (Paraglide messages are typed functions).
+
+    it("renders Portuguese strings after switchLocale('pt-BR')", () => {
+      switchLocale("pt-BR");
+      const { getByText } = render(() => <EmptyState hasRoot={false} />);
+      expect(
+        getByText("Solte uma pasta/arquivo aqui ou clique para abrir"),
+      ).not.toBeNull();
+      expect(getByText("Suporta arquivos .adoc e .md")).not.toBeNull();
+      // Reset for the next test in case we add more.
+      switchLocale("en");
+    });
+
+    it("renders Spanish strings after switchLocale('es')", () => {
+      switchLocale("es");
+      const { getByText } = render(() => <EmptyState hasRoot={false} />);
+      expect(
+        getByText("Suelte una carpeta/archivo aquí o haga clic para abrir"),
+      ).not.toBeNull();
+      expect(getByText("Compatible con archivos .adoc y .md")).not.toBeNull();
+      switchLocale("en");
+    });
+
+    it("renders English by default (after explicit reset)", () => {
+      switchLocale("en");
+      const { getByText } = render(() => <EmptyState hasRoot={false} />);
+      expect(
+        getByText("Drop a folder/file here or click to open"),
+      ).not.toBeNull();
+    });
+
+    it("re-renders after a post-mount switchLocale (mutation kill)", async () => {
+      // Mount in English; the dropzone title and hint must be in English.
+      switchLocale("en");
+      const { findByText, queryByText } = render(() => <EmptyState hasRoot={false} />);
+      expect(queryByText("Drop a folder/file here or click to open")).not.toBeNull();
+
+      // Switch language while the component is still mounted. JSX nodes
+      // that read `useLocale()` MUST re-render with the new translation.
+      // If the comma-operator pattern is dropped from a label, that
+      // label stays in English and `findByText` for the pt-BR string
+      // times out.
+      switchLocale("pt-BR");
+      expect(
+        await findByText("Solte uma pasta/arquivo aqui ou clique para abrir"),
+      ).not.toBeNull();
+      expect(await findByText("Suporta arquivos .adoc e .md")).not.toBeNull();
+
+      switchLocale("en");
+    });
   });
 });

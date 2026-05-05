@@ -12,6 +12,8 @@ import { listen } from "@tauri-apps/api/event";
 import { createAppState } from "@asciimark/ui/composables/create-app-state.ts";
 import type { TabStore } from "@asciimark/ui/composables/create-tab-store.ts";
 import { AppShell } from "@asciimark/ui/components/app-shell.tsx";
+import * as m from "@asciimark/i18n";
+import { switchLocale, useLocale, locales as i18nLocales } from "@asciimark/i18n/solid";
 import { getStoredTheme, applyTheme } from "./main.tsx";
 import { FileWatcher } from "./lib/watcher.ts";
 import { createFileLoader } from "./lib/file-loader.ts";
@@ -22,7 +24,8 @@ import { confirm } from "@asciimark/ui/components/confirm-dialog.tsx";
 import { setupTauriDnd } from "./lib/dnd.ts";
 import { setupAppMenu } from "./lib/menu.ts";
 import { setupTray } from "./lib/tray.ts";
-import { checkForAppUpdates } from "./lib/updater.ts";
+import { _devSetPendingUpdate, checkForAppUpdates, dismissUpdate, useUpdate } from "./lib/updater.ts";
+import { UpdateAvailableDialog } from "@asciimark/ui/components/update-available-dialog.tsx";
 import { findInFiles } from "./lib/fs.ts";
 import { WindowControls } from "./components/window-controls.tsx";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -128,6 +131,13 @@ export function App() {
       // Drive the move-tab handler directly. Useful for E2E that
       // can't reliably synthesize a Kobalte ContextMenu click.
       moveTab: (tabId: string, fromPaneIndex: number) => handleMoveTab(tabId, fromPaneIndex),
+      simulatePendingUpdate: (version: string, currentVersion: string, notes: string) =>
+        _devSetPendingUpdate({
+          version,
+          currentVersion,
+          notes,
+          install: async () => { console.log("[__DEV__] would install"); },
+        }),
     };
   }
 
@@ -591,27 +601,30 @@ export function App() {
   // straight into the host's existing handlers — no new logic, just
   // surfacing what's already wired into the toolbar dropdown.
   const commandCatalog = createMemo<Command[]>(() => {
+    // Track the locale signal so the memo recomputes — and the palette
+    // re-renders — whenever the user switches language.
+    useLocale();
     const hasRoot = rootPaths().size > 0;
     const hasFile = !!state.selectedFile();
     return [
       {
         id: "file.openFolder",
         group: "File",
-        title: "Open Folder…",
+        title: m.command_open_folder(),
         shortcut: { mac: ["⌘", "O"], other: ["Ctrl", "O"] },
         run: () => folder.handleOpenFolder(),
       },
       {
         id: "file.exportPdf",
         group: "File",
-        title: "Export PDF",
+        title: m.command_export_pdf(),
         when: () => hasFile,
         run: () => state.handleExportPdf(),
       },
       {
         id: "view.toggleSidebar",
         group: "View",
-        title: "Toggle Sidebar",
+        title: m.command_toggle_sidebar(),
         when: () => hasRoot,
         run: () => {
           state.setSidebarVisible((v) => !v);
@@ -620,14 +633,14 @@ export function App() {
       {
         id: "view.toggleHidden",
         group: "View",
-        title: "Toggle Hidden Files",
+        title: m.command_toggle_hidden_files(),
         when: () => hasRoot,
         run: () => folder.refreshAllRoots(!state.showHiddenEntries()),
       },
       {
         id: "view.editorMode.edit",
         group: "View",
-        title: "Editor Mode: Edit",
+        title: m.command_editor_mode_edit(),
         when: () => hasFile,
         run: () => {
           state.setEditorMode("edit");
@@ -636,7 +649,7 @@ export function App() {
       {
         id: "view.editorMode.split",
         group: "View",
-        title: "Editor Mode: Split",
+        title: m.command_editor_mode_split(),
         when: () => hasFile && state.previewSupported(),
         run: () => {
           state.setEditorMode("split");
@@ -645,7 +658,7 @@ export function App() {
       {
         id: "view.editorMode.preview",
         group: "View",
-        title: "Editor Mode: Preview",
+        title: m.command_editor_mode_preview(),
         when: () => hasFile && state.previewSupported(),
         run: () => {
           state.setEditorMode("preview");
@@ -654,7 +667,7 @@ export function App() {
       {
         id: "theme.system",
         group: "Theme",
-        title: "Theme: System",
+        title: m.command_theme_system(),
         run: () => {
           state.setThemeMode("system");
         },
@@ -662,7 +675,7 @@ export function App() {
       {
         id: "theme.light",
         group: "Theme",
-        title: "Theme: Light",
+        title: m.command_theme_light(),
         run: () => {
           state.setThemeMode("light");
         },
@@ -670,7 +683,7 @@ export function App() {
       {
         id: "theme.dark",
         group: "Theme",
-        title: "Theme: Dark",
+        title: m.command_theme_dark(),
         run: () => {
           state.setThemeMode("dark");
         },
@@ -705,7 +718,7 @@ export function App() {
       {
         id: "view.splitEditor",
         group: "View",
-        title: "Split Editor",
+        title: m.command_split_editor(),
         shortcut: { mac: ["⌘", "\\"], other: ["Ctrl", "\\"] },
         when: () => hasRoot && state.paneManager.panes().length < 2,
         run: () => {
@@ -715,7 +728,7 @@ export function App() {
       {
         id: "view.focusFirstPane",
         group: "View",
-        title: "Focus First Pane",
+        title: m.command_focus_first_pane(),
         shortcut: { mac: ["⌘", "1"], other: ["Ctrl", "1"] },
         when: () => state.paneManager.panes().length > 1,
         run: () => {
@@ -725,7 +738,7 @@ export function App() {
       {
         id: "view.focusSecondPane",
         group: "View",
-        title: "Focus Second Pane",
+        title: m.command_focus_second_pane(),
         shortcut: { mac: ["⌘", "2"], other: ["Ctrl", "2"] },
         when: () => state.paneManager.panes().length > 1,
         run: () => {
@@ -735,7 +748,7 @@ export function App() {
       {
         id: "help.shortcuts",
         group: "Help",
-        title: "Show Keyboard Shortcuts",
+        title: m.command_show_keyboard_shortcuts(),
         shortcut: { mac: ["⌘", "/"], other: ["Ctrl", "/"] },
         run: () => {
           setShortcutsHelpVisible(true);
@@ -744,9 +757,25 @@ export function App() {
       {
         id: "help.checkForUpdates",
         group: "Help",
-        title: "Check for Updates",
+        title: m.command_check_for_updates(),
         run: () => checkForAppUpdates(false),
       },
+      // Language switcher — reads from the i18n package's locale list so
+      // adding a new locale to `packages/i18n` automatically surfaces it
+      // here. Each entry sets the locale via the Solid adapter, which
+      // persists to localStorage and forces re-render of all JSX that
+      // tracks the locale signal.
+      ...i18nLocales.map<Command>((loc) => ({
+        id: `language.${loc}`,
+        group: "Language",
+        title:
+          loc === "en"
+            ? m.command_language_en()
+            : loc === "pt-BR"
+              ? m.command_language_pt_br()
+              : m.command_language_es(),
+        run: () => switchLocale(loc),
+      })),
     ];
   });
 
@@ -1067,6 +1096,18 @@ export function App() {
       resolveImageSrc={resolveImageSrc}
       onToggleShowHiddenEntries={(enabled) => folder.refreshAllRoots(enabled)}
       onReorderRoots={(newOrder) => state.reorderRoots(newOrder)}
+    />
+    <UpdateAvailableDialog
+      open={!!useUpdate()}
+      version={useUpdate()?.version ?? ""}
+      currentVersion={useUpdate()?.currentVersion ?? ""}
+      notes={useUpdate()?.notes}
+      onDismiss={dismissUpdate}
+      onInstall={() => {
+        const update = useUpdate();
+        if (!update) return;
+        void update.install();
+      }}
     />
     </>
   );

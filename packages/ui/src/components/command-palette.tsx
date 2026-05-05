@@ -5,6 +5,8 @@ import {
   type Command,
 } from "@asciimark/core/command-palette.ts";
 import { detectPlatform } from "@asciimark/core/keyboard-shortcuts.ts";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
 import { Palette } from "./palette.tsx";
 
 export interface CommandPaletteProps {
@@ -27,8 +29,8 @@ export function CommandPalette(props: CommandPaletteProps) {
       items={props.commands}
       filter={(query, items) => filterCommands(query, items)}
       getKey={(c) => c.id}
-      placeholder="Type a command…"
-      ariaLabel="Run command"
+      placeholder={(useLocale(), m.find_command_placeholder())}
+      ariaLabel={(useLocale(), m.find_command_placeholder())}
       emptyItemsMessage="No commands available"
       emptyResultsMessage="No matching command"
       renderRow={(command) => <Row command={command} platform={platform()} />}
