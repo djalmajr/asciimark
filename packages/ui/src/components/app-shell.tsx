@@ -181,6 +181,18 @@ export function AppShell(props: AppShellProps) {
     return index === 0 ? ratio : 1 - ratio;
   }
 
+  // Visible panes: hide secondary panes when no workspace is open. The
+  // persisted layout might restore 2 panes from a prior session; with
+  // no workspace each empty pane shows the dropzone EmptyState — which
+  // duplicates the affordance and confuses the welcome screen. We
+  // keep the persisted state intact so reopening a workspace brings
+  // the split back automatically; we just don't render pane[1] yet.
+  const visiblePanes = createMemo(() => {
+    const all = s.paneManager.panes();
+    if (!props.hasRoot) return all.slice(0, 1);
+    return all;
+  });
+
   /**
    * Single drag handler for the cross-pane DragDropProvider. Three
    * cases the user can produce by dragging a tab:
@@ -357,7 +369,7 @@ export function AppShell(props: AppShellProps) {
             hasRoot={props.hasRoot}
             onCheckForUpdates={props.onCheckForUpdates}
             onShortcutsHelp={props.onShortcutsHelpOpen}
-            isSplit={s.paneManager.panes().length > 1}
+            isSplit={visiblePanes().length > 1}
             onToggleSplit={() => {
               if (s.paneManager.panes().length > 1) {
                 s.paneManager.collapseRightPane();
@@ -425,7 +437,7 @@ export function AppShell(props: AppShellProps) {
           <div class="content-area">
             <DragDropProvider onDragEnd={handleTabDragEnd}>
               <div class="panes-container" ref={panesContainerRef}>
-                <For each={s.paneManager.panes()}>
+                <For each={visiblePanes()}>
                   {(pane, i) => (
                     <>
                       <Show when={i() > 0}>
@@ -438,9 +450,17 @@ export function AppShell(props: AppShellProps) {
                       <PaneView
                         pane={pane}
                         paneIndex={i()}
-                        isActive={i() === s.paneManager.activePaneIndex()}
+                        isActive={
+                          // When secondary panes are hidden (no
+                          // workspace), force pane 0 to read as
+                          // active so the welcome screen has a
+                          // single visible focus indicator.
+                          visiblePanes().length === 1
+                            ? i() === 0
+                            : i() === s.paneManager.activePaneIndex()
+                        }
                         state={s}
-                        flexBasis={paneFlexBasis(i(), s.paneManager.panes().length, s.paneManager.splitRatio())}
+                        flexBasis={paneFlexBasis(i(), visiblePanes().length, s.paneManager.splitRatio())}
                         showToolbar={props.showToolbar}
                         showEditorTabs={props.showEditorTabs}
                         showRecentHistory={props.showRecentHistory}
