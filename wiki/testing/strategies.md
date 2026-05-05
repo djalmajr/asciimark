@@ -575,7 +575,49 @@ the logic into a pure function `moveTabBetweenPanes(deps)`,
 domain-test it, and let the host wire `deps`. The cost is a small
 indirection; the gain is mutation-survivable coverage.
 
-This is **deferred**, with a wiki/log entry tracking the follow-up.
+**Validated 2026-05-05** — applied this lesson to
+`apps/desktop/src/lib/file-loader.ts` after a second incident of
+the same class (the user-found "intro.adoc shows blank preview"
+race). The new `apps/desktop/src/lib/file-loader.test.ts` drives
+`loadFileContent` against a real `PaneManager` with mocked fs.ts +
+convert; an artificial async gate lets the test flip the active
+pane between the `await readFileContent` and the post-convert
+write. Mutation survival validated by hand —
+`s/targetPane.setHtml/state.setHtml/` reverts the fix and both
+test cases fail. Pattern documented in `wiki/log.md`'s 2026-05-05
+post-mortem so the next host handler audit knows what shape to
+target.
+
+### Lesson 6 — Pin per-doc target before any `await` (split-panes specific)
+
+Discovered while fixing Lesson 5's second instance. Any async
+handler in `apps/desktop/src/lib/` that writes per-document fields
+(html, editorContent, savedContent, frontmatter, selectedFile, …)
+through `state.setX` will misbehave if the user switches the
+active pane mid-await: the AppState proxy resolves
+`paneManager.activePane()` *at write time*, not at call time, and
+the result lands on the wrong pane.
+
+**Rule**: capture the target pane on entry and call its setters
+directly:
+
+```ts
+async function handler(...) {
+  const targetPane = state.paneManager.activePane();
+  // ...
+  targetPane.setHtml(...); // NOT state.setHtml
+}
+```
+
+**Audit candidates** (next pass — none confirmed buggy yet, just
+shaped like the file-loader was):
+- `apps/desktop/src/lib/folder.ts::refreshRoot` (writes via state
+  after async read_dir).
+- `apps/desktop/src/app.tsx::handleEditorSave` (autosave path).
+- Any other `await` followed by `state.setX` for per-doc fields.
+
+The audit is a search-and-read exercise — spot the patterns, fix
++ DI-test each one as Lesson 5 prescribes.
 
 ## Fontes
 

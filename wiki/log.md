@@ -2,6 +2,99 @@
 
 Operations on this wiki, newest first.
 
+## [2026-05-05] post-mortem | Split-panes file-loader pane race + tray duplicates + TOC panel wiring
+
+Three follow-up incidents on the split-panes feature, each surfaced
+by user testing. The first one is the most interesting: it was the
+*second* instance of a class of bug already discussed in Round 4 of
+`wiki/testing/strategies.md` (Lesson 5 — host handlers that proxy
+through AppState need DI unit tests). Confirms the lesson is real.
+
+### Incident 1 — file-loader pane race
+
+**Symptom**: opening a file (e.g. `intro.adoc`) sometimes left the
+preview blank. Specific to fast pane-switching during load.
+
+**Root cause**: `apps/desktop/src/lib/file-loader.ts::loadFileContent`
+wrote results through the AppState proxy (`state.setHtml`,
+`state.setEditorContent`, …). The proxy reads
+`paneManager.activePane()` *at write time*. Between the
+`await readFileContent(...)` and the post-convert
+`state.setHtml(result.html)` writes, the user could flip the active
+pane and the convert result would land on the wrong pane — leaving
+the originally-targeted pane stuck on the empty `""` we wrote at
+the start of the load.
+
+**Fix**: capture `state.paneManager.activePane()` once at function
+entry; call all per-doc setters on that captured PaneStore directly.
+Atomic from the user's perspective regardless of pane switches
+during the read or convert.
+
+**Test**: `apps/desktop/src/lib/file-loader.test.ts` — first
+host-handler unit test that follows the Lesson 5 pattern from
+Round 4. Two cases drive `createFileLoader.loadFileContent` against
+a real PaneManager with mocked fs.ts + convert. The convert mock
+holds on a manual gate; between the await and the resolve, the
+test flips the active pane to pane 1, then resolves, then asserts
+that pane 0 (the original target) received the html and pane 1
+stayed empty. Mutation survival validated by hand —
+`s/targetPane.setHtml/state.setHtml/` reverts the fix and both
+test cases fail.
+
+### Incident 2 — Tray icons accumulated across restarts
+
+**Symptom**: macOS menu bar showed up to 4 AsciiMark "A" icons after
+a few HMR cycles in dev.
+
+**Root cause**: `setupTray()` called `TrayIcon.new({ id: "asciimark-tray" })`
+without checking for an existing one. Tauri (or the OS) didn't
+dedupe by id alone — every restart stacked another tray.
+
+**Fix**: `apps/desktop/src/lib/tray.ts` calls
+`TrayIcon.removeById(TRAY_ID)` (with a swallowed catch) before the
+new(). Idempotent across HMR remounts and cold restarts.
+
+### Incident 3 — TOC panel was empty after split-panes refactor
+
+**Symptom**: the right-side `<aside class="toc-panel">` showed
+"TABLE OF CONTENTS" header but no entries even when the document
+had headings.
+
+**Root cause**: when PaneView was extracted from AppShell, its
+Preview received `tocContainer={undefined}`. The TOC was never
+copied into the shared aside element.
+
+**Fix**: thread `tocContainer` through PaneView and pass the
+AppShell-owned `tocContainerRef` only to the *active* pane's
+PaneView. Non-active panes receive `undefined` so two Previews
+don't fight over the same DOM target.
+
+### Strategies revisited
+
+`wiki/testing/strategies.md` Round 4 already captures the lessons
+that apply here. The file-loader case validates Lesson 5 in
+practice — the unit test that catches the race is exactly the
+DI-shape that Lesson 5 advocated. The tray and TOC fixes are
+narrower and didn't need new strategies, just reactive cleanup
+on lifecycle.
+
+### Pattern for next async handlers in `apps/desktop/src/lib/`
+
+Any async function that writes per-doc fields (html, editorContent,
+selectedFile, …) MUST capture the target pane on entry:
+
+```ts
+async function handler(...) {
+  const targetPane = state.paneManager.activePane();
+  // ... use targetPane.setX, NOT state.setX
+}
+```
+
+Candidates worth auditing next pass:
+- `apps/desktop/src/lib/folder.ts` (refreshRoot writes via state)
+- `apps/desktop/src/app.tsx::handleEditorSave` (autosave path)
+- Any other `await` followed by `state.setX` for per-doc fields
+
 ## [2026-05-04] post-mortem | Split-panes move-tab content cache bug
 
 A user-reported bug after the split-panes feature shipped — moving a
