@@ -127,4 +127,41 @@ describe("createPaneManager", () => {
     m.setActivePane(1);
     expect(m.activePane().paneId).toBe("pane-1");
   });
+
+  it("layout persists: paneCount + activePaneIndex are restored on next manager", () => {
+    // Mutation captured: removing the `persistLayout()` call inside
+    // `splitFromActive` (or `setActivePane`) leaves the second manager
+    // restored as single-pane / index 0 — fails this assertion.
+    const m1 = createPaneManager();
+    m1.splitFromActive();
+    m1.setActivePane(1);
+    expect(m1.panes()).toHaveLength(2);
+    expect(m1.activePaneIndex()).toBe(1);
+
+    const m2 = createPaneManager();
+    expect(m2.panes()).toHaveLength(2);
+    expect(m2.activePaneIndex()).toBe(1);
+  });
+
+  it("collapseRightPane shrinks the persisted layout back to single-pane", () => {
+    const m1 = createPaneManager();
+    m1.splitFromActive();
+    expect(m1.panes()).toHaveLength(2);
+    m1.collapseRightPane();
+    expect(m1.panes()).toHaveLength(1);
+
+    const m2 = createPaneManager();
+    expect(m2.panes()).toHaveLength(1);
+    expect(m2.activePaneIndex()).toBe(0);
+  });
+
+  it("invalid persisted layout (paneCount=99) is ignored — falls back to single pane", () => {
+    localStorage.setItem(
+      "asciimark-pane-layout",
+      JSON.stringify({ paneCount: 99, activePaneIndex: 5 }),
+    );
+    const m = createPaneManager();
+    expect(m.panes()).toHaveLength(1);
+    expect(m.activePaneIndex()).toBe(0);
+  });
 });

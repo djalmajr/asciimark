@@ -40,11 +40,15 @@ Operations on this wiki, newest first.
   most-recently-closed tab to the active pane.
 - `selectedRootId` per-pane (each pane can be browsing a different
   root). The file-tree sidebar follows the active pane's root.
-- Persistence: out of scope for the MVP. The single-pane v1
-  schema continues to be written by `tabStore.persistSession`
-  and consumed on startup. Splitting + reload returns to a single
-  pane with the persisted tabs in pane 0; pane 1's tabs are lost.
-  Schema v2 (with `panes: PersistedPane[]`) is a follow-up.
+- Persistence: each pane writes to its own
+  `asciimark-tab-session-pane-N` slot. PaneManager persists
+  `{paneCount, activePaneIndex}` to `asciimark-pane-layout` and
+  the splitter ratio to `asciimark-pane-split-ratio`. Old
+  single-pane installs are migrated automatically on first load
+  via `migrateLegacyTabSession`: the legacy
+  `asciimark-tab-session` slot is moved into pane-0's slot and
+  the old key is removed. Reload restores the full split
+  workspace (count, focus, ratio, both panes' tabs).
 - Watcher: still singleton, follows active pane. Editing a file
   in pane 1 while pane 0 is active won't auto-refresh pane 1's
   preview until the user focuses pane 1. Acceptable trade-off

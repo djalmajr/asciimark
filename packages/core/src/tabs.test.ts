@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
+  LEGACY_STORAGE_KEY,
   clearTabSession,
   getTabSession,
   makeTabId,
+  migrateLegacyTabSession,
   parseTabId,
   setTabSession,
   type PersistedTabSession,
@@ -123,5 +125,65 @@ describe("tab session persistence", () => {
     });
     clearTabSession();
     expect(localStorage.getItem("asciimark-tab-session")).toBeNull();
+  });
+
+  it("get/setTabSession respect a custom storage key (per-pane scope)", () => {
+    // Domain rule: each pane writes to its own slot so two panes do
+    // not clobber each other's tab list.
+    const session: PersistedTabSession = {
+      activeTabId: "r::a",
+      tabs: [
+        { editorMode: "edit", fileName: "a", filePath: "a", id: "r::a", isPinned: true, rootId: "r" },
+      ],
+    };
+    setTabSession(session, "asciimark-tab-session-pane-0");
+    setTabSession({ ...session, activeTabId: "r::b", tabs: [{ ...session.tabs[0]!, id: "r::b", filePath: "b", fileName: "b" }] }, "asciimark-tab-session-pane-1");
+
+    expect(getTabSession("asciimark-tab-session-pane-0")?.activeTabId).toBe("r::a");
+    expect(getTabSession("asciimark-tab-session-pane-1")?.activeTabId).toBe("r::b");
+    // Default key (legacy) untouched.
+    expect(localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe("migrateLegacyTabSession", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("copies the legacy single-pane key into a pane-scoped key and clears the legacy slot", () => {
+    // Mutation captured: removing the `localStorage.removeItem(LEGACY_STORAGE_KEY)`
+    // line would leave the legacy slot in place — test fails by detecting
+    // that the legacy key still has the payload.
+    const session: PersistedTabSession = {
+      activeTabId: "r::x",
+      tabs: [{ editorMode: "preview", fileName: "x", filePath: "x", id: "r::x", isPinned: true, rootId: "r" }],
+    };
+    setTabSession(session); // writes to legacy
+    expect(localStorage.getItem(LEGACY_STORAGE_KEY)).not.toBeNull();
+
+    const moved = migrateLegacyTabSession("asciimark-tab-session-pane-0");
+    expect(moved).toBe(true);
+    expect(localStorage.getItem("asciimark-tab-session-pane-0")).not.toBeNull();
+    expect(localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull();
+  });
+
+  it("is a no-op when the target slot already has data", () => {
+    setTabSession({ activeTabId: null, tabs: [{ editorMode: "edit", fileName: "x", filePath: "x", id: "r::x", isPinned: true, rootId: "r" }] }); // legacy
+    setTabSession({ activeTabId: null, tabs: [{ editorMode: "edit", fileName: "y", filePath: "y", id: "r::y", isPinned: true, rootId: "r" }] }, "asciimark-tab-session-pane-0");
+
+    const moved = migrateLegacyTabSession("asciimark-tab-session-pane-0");
+    expect(moved).toBe(false);
+    expect(getTabSession("asciimark-tab-session-pane-0")?.activeTabId).toBeNull();
+    expect(getTabSession("asciimark-tab-session-pane-0")?.tabs[0]?.id).toBe("r::y");
+  });
+
+  it("returns false when there is nothing to migrate", () => {
+    expect(migrateLegacyTabSession("asciimark-tab-session-pane-0")).toBe(false);
+  });
+
+  it("refuses to migrate to the legacy key (no self-loop)", () => {
+    setTabSession({ activeTabId: null, tabs: [{ editorMode: "edit", fileName: "x", filePath: "x", id: "r::x", isPinned: true, rootId: "r" }] });
+    expect(migrateLegacyTabSession(LEGACY_STORAGE_KEY)).toBe(false);
   });
 });

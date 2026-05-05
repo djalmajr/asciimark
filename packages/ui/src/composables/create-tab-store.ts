@@ -49,10 +49,14 @@ interface TabStoreConfig {
    *  pane signals are the working copy that the editor + preview
    *  components actually read. */
   pane: PaneViewSlice;
+  /** Override the localStorage key the persisted tab list lives at.
+   *  Used by `createPaneStore` to give each pane an isolated session
+   *  blob. Defaults to the legacy single-pane key. */
+  storageKey?: string;
 }
 
 export function createTabStore(config: TabStoreConfig): TabStore {
-  const { pane } = config;
+  const { pane, storageKey } = config;
 
   const [tabList, setTabList] = createSignal<TabState[]>([]);
   const [activeId, setActiveId] = createSignal<TabId | null>(null);
@@ -355,25 +359,32 @@ export function createTabStore(config: TabStoreConfig): TabStore {
     persistTimer = setTimeout(() => {
       const tabs = tabList();
       if (tabs.length === 0) {
-        localStorage.removeItem("asciimark-tab-session");
+        if (storageKey) {
+          localStorage.removeItem(storageKey);
+        } else {
+          localStorage.removeItem("asciimark-tab-session");
+        }
         return;
       }
-      setTabSession({
-        tabs: tabs.map((t) => ({
-          id: t.id,
-          filePath: t.filePath,
-          rootId: t.rootId,
-          fileName: t.fileName,
-          isPinned: true,
-          editorMode: t.editorMode,
-        })),
-        activeTabId: activeId(),
-      });
+      setTabSession(
+        {
+          tabs: tabs.map((t) => ({
+            id: t.id,
+            filePath: t.filePath,
+            rootId: t.rootId,
+            fileName: t.fileName,
+            isPinned: true,
+            editorMode: t.editorMode,
+          })),
+          activeTabId: activeId(),
+        },
+        storageKey,
+      );
     }, 500);
   }
 
   function getPersistedSession(): PersistedTabSession | null {
-    return getTabSession();
+    return getTabSession(storageKey);
   }
 
   return {

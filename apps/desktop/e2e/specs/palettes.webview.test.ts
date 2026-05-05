@@ -345,6 +345,51 @@ describe("desktop palettes (Cmd/Ctrl+P family)", () => {
     );
   });
 
+  it("split-pane layout writes paneCount + activePaneIndex + splitRatio to localStorage", async () => {
+    if (!bridge) return;
+    // Persistence is unit-tested in `create-pane-manager.test.ts`. Here
+    // we just verify that operating on the live app actually populates
+    // the storage slots — the slot-write is the contract that the
+    // restore-on-load logic depends on. We don't reload the page in
+    // the e2e because reload kills the bridge handle and the test
+    // harness can't reuse it without orchestration.
+    const isMac = (await bridge.evalJs("navigator.platform.startsWith('Mac')")) === true;
+
+    await clickFirstSupportedFile(bridge);
+    await bridge.evalJs(
+      `window.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "\\\\", metaKey: ${isMac}, ctrlKey: ${!isMac}, bubbles: true, cancelable: true,
+      }))`,
+    );
+    await expectEventually(async () =>
+      ((await bridge!.evalJs(`document.querySelectorAll(".pane-view").length`)) as number) === 2,
+    );
+
+    const persisted = (await bridge.evalJs(
+      `({
+        layout: localStorage.getItem("asciimark-pane-layout"),
+        pane0: localStorage.getItem("asciimark-tab-session-pane-0"),
+      })`,
+    )) as { layout: string | null; pane0: string | null };
+    expect(persisted.layout).not.toBeNull();
+    const layout = JSON.parse(persisted.layout!);
+    expect(layout.paneCount).toBe(2);
+    expect(layout.activePaneIndex).toBe(1); // split-from-active focuses the new pane
+    // The split ratio is only persisted once the user drags the splitter
+    // (default 0.5 stays unset). Ratio persistence is exercised in the
+    // unit test instead.
+
+    // Collapse for cleanup so following tests start single-pane.
+    await bridge.evalJs(
+      `window.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "\\\\", metaKey: ${isMac}, ctrlKey: ${!isMac}, bubbles: true, cancelable: true,
+      }))`,
+    );
+    await expectEventually(async () =>
+      ((await bridge!.evalJs(`document.querySelectorAll(".pane-view").length`)) as number) === 1,
+    );
+  });
+
   it("Cmd/Ctrl+1 / Cmd/Ctrl+2 switch focus between split panes", async () => {
     if (!bridge) return;
 

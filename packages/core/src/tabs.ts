@@ -39,11 +39,17 @@ export function parseTabId(tabId: TabId): { rootId: string; filePath: string } {
   return { rootId: tabId.slice(0, idx), filePath: tabId.slice(idx + 2) };
 }
 
-const STORAGE_KEY = "asciimark-tab-session";
+/** Legacy single-pane session storage key. New code writes pane-scoped
+ *  keys (`asciimark-tab-session-pane-N`) and falls back to this when
+ *  upgrading from a single-pane install. The legacy key is removed
+ *  after a successful migration so subsequent loads don't double-read. */
+export const LEGACY_STORAGE_KEY = "asciimark-tab-session";
 
-export function getTabSession(): PersistedTabSession | null {
+const DEFAULT_STORAGE_KEY = LEGACY_STORAGE_KEY;
+
+export function getTabSession(storageKey: string = DEFAULT_STORAGE_KEY): PersistedTabSession | null {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(storageKey);
     if (!stored) return null;
 
     // Validate the wrapper, but tolerate individual broken tabs by filtering
@@ -67,7 +73,10 @@ export function getTabSession(): PersistedTabSession | null {
   }
 }
 
-export function setTabSession(session: PersistedTabSession): void {
+export function setTabSession(
+  session: PersistedTabSession,
+  storageKey: string = DEFAULT_STORAGE_KEY,
+): void {
   // Normalize through the schema so accidental extra runtime fields
   // never reach storage.
   const normalized: PersistedTabSession = {
@@ -86,9 +95,26 @@ export function setTabSession(session: PersistedTabSession): void {
   if (!validated) {
     throw new Error("setTabSession: invalid PersistedTabSession");
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(validated));
+  localStorage.setItem(storageKey, JSON.stringify(validated));
 }
 
-export function clearTabSession(): void {
-  localStorage.removeItem(STORAGE_KEY);
+export function clearTabSession(storageKey: string = DEFAULT_STORAGE_KEY): void {
+  localStorage.removeItem(storageKey);
+}
+
+/**
+ * Move a session blob from the legacy single-pane key to the new
+ * pane-scoped key (typically `asciimark-tab-session-pane-0`). Idempotent
+ * and harmless when no legacy data exists. Returns true when a migration
+ * actually happened so the caller can log it once.
+ */
+export function migrateLegacyTabSession(targetKey: string): boolean {
+  if (targetKey === LEGACY_STORAGE_KEY) return false;
+  if (typeof localStorage === "undefined") return false;
+  if (localStorage.getItem(targetKey)) return false;
+  const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (!legacy) return false;
+  localStorage.setItem(targetKey, legacy);
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+  return true;
 }

@@ -1,6 +1,7 @@
 import { createSignal, type Setter } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import type { Frontmatter } from "@asciimark/core/frontmatter.ts";
+import { migrateLegacyTabSession } from "@asciimark/core/tabs.ts";
 import { createTabStore, type TabStore } from "./create-tab-store.ts";
 
 export type EditorMode = "edit" | "split" | "preview";
@@ -81,7 +82,17 @@ export function createPaneStore(paneId: string): PaneStore {
     setLoading,
   };
 
-  const tabs = createTabStore({ pane: slice });
+  // Each pane gets its own localStorage slot so two panes can save
+  // independent tab lists. The first pane (paneId="pane-0") also
+  // absorbs any session left by an older single-pane build via
+  // `migrateLegacyTabSession` — idempotent and harmless when there
+  // is nothing to migrate.
+  const storageKey = `asciimark-tab-session-${paneId}`;
+  if (paneId === "pane-0") {
+    migrateLegacyTabSession(storageKey);
+  }
+
+  const tabs = createTabStore({ pane: slice, storageKey });
 
   return {
     paneId,

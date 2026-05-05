@@ -12,10 +12,16 @@ const MAX_PANES = 2;
 
 const DEFAULT_SPLIT_RATIO = 0.5;
 const SPLIT_RATIO_STORAGE_KEY = "asciimark-pane-split-ratio";
+const PANE_LAYOUT_STORAGE_KEY = "asciimark-pane-layout";
 /** Constrain the splitter so neither pane collapses to 0px (the user
  *  could still close the pane via Cmd/Ctrl+W to dismiss it). */
 const MIN_SPLIT_RATIO = 0.1;
 const MAX_SPLIT_RATIO = 0.9;
+
+interface PersistedPaneLayout {
+  paneCount: number;
+  activePaneIndex: number;
+}
 
 export interface PaneManager {
   panes: () => PaneStore[];
@@ -46,10 +52,22 @@ export interface PaneManagerConfig {
 }
 
 export function createPaneManager(config: PaneManagerConfig = {}): PaneManager {
-  const [paneList, setPaneList] = createSignal<PaneStore[]>([
-    createPaneStore("pane-0"),
-  ]);
-  const [activeIndex, setActiveIndex] = createSignal(0);
+  // Restore the persisted layout (pane count + active index) so the
+  // user comes back to a 2-pane workspace if they had one. Each pane's
+  // tab list is restored independently by its own `createPaneStore`
+  // (via the pane-scoped storage key).
+  const persistedLayout = readStoredLayout();
+  const initialPaneCount = Math.min(2, Math.max(1, persistedLayout?.paneCount ?? 1));
+  const initialPanes: PaneStore[] = [];
+  for (let i = 0; i < initialPaneCount; i += 1) {
+    initialPanes.push(createPaneStore(`pane-${i}`));
+  }
+  const initialActive = persistedLayout
+    ? Math.min(Math.max(0, persistedLayout.activePaneIndex), initialPaneCount - 1)
+    : 0;
+
+  const [paneList, setPaneList] = createSignal<PaneStore[]>(initialPanes);
+  const [activeIndex, setActiveIndex] = createSignal(initialActive);
 
   const initialRatio = clamp(
     config.initialSplitRatio ?? readStoredSplitRatio() ?? DEFAULT_SPLIT_RATIO,
@@ -72,6 +90,7 @@ export function createPaneManager(config: PaneManagerConfig = {}): PaneManager {
     const list = paneList();
     if (index < 0 || index >= list.length) return;
     setActiveIndex(index);
+    persistLayout();
   }
 
   function setSplitRatio(value: number) {
@@ -89,6 +108,7 @@ export function createPaneManager(config: PaneManagerConfig = {}): PaneManager {
     // The newly opened pane becomes active so subsequent file-tree
     // clicks land there, matching VS Code's split-and-focus behavior.
     setActiveIndex(list.length);
+    persistLayout();
     return true;
   }
 
@@ -99,6 +119,29 @@ export function createPaneManager(config: PaneManagerConfig = {}): PaneManager {
     // Active index is clamped on next access via `activePane()`, but
     // also reset explicitly so the focus class flips immediately.
     if (activeIndex() >= list.length - 1) setActiveIndex(list.length - 2);
+    // Drop the now-orphaned pane's tab session so it doesn't haunt the
+    // next reload as a phantom pane.
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.removeItem(`asciimark-tab-session-pane-${list.length - 1}`);
+      }
+    } catch {
+      // ignore — non-essential
+    }
+    persistLayout();
+  }
+
+  function persistLayout(): void {
+    try {
+      if (typeof localStorage === "undefined") return;
+      const layout: PersistedPaneLayout = {
+        paneCount: paneList().length,
+        activePaneIndex: activeIndex(),
+      };
+      localStorage.setItem(PANE_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+    } catch {
+      // ignore
+    }
   }
 
   return {
@@ -136,5 +179,27 @@ function writeStoredSplitRatio(value: number): void {
     localStorage.setItem(SPLIT_RATIO_STORAGE_KEY, String(value));
   } catch {
     // Quota / privacy mode — silently drop; non-essential.
+  }
+}
+
+function readStoredLayout(): PersistedPaneLayout | undefined {
+  try {
+    if (typeof localStorage === "undefined") return undefined;
+    const raw = localStorage.getItem(PANE_LAYOUT_STORAGE_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as Partial<PersistedPaneLayout>;
+    if (
+      typeof parsed.paneCount === "number" &&
+      typeof parsed.activePaneIndex === "number" &&
+      parsed.paneCount >= 1 &&
+      parsed.paneCount <= 2 &&
+      parsed.activePaneIndex >= 0 &&
+      parsed.activePaneIndex < parsed.paneCount
+    ) {
+      return parsed as PersistedPaneLayout;
+    }
+    return undefined;
+  } catch {
+    return undefined;
   }
 }
