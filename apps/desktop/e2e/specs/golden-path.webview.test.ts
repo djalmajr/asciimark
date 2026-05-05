@@ -85,14 +85,15 @@ describe("desktop golden path", () => {
     });
   });
 
-  it("eval can detect the editor mount point in the DOM", async () => {
+  it("eval can detect the rendered AppShell in the DOM", async () => {
     if (!bridge) return;
-    // Look for `.app-shell` or `.editor` — both are stable selectors used in
-    // the rendered Solid app. We accept either to keep the test resilient
-    // to small layout reshuffles.
+    // `.app` is the root class set by `<AppShell>` (see app-shell.tsx).
+    // `.file-tree-search-wrapper` is the sidebar's filter input — present
+    // when at least one workspace root is visible. Either one being
+    // mounted means the Solid render has produced output.
     const found = await expectEventually(async () => {
       const result = (await bridge!.evalJs(
-        "!!document.querySelector('.app-shell, .editor, [data-app-shell]')",
+        "!!document.querySelector('.app, .file-tree-search-wrapper')",
       )) as boolean;
       return result;
     }).then(() => true).catch(() => false);
