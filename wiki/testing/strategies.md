@@ -619,6 +619,194 @@ shaped like the file-loader was):
 The audit is a search-and-read exercise — spot the patterns, fix
 + DI-test each one as Lesson 5 prescribes.
 
+## Round 5 — module-level mutable state × multiple component instances
+
+### Incident
+
+After v0.8.0 shipped, a screenshot for the site showed a real
+regression: in split-pane mode, the second pane's preview
+occasionally rendered as an empty `<article>` even though the TOC
+populated correctly (so the HTML *had* been computed and `setHtml`
+*had* been called on the right pane). The bug was reproducible 7/8
+times when reloading the app, opening README.md in pane 0,
+splitting with `Cmd/Ctrl+\`, and clicking BACKLOG.md in the new
+pane.
+
+### Trial-loop reproductor (the technique)
+
+Intermittent rendering bugs need *statistical* evidence — a single
+"it worked for me" is meaningless when the symptom shows up
+half the time. We drove the live app via the `tauri-plugin-mcp-bridge`
+in a loop:
+
+```ts
+// scripts/repro-split-panes.ts (illustrative)
+import { connectBridge } from "../apps/desktop/e2e/bridge.ts";
+
+const b = await connectBridge();
+let bug = 0;
+for (let trial = 0; trial < 20; trial++) {
+  // 1. Reset state and reload the webview.
+  await b.evalJs(`
+    for (const k of Object.keys(localStorage)) localStorage.removeItem(k);
+    window.location.reload();
+  `);
+  await new Promise((r) => setTimeout(r, 4000));
+
+  // 2. Reconnect (the WebSocket dropped on reload), open the
+  //    fixture workspace, click a file, wait for the preview.
+  const c = await connectBridge();
+  await c.evalJs(`window.__DEV__.openFolder("/path/to/fixture")`);
+  await new Promise((r) => setTimeout(r, 1500));
+  // …click README.md, await `.content article` non-empty…
+
+  // 3. Reproduce: split + click another file.
+  await c.evalJs(`window.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "\\\\", metaKey: true, bubbles: true, cancelable: true,
+  }))`);
+  await new Promise((r) => setTimeout(r, 600));
+  // …click BACKLOG.md in the now-active pane 1…
+  await new Promise((r) => setTimeout(r, 3000));
+
+  // 4. Score.
+  const len = await c.evalJs(
+    `document.querySelectorAll(".pane-view")[1]?.querySelector(".content article")?.innerHTML?.length ?? 0`,
+  );
+  if (len === 0) bug++;
+  c.close();
+}
+console.log(`bug repro: ${bug}/20`);
+```
+
+A *trial* in this context is one full setup → reproduce → measure
+cycle, with a hard reset between iterations so prior runs can't
+mask the failure mode. The script is a manual harness — it lives
+in `scripts/` only while a bug is being chased and is deleted
+once the fix lands. The signal we care about is the **rate**
+(7/8 → 4/8 → 0/20), not any individual run.
+
+### Root cause
+
+```ts
+// packages/ui/src/components/preview.tsx, BEFORE
+let renderGen = 0;          // ← module-level
+
+async function highlightCodeBlocks(c, gen) {
+  if (gen !== renderGen) return;   // closes over module binding
+  // …
+}
+
+export function Preview(props) {
+  // …
+  createEffect(() => {
+    const gen = ++renderGen;       // mutates module state
+    queueMicrotask(async () => {
+      await highlightCodeBlocks(buffer, gen);
+      if (gen !== renderGen) return;  // ← false abort
+      await renderMermaidBlocks(buffer, gen);
+      // …
+      articleRef!.replaceChildren(...);
+    });
+  });
+}
+```
+
+With one `Preview` mounted, `renderGen` is the right cancellation
+token: every `setHtml` bumps it, in-flight microtasks bail out, the
+*latest* render wins. With **two** `Preview` instances mounted (split
+panes), `renderGen` is shared. A `setHtml` in pane 1 increments the
+counter that pane 0's still-running microtask is checking — pane 0
+aborts mid-swap and ends with whatever was in `articleRef`
+beforehand (possibly nothing, if it was a fresh mount).
+
+### Fix
+
+Move the counter into the component body and pass a per-instance
+predicate to the post-processors:
+
+```ts
+// AFTER
+type IsStaleFn = (gen: number) => boolean;
+
+async function highlightCodeBlocks(c, gen, isStale: IsStaleFn) {
+  if (isStale(gen)) return;
+}
+
+export function Preview(props) {
+  // each Preview owns its own counter; cross-instance interference
+  // is impossible.
+  let renderGen = 0;
+  const isStale: IsStaleFn = (gen) => gen !== renderGen;
+
+  createEffect(() => {
+    const gen = ++renderGen;
+    queueMicrotask(async () => {
+      await highlightCodeBlocks(buffer, gen, isStale);
+      if (isStale(gen)) return;
+      // …
+    });
+  });
+}
+```
+
+### The lesson
+
+> Module-level mutable state in a component file is invisible
+> coupling between every instance of that component. The first
+> instance hides the bug; the second one exposes it.
+
+It's a class of bug the test suite cannot reach by exercising one
+component in isolation. Unit tests pass. Property tests pass.
+Mutation testing on the predicate (`gen !== renderGen` → `===`)
+won't kill the mutant unless the test instantiates **two** Previews
+concurrently, drives them in parallel, and asserts both articles
+end populated.
+
+#### Concrete tests we should land
+
+1. **Component test (vitest + @solidjs/testing-library)** — render two
+   `<Preview>` side by side, drive `props.html` on both with timing
+   that exercises the cancellation paths. Assert each article
+   contains the right content. This is the determinístic
+   regression test for *exactly* the renderGen bug.
+2. **E2E flake-quarantine** — keep a small spec that does
+   open-A → split → open-B → assert pane-1 non-empty, run it under
+   `release-check` with a flake threshold (e.g. 1 fail in 20
+   acceptable). The trial-loop reproductor from this round is the
+   spec's body; it's already most of the work.
+
+#### Audit pattern to remember
+
+Search for any module-level `let` in shared component files. Each
+one is a candidate:
+
+```bash
+grep -rn "^let " packages/ui/src/components/
+```
+
+For each hit, ask: *what happens when this component renders
+twice?* If the answer is "the two instances stomp on each other,"
+move it into the component body. The bar is **per-instance state
+must live per-instance** — anything else is a future flaky-test
+and a real-world incident waiting to happen.
+
+### What threw us off during diagnosis
+
+- **HMR cache.** After committing the renderGen fix, the bug
+  appeared to persist (~5/10 reproductions). It didn't — the
+  running `dev:app` was still serving the pre-fix bundle. Restart
+  `bun run dev:app` end-to-end after touching `Preview` (or any
+  double-buffering / cancellation logic) before drawing
+  conclusions about whether the fix worked. HMR is fine for
+  cosmetic changes; it's a liability for changes to module-level
+  state because the module isn't re-evaluated on update.
+- **Symptom asymmetry.** The TOC populated even when the article
+  was empty. Why: TOC extraction happens in `afterSwap`, which
+  runs *after* the abort check. A render that aborted between
+  highlight and replaceChildren produces TOC + empty article —
+  exactly what we observed. When two pieces of UI on the same
+  pane disagree, suspect partial-completion of an async pipeline.
+
 ## Fontes
 
 - [Wikipedia: Metamorphic testing](https://en.wikipedia.org/wiki/Metamorphic_testing)

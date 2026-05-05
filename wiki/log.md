@@ -2,6 +2,33 @@
 
 Operations on this wiki, newest first.
 
+## [2026-05-05] post-mortem | Module-level renderGen broke split-pane previews
+
+A site screenshot exposed a regression: in split mode, the second
+pane's preview occasionally rendered as an empty `<article>` even
+though the TOC populated correctly. Reproducible 7/8 times on cold
+start with `Cmd/Ctrl+\` to split + click another file in the new
+pane.
+
+Root cause: `let renderGen = 0` at module scope in
+`packages/ui/src/components/preview.tsx`. With two `<Preview>`
+instances mounted (one per pane), they shared the cancellation
+token; a `setHtml` in pane 1 incremented the counter that pane 0's
+in-flight microtask was watching, aborting it mid-swap. Fix: scoped
+`renderGen` to the component body and passed an `isStale` predicate
+to the top-level async post-processors. Bug rate dropped to 0/20+
+on the same trial-loop reproductor.
+
+False signal during debugging: HMR kept the old bundle cached
+after the fix, suggesting the bug was only partially fixed (~5/10
+trials). Restarting `dev:app` end-to-end made the rate fall to 0.
+Lesson: HMR is unreliable for changes to module-level state since
+the module is not re-evaluated.
+
+Documented as Round 5 in `testing/strategies.md` along with the
+trial-loop technique for measuring intermittent rendering bugs and
+two follow-up tests we should land.
+
 ## [2026-05-05] doc | Extension release flow
 
 Created `release/extension.md` and linked it from `index.md`. The
