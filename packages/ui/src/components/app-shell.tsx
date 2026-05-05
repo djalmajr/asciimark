@@ -171,6 +171,14 @@ interface AppShellProps {
    * just wasted real estate). Defaults to true so desktop keeps it.
    */
   enableSplit?: boolean;
+
+  /** Reload the active document. Wired by the host (extension URL mode
+   *  re-fetches; folder mode re-reads from disk). When omitted, the
+   *  toolbar Reload button is hidden. */
+  onReload?: () => void;
+  /** Copy the source URL of the active document. Used by the extension
+   *  in URL mode for share/bookmark workflows. Hidden when omitted. */
+  onCopySource?: () => void;
 }
 
 export function AppShell(props: AppShellProps) {
@@ -411,6 +419,8 @@ export function AppShell(props: AppShellProps) {
             onThemeChange={s.handleThemeChange}
             onToggleSidebar={() => s.setSidebarVisible((v) => !v)}
             onToggleToc={() => s.setTocVisible((v) => !v)}
+            onReload={props.onReload}
+            onCopySource={props.onCopySource}
             onWindowDragStart={props.onWindowDragStart}
             onWindowTitleDoubleClick={props.onWindowTitleDoubleClick}
           />

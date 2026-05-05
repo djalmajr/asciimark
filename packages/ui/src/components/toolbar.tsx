@@ -4,6 +4,7 @@ import type { RecentFolder } from "@asciimark/core/recent-folders.ts";
 import IconArrowLeft from "~icons/lucide/arrow-left";
 import IconArrowRight from "~icons/lucide/arrow-right";
 import IconClock from "~icons/lucide/clock";
+import IconCopy from "~icons/lucide/copy";
 import IconDownload from "~icons/lucide/download";
 import IconFileDown from "~icons/lucide/file-down";
 import IconFileText from "~icons/lucide/file-text";
@@ -15,6 +16,7 @@ import IconMoon from "~icons/lucide/moon";
 import IconPanelLeft from "~icons/lucide/panel-left";
 import IconColumns from "~icons/lucide/columns-2";
 import IconMenu from "~icons/lucide/menu";
+import IconRefreshCw from "~icons/lucide/refresh-cw";
 import IconSun from "~icons/lucide/sun";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 import { Toggle } from "./ui/toggle.tsx";
@@ -79,6 +81,17 @@ interface ToolbarProps {
   onToggleToc: () => void;
   onWindowDragStart?: () => void | Promise<void>;
   onWindowTitleDoubleClick?: () => void | Promise<void>;
+  /**
+   * Reload the active document. When supplied, a refresh button shows
+   * in the top toolbar. URL mode re-fetches; folder mode re-reads from
+   * disk. Hidden when omitted.
+   */
+  onReload?: () => void;
+  /**
+   * Copy the URL of the current document to the clipboard. Wired by the
+   * extension in URL mode. Hidden when omitted.
+   */
+  onCopySource?: () => void;
 }
 
 export function Toolbar(props: ToolbarProps) {
@@ -133,6 +146,93 @@ export function Toolbar(props: ToolbarProps) {
           <IconColumns width={16} height={16} />
         </TooltipTrigger>
         <TooltipContent>Split editor</TooltipContent>
+      </Tooltip>
+    </Show>
+  );
+
+  // Cycle System → Light → Dark → System. The dropdown menu still
+  // exposes the explicit selection; this button is just the fast path.
+  function nextTheme(): "system" | "light" | "dark" {
+    return props.themeMode === "system"
+      ? "light"
+      : props.themeMode === "light"
+        ? "dark"
+        : "system";
+  }
+
+  const renderThemeButton = () => (
+    <Tooltip>
+      <TooltipTrigger
+        as="button"
+        class="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm hover:bg-accent hover:text-accent-foreground"
+        aria-label={`Theme: ${props.themeMode}`}
+        onClick={() => props.onThemeChange(nextTheme())}
+      >
+        <Show
+          when={props.themeMode === "system"}
+          fallback={
+            <Show
+              when={props.darkMode}
+              fallback={<IconSun width={16} height={16} />}
+            >
+              <IconMoon width={16} height={16} />
+            </Show>
+          }
+        >
+          <IconMonitor width={16} height={16} />
+        </Show>
+      </TooltipTrigger>
+      <TooltipContent>Cycle theme ({props.themeMode})</TooltipContent>
+    </Tooltip>
+  );
+
+  const renderReload = () => (
+    <Show when={props.onReload && props.hasFile}>
+      <Tooltip>
+        <TooltipTrigger
+          as="button"
+          class="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm hover:bg-accent hover:text-accent-foreground"
+          aria-label="Reload document"
+          onClick={props.onReload}
+        >
+          <IconRefreshCw width={16} height={16} />
+        </TooltipTrigger>
+        <TooltipContent>Reload document</TooltipContent>
+      </Tooltip>
+    </Show>
+  );
+
+  const renderCopySource = () => (
+    <Show when={props.onCopySource && props.hasFile}>
+      <Tooltip>
+        <TooltipTrigger
+          as="button"
+          class="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm hover:bg-accent hover:text-accent-foreground"
+          aria-label="Copy source URL"
+          onClick={props.onCopySource}
+        >
+          <IconCopy width={16} height={16} />
+        </TooltipTrigger>
+        <TooltipContent>Copy source URL</TooltipContent>
+      </Tooltip>
+    </Show>
+  );
+
+  // Surface "Open Folder" as a visible button when nothing's open yet,
+  // so first-time users on the welcome screen don't have to dig through
+  // the hamburger menu to discover the folder picker.
+  const renderOpenFolderButton = () => (
+    <Show when={props.onOpenFolder && !props.hasRoot && !props.hasFile}>
+      <Tooltip>
+        <TooltipTrigger
+          as="button"
+          class="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm hover:bg-accent hover:text-accent-foreground"
+          aria-label="Open folder"
+          onClick={props.onOpenFolder}
+        >
+          <IconFolder width={16} height={16} />
+        </TooltipTrigger>
+        <TooltipContent>Open folder</TooltipContent>
       </Tooltip>
     </Show>
   );
@@ -264,6 +364,9 @@ export function Toolbar(props: ToolbarProps) {
           {renderSidebarToggle()}
           {renderTocToggle()}
           {renderSplitToggle()}
+          {renderReload()}
+          {renderCopySource()}
+          {renderThemeButton()}
         </Show>
         <Show when={props.showNavButtons}>
           <Tooltip>
@@ -318,6 +421,10 @@ export function Toolbar(props: ToolbarProps) {
       </Show>
       <div class="toolbar-right" data-tauri-drag-region={props.inWindowFrame ? "" : undefined}>
         <Show when={!props.controlsOnLeft}>
+          {renderOpenFolderButton()}
+          {renderReload()}
+          {renderCopySource()}
+          {renderThemeButton()}
           {renderSidebarToggle()}
           {renderTocToggle()}
           {renderSplitToggle()}

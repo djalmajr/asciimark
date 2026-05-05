@@ -113,6 +113,27 @@ export function App() {
 
   const hasRoot = () => !!rootHandle() || rootHandles().size > 0 || !!fallbackFileMap();
 
+  // Reload the active doc. URL mode re-fetches the source; folder mode
+  // forces a re-read from disk via the loader. No-op when nothing's
+  // loaded — the toolbar button is gated on `hasFile` already.
+  function handleReload() {
+    if (isUrlMode && sourceUrl) {
+      void urlMode.initUrlMode(sourceUrl);
+      return;
+    }
+    const file = state.selectedFile();
+    if (file) {
+      void loader.loadFileContent(file, false, true);
+    }
+  }
+
+  // Copy the source URL to the clipboard. Falls back silently if the
+  // clipboard API isn't available (older Chromium / restricted contexts).
+  function handleCopySource() {
+    if (!isUrlMode || !sourceUrl) return;
+    void navigator.clipboard?.writeText(sourceUrl);
+  }
+
   return (
     <AppShell
       state={state}
@@ -121,8 +142,12 @@ export function App() {
       showEditorTabs={false}
       showNavButtons={!isUrlMode && hasRoot()}
       showPdfExport={false}
+      showRecentHistory={!isUrlMode}
       showSidebar={!isUrlMode && state.sidebarVisible() && hasRoot()}
-      showToolbar={isUrlMode || hasRoot()}
+      showToolbar={true}
+      onCopySource={isUrlMode ? handleCopySource : undefined}
+      onOpenFolder={!isUrlMode ? folder.handleOpenFolder : undefined}
+      onReload={handleReload}
       toolbarFilePath={isUrlMode ? displayPathFromUrl(sourceUrl!) : (state.selectedFile()?.path ?? null)}
       toolbarRootName={isUrlMode ? "" : state.rootName()}
       contentWrapper={(content) => (
