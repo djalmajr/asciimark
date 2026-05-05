@@ -32,7 +32,27 @@ function base64ToBytes(base64: string): Uint8Array {
  * template image — the black pixels adapt to the menu bar theme (white
  * on dark bar, black on light bar), matching native tray icons.
  */
+/**
+ * Stable id for the AsciiMark tray entry. Used both when creating
+ * the tray and when removing any leftover one before re-creating —
+ * HMR (and even cold dev restarts when the previous Rust process
+ * lingered briefly) can leave duplicates in the macOS menu bar.
+ */
+export const TRAY_ID = "asciimark-tray";
+
 export async function setupTray(deps: TrayDeps): Promise<void> {
+  // If a tray with our id already exists from a previous lifecycle —
+  // most commonly an HMR-induced re-mount of `App`, but also a cold
+  // restart while the OS hasn't yet GC'd the previous icon — remove
+  // it before adding the new one. Otherwise every restart stacks
+  // another "A" in the menu bar (we've seen up to 4 in dev).
+  await TrayIcon.removeById(TRAY_ID).catch(() => {
+    // Not present (or platform refused) — fine; the new() below will
+    // create a fresh one. Swallow so a missing tray doesn't block
+    // the rest of the setup.
+  });
+
+
   const showHide = await MenuItem.new({
     id: "tray-show-hide",
     text: "Show/Hide",
@@ -74,7 +94,7 @@ export async function setupTray(deps: TrayDeps): Promise<void> {
   const icon = await Image.fromBytes(base64ToBytes(TRAY_ICON_BASE64));
 
   await TrayIcon.new({
-    id: "asciimark-tray",
+    id: TRAY_ID,
     icon,
     menu,
     menuOnLeftClick: false,
