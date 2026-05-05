@@ -162,6 +162,15 @@ interface AppShellProps {
   onDragLeave?: (e: DragEvent) => void;
   onDragOver?: (e: DragEvent) => void;
   onDrop?: (e: DragEvent) => void;
+
+  /**
+   * Enable the split-pane affordances: toolbar split toggle,
+   * "Open in Split Pane" tab menu, and the active-pane border accent.
+   * The browser extension turns this off (split makes no sense in a
+   * single browser tab — duplicating preview/editor inside ~600px is
+   * just wasted real estate). Defaults to true so desktop keeps it.
+   */
+  enableSplit?: boolean;
 }
 
 export function AppShell(props: AppShellProps) {
@@ -370,13 +379,17 @@ export function AppShell(props: AppShellProps) {
             onCheckForUpdates={props.onCheckForUpdates}
             onShortcutsHelp={props.onShortcutsHelpOpen}
             isSplit={visiblePanes().length > 1}
-            onToggleSplit={() => {
-              if (s.paneManager.panes().length > 1) {
-                s.paneManager.collapseRightPane();
-              } else {
-                s.paneManager.splitFromActive();
-              }
-            }}
+            onToggleSplit={
+              props.enableSplit === false
+                ? undefined
+                : () => {
+                    if (s.paneManager.panes().length > 1) {
+                      s.paneManager.collapseRightPane();
+                    } else {
+                      s.paneManager.splitFromActive();
+                    }
+                  }
+            }
             supportsPreview={s.previewSupported()}
             inWindowFrame={!!props.windowFrameToolbar}
             controlsOnLeft={!!props.showWindowControls}
@@ -451,20 +464,25 @@ export function AppShell(props: AppShellProps) {
                         pane={pane}
                         paneIndex={i()}
                         isActive={
-                          // When secondary panes are hidden (no
-                          // workspace), force pane 0 to read as
-                          // active so the welcome screen has a
-                          // single visible focus indicator.
-                          visiblePanes().length === 1
-                            ? i() === 0
-                            : i() === s.paneManager.activePaneIndex()
+                          // The active-pane border accent only makes
+                          // sense when there is something to
+                          // distinguish from. With a single visible
+                          // pane there is no "other" to point at — the
+                          // 2px primary stripe just creates an empty
+                          // bar at the top (visible in the extension's
+                          // ~600px window). Restrict the active flag to
+                          // multi-pane layouts.
+                          visiblePanes().length > 1 &&
+                          i() === s.paneManager.activePaneIndex()
                         }
                         state={s}
                         flexBasis={paneFlexBasis(i(), visiblePanes().length, s.paneManager.splitRatio())}
                         tocContainer={
-                          // Only the active pane mounts its TOC into
-                          // the shared aside.toc-panel — keeps both
-                          // Previews from racing over the same node.
+                          // Only one pane mounts its TOC into the
+                          // shared aside.toc-panel — otherwise two
+                          // Previews race over the same DOM node.
+                          // With a single visible pane that's pane 0;
+                          // with two panes that's whichever is active.
                           (visiblePanes().length === 1
                             ? i() === 0
                             : i() === s.paneManager.activePaneIndex())
@@ -482,7 +500,9 @@ export function AppShell(props: AppShellProps) {
                         onActivateTab={props.onActivateTab}
                         onCloseTab={props.onCloseTab}
                         onNewTab={props.onNewTab}
-                        onMoveTab={props.onMoveTab}
+                        onMoveTab={
+                          props.enableSplit === false ? undefined : props.onMoveTab
+                        }
                         moveTabLabel={
                           s.paneManager.panes().length > 1
                             ? "Move to Other Pane"

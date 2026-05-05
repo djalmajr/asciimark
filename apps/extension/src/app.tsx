@@ -117,6 +117,7 @@ export function App() {
     <AppShell
       state={state}
       hasRoot={hasRoot()}
+      enableSplit={false}
       showEditorTabs={false}
       showNavButtons={!isUrlMode && hasRoot()}
       showPdfExport={false}
