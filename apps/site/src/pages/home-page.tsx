@@ -56,6 +56,11 @@ const featureItems: FeatureItem[] = [
       "CodeMirror editor with sync scroll, find-in-file, and configurable formatting.",
   },
   {
+    title: "Multi-root workspaces",
+    description:
+      "Pin several folders into the sidebar at once — handy when reading docs spread across repos.",
+  },
+  {
     title: "Local-first, auto-update",
     description:
       "Files stay on your machine; signed releases land via the auto-updater on startup.",
@@ -263,9 +268,8 @@ export function HomePage() {
           <Link class="feature-card feature-card-more" to="/guide">
             <h3>…and much more</h3>
             <p>
-              Multi-root workspaces, themes, PDF export, Chrome extension,
-              auto-update, and the full keyboard map. See the guide for
-              screenshots and details.
+              Themes, PDF export, the Chrome extension, the full keyboard
+              map, and more. See the guide for screenshots and details.
             </p>
           </Link>
         </div>
