@@ -33,17 +33,62 @@ const featureItems: FeatureItem[] = [
   {
     title: "AsciiDoc + Markdown",
     description:
-      "Renders both formats with admonitions, diagrams, and math in one viewer.",
+      "Renders both formats with admonitions, includes, frontmatter, and reusable partials in a single viewer.",
   },
   {
-    title: "Desktop + Extension",
+    title: "Split panes",
     description:
-      "Use it as a desktop app or as a browser extension depending on your workflow.",
+      "Open two files side by side. Drag tabs across panes, persist layout between sessions, focus with Cmd/Ctrl+1/2.",
+  },
+  {
+    title: "Quick navigation",
+    description:
+      "Cmd/Ctrl+P to open a file, Cmd/Ctrl+Shift+P for the command palette, Cmd/Ctrl+Shift+O to jump to a heading, Cmd/Ctrl+Shift+F to search across the workspace.",
+  },
+  {
+    title: "Multi-root workspaces",
+    description:
+      "Drop several folders into the sidebar and reorder them — useful when reading docs spread across repos.",
+  },
+  {
+    title: "Diagrams and math",
+    description:
+      "Mermaid, PlantUML, Graphviz via Kroki, plus KaTeX for inline and display math. Renders inside the preview, no extra setup.",
+  },
+  {
+    title: "Edit + Live preview",
+    description:
+      "CodeMirror editor with sync scroll, find-in-file, configurable indent and line numbers — all wired to the live preview pane.",
+  },
+  {
+    title: "Themes and typography",
+    description:
+      "Light, dark, and system themes. Pick from a curated set of editor and preview fonts and adjust size on the fly.",
+  },
+  {
+    title: "Export to PDF",
+    description:
+      "Print-ready PDF export from the preview, with the same fonts and theme you see on screen.",
   },
   {
     title: "Local-first",
     description:
-      "Open local folders, preview documents instantly, and keep source files in your own environment.",
+      "Files never leave your machine. The desktop app and extension both read directly from the filesystem.",
+  },
+  {
+    title: "Auto-update",
+    description:
+      "Tauri's updater pulls signed releases from GitHub on startup. Skip the App Store, install once, stay current.",
+  },
+  {
+    title: "Desktop + Extension",
+    description:
+      "Run as a Tauri desktop app on macOS, Linux, and Windows — or install the Chrome extension to preview .adoc/.md files inline.",
+  },
+  {
+    title: "Keyboard-first",
+    description:
+      "Every action exposed via the command palette and discoverable from the welcome screen's shortcuts hint.",
   },
 ];
 
@@ -82,41 +127,61 @@ const downloadItems: DownloadItem[] = [
 
 const screenshotItems: ScreenshotItem[] = [
   {
-    path: "/screenshots/extension-dropzone.png",
-    alt: "AsciiMark extension web mode waiting for drag and drop",
-    caption: "Quick start view in web mode",
+    path: "/screenshots/desktop-welcome.png",
+    alt: "AsciiMark welcome screen with drop zone and keyboard shortcuts hint",
+    caption: "Welcome screen — drop a folder or click to open",
   },
   {
-    path: "/screenshots/extension-folder-loaded.png",
-    alt: "AsciiMark extension with folder loaded and file tree visible",
-    caption: "Folder loaded with sidebar tree",
+    path: "/screenshots/desktop-workspace-preview.png",
+    alt: "AsciiMark with a Markdown file rendered alongside the file tree and TOC",
+    caption: "Live preview with sidebar tree and table of contents",
   },
   {
-    path: "/screenshots/extension-file-readme.png",
-    alt: "AsciiMark showing README.md from loaded folder",
-    caption: "Markdown file opened from the tree",
+    path: "/screenshots/desktop-split-panes.png",
+    alt: "Two files open in split panes side by side",
+    caption: "Split panes — read two files at the same time",
   },
   {
-    path: "/screenshots/extension-file-adoc.png",
-    alt: "AsciiMark showing AsciiDoc file from loaded folder",
-    caption: "AsciiDoc file opened from the tree",
+    path: "/screenshots/desktop-edit-preview.png",
+    alt: "Editor and preview panes side by side with sync scroll",
+    caption: "Edit + Preview — write and see the rendered output instantly",
   },
   {
-    path: "/screenshots/extension-preview-markdown.png",
-    alt: "AsciiMark rendering markdown document with table of contents",
-    caption: "Rendered Markdown with table of contents",
+    path: "/screenshots/desktop-quick-open.png",
+    alt: "Cmd/Ctrl+P fuzzy file picker showing matched files",
+    caption: "Quick Open (Cmd/Ctrl+P) — fuzzy-find any file",
   },
   {
-    path: "/screenshots/extension-settings.png",
-    alt: "AsciiMark settings menu in extension",
-    caption: "Settings menu and preferences",
+    path: "/screenshots/desktop-command-palette.png",
+    alt: "Cmd/Ctrl+Shift+P command palette listing actions",
+    caption: "Command Palette (Cmd/Ctrl+Shift+P) — every action in one place",
+  },
+  {
+    path: "/screenshots/desktop-symbol-palette.png",
+    alt: "Cmd/Ctrl+Shift+O heading navigator showing the document outline",
+    caption: "Go to Heading (Cmd/Ctrl+Shift+O) — jump anywhere in the document",
+  },
+  {
+    path: "/screenshots/desktop-find-in-files.png",
+    alt: "Cmd/Ctrl+Shift+F search across the workspace with grouped results",
+    caption: "Find in Files (Cmd/Ctrl+Shift+F) — search across the workspace",
+  },
+  {
+    path: "/screenshots/desktop-shortcuts-help.png",
+    alt: "Keyboard shortcuts modal listing every binding",
+    caption: "Shortcuts Help (Cmd/Ctrl+/) — discover bindings as you go",
+  },
+  {
+    path: "/screenshots/desktop-dark-theme.png",
+    alt: "AsciiMark in dark theme showing a rendered Markdown document",
+    caption: "Dark theme — easy on the eyes for late-night reading",
   },
 ];
 
 const heroPreviewItem: ScreenshotItem = {
-  path: "/screenshots/extension-preview-markdown.png",
-  alt: "AsciiMark preview rendering markdown content",
-  caption: "Live preview with TOC and search.",
+  path: "/screenshots/desktop-workspace-preview.png",
+  alt: "AsciiMark desktop app with Markdown file, sidebar tree, and table of contents",
+  caption: "Desktop preview with sidebar, tabs, and table of contents.",
 };
 
 function releaseUrl(asset: string) {
@@ -268,7 +333,7 @@ export function HomePage() {
       </section>
 
       <section class="grid-panel">
-        <h2 class="section-title">Why teams use AsciiMark</h2>
+        <h2 class="section-title">Features</h2>
         <div class="feature-grid">
           <For each={featureItems}>
             {(item) => (
@@ -311,7 +376,7 @@ export function HomePage() {
       <section class="grid-panel">
         <h2 class="section-title">Screenshots</h2>
         <p class="section-subtitle">
-          Captured from extension web mode. Chrome Web Store listing is currently under review.
+          Captured from the desktop app. The Chrome extension shares the same UI in a smaller window.
         </p>
         <div class="screenshot-grid">
           <For each={screenshotItems}>

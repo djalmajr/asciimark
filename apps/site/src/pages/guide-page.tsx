@@ -217,12 +217,12 @@ export function GuidePage() {
                 openImageModal({
                   alt: "Markdown file opened from sidebar tree",
                   caption: "Example of opening a file directly from the tree.",
-                  src: "/screenshots/extension-file-readme.png",
+                  src: "/screenshots/desktop-workspace-preview.png",
                 })
               }
               type="button"
             >
-              <img alt="Markdown file opened from sidebar tree" src="/screenshots/extension-file-readme.png" />
+              <img alt="Markdown file opened from sidebar tree" src="/screenshots/desktop-workspace-preview.png" />
             </button>
             <figcaption>Example of opening a file directly from the tree.</figcaption>
           </figure>
@@ -319,12 +319,12 @@ export function GuidePage() {
                 openImageModal({
                   alt: "Rendered markdown preview with sections",
                   caption: "Rendered output with markdown features.",
-                  src: "/screenshots/extension-preview-markdown.png",
+                  src: "/screenshots/desktop-workspace-preview.png",
                 })
               }
               type="button"
             >
-              <img alt="Rendered markdown preview with sections" src="/screenshots/extension-preview-markdown.png" />
+              <img alt="Rendered markdown preview with sections" src="/screenshots/desktop-workspace-preview.png" />
             </button>
             <figcaption>Rendered output with markdown features.</figcaption>
           </figure>
