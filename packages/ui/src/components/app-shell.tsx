@@ -1,20 +1,18 @@
-import { Show, createEffect, createMemo, createSignal, type JSX } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, type JSX } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import type { RecentFile } from "@asciimark/core/recent-files.ts";
 import { flattenWorkspace, type IndexedFile } from "@asciimark/core/file-index.ts";
 import type { AppState } from "../composables/create-app-state.ts";
+import type { PaneStore } from "../composables/create-pane-store.ts";
 import type { TabStore } from "../composables/create-tab-store.ts";
 import { AppProvider } from "../context/app-context.tsx";
 import { Toolbar } from "./toolbar.tsx";
-import { TabBar } from "./tab-bar.tsx";
-import { ContentToolbar } from "./content-toolbar.tsx";
-import { EditorToolbar } from "./editor-toolbar.tsx";
 import { FileTree } from "./file-tree.tsx";
-import { Preview } from "./preview.tsx";
-import { Editor } from "./editor.tsx";
 import { EmptyState } from "./empty-state.tsx";
 import { Toaster } from "./ui/toast.tsx";
 import { ConfirmDialog } from "./confirm-dialog.tsx";
+import { PaneView } from "./pane-view.tsx";
+import { PaneSplitter } from "./pane-splitter.tsx";
 import { QuickOpen } from "./quick-open.tsx";
 import { ShortcutsHelp } from "./shortcuts-help.tsx";
 import { CommandPalette } from "./command-palette.tsx";
@@ -163,31 +161,18 @@ export function AppShell(props: AppShellProps) {
   let tocContainerRef: HTMLDivElement | undefined;
   let tocPanelRef: HTMLElement | undefined;
   let appRef: HTMLDivElement | undefined;
-  let mainRef: HTMLDivElement | undefined;
-  let previewPanelRef: HTMLDivElement | undefined;
+  let panesContainerRef: HTMLDivElement | undefined;
 
-  // Wire tocPanelRef for state methods that need it
   const s = props.state;
-  const [editorUndoTrigger, setEditorUndoTrigger] = createSignal(0);
-  const [editorRedoTrigger, setEditorRedoTrigger] = createSignal(0);
-  const [canUndo, setCanUndo] = createSignal(false);
-  const [canRedo, setCanRedo] = createSignal(false);
-  const [editorSyncTargetRatio, setEditorSyncTargetRatio] = createSignal<number | null>(null);
-  const [editorSyncTargetVersion, setEditorSyncTargetVersion] = createSignal(0);
-  // Go-to-Symbol target line + version. The Editor watches `version` for
-  // changes (so the same line can be jumped to twice in a row).
-  const [editorScrollToLine, setEditorScrollToLine] = createSignal<number | null>(null);
-  const [editorScrollToLineVersion, setEditorScrollToLineVersion] = createSignal(0);
-  const [previewSyncTargetRatio, setPreviewSyncTargetRatio] = createSignal<number | null>(null);
-  const [previewSyncTargetVersion, setPreviewSyncTargetVersion] = createSignal(0);
 
-  const syncScrollActive = () => s.editorMode() === "split" && s.syncScroll() && !!s.selectedFile();
-
-  createEffect(() => {
-    if (syncScrollActive()) return;
-    setEditorSyncTargetRatio(null);
-    setPreviewSyncTargetRatio(null);
-  });
+  // Compute the flex basis for pane[i] given the split ratio. With 1
+  // pane, that pane takes the whole row. With 2, the splitter ratio
+  // governs the share — pane 0 gets `ratio`, pane 1 gets `1 - ratio`.
+  // Multiplied by 100 because flex-grow expects unitless integers.
+  function paneFlexBasis(index: number, count: number, ratio: number): number {
+    if (count <= 1) return 1;
+    return index === 0 ? ratio : 1 - ratio;
+  }
 
   function setTocExpanded(expanded: boolean) {
     if (!tocContainerRef) return;
@@ -201,56 +186,6 @@ export function AppShell(props: AppShellProps) {
       }
     }
   }
-
-  const defaultContent = () => (
-    <Show
-      when={s.selectedFile()}
-      fallback={
-        <EmptyState
-          favorites={s.favorites()}
-          hasRoot={props.hasRoot}
-          onOpenFolder={props.onOpenFolder}
-          onOpenRecentFile={props.onOpenRecentFile}
-          onOpenRecentFolder={props.onOpenRecentFolder}
-          onClearRecentHistory={s.handleClearRecentHistory}
-          onRemoveRecentFile={s.handleRemoveRecentFile}
-          onRemoveRecentFolder={s.handleRemoveRecentFolder}
-          onToggleFavorite={s.handleToggleFavorite}
-          onWindowDragStart={props.onWindowDragStart}
-          recentFiles={s.recentFiles()}
-          recentFolders={s.recentFolders()}
-          showRecentHistory={!!props.showRecentHistory}
-        />
-      }
-    >
-      <Preview
-        findTrigger={s.previewFindTrigger()}
-        html={s.html()}
-        frontmatter={s.frontmatter()}
-        resolveImageSrc={props.resolveImageSrc}
-        loading={s.loading()}
-        searchOpen={s.previewSearchOpen()}
-        syncScrollActive={syncScrollActive()}
-        syncScrollTargetRatio={previewSyncTargetRatio()}
-        syncScrollTargetVersion={previewSyncTargetVersion()}
-        tocVisible={s.tocVisible()}
-        tocContainer={tocContainerRef}
-        currentFilePath={s.selectedFile()?.path ?? null}
-        pendingFragment={s.pendingFragment()}
-        previewOverlayHost={previewPanelRef}
-        onScrollRatioChange={(ratio) => {
-          if (!syncScrollActive()) return;
-          setEditorSyncTargetRatio(ratio);
-          setEditorSyncTargetVersion((value) => value + 1);
-        }}
-        onFragmentHandled={() => s.setPendingFragment(null)}
-        onNavigate={props.onNavigate}
-        onOpenExternal={props.onOpenExternal}
-        onSearchOpenChange={s.setPreviewSearchOpen}
-        onTocChange={(has) => s.setHasToc(has)}
-      />
-    </Show>
-  );
 
   // Lazily flatten the workspace only while the Quick Open overlay is open.
   // `state.rootsList` is reactive, so the memo refreshes when files are
@@ -271,19 +206,22 @@ export function AppShell(props: AppShellProps) {
   });
 
   // Find-in-Files match selected → open the file via the host's
-  // `onLoadFile` and bump the editor's scrollToLine so the line is
-  // centered. The bump is deferred a microtask to give Solid time to
-  // flush the file load (which includes a fetch + convert pass) before
-  // the editor receives the new content.
+  // `onLoadFile` and bump the active pane's scrollToLine so the line
+  // is centered. The bump is deferred a microtask to give Solid time
+  // to flush the file load (which includes a fetch + convert pass)
+  // before the editor receives the new content. The scrollToLine
+  // setter is attached on the pane by `<PaneView>` itself (so we can
+  // address whichever pane is active when the user picked the match).
   function handleFindInFilesSelect(selection: MatchSelection) {
     const entry = s.findEntryByPath(selection.path, selection.rootId);
     if (entry && entry.kind === "file") {
       props.onLoadFile(entry, selection.rootId);
-      // Wait two ticks so the editor receives the new doc, then jump.
       queueMicrotask(() => {
         setTimeout(() => {
-          setEditorScrollToLine(selection.line);
-          setEditorScrollToLineVersion((v) => v + 1);
+          const pane = s.paneManager.activePane() as PaneStore & {
+            setScrollToLine?: (line: number) => void;
+          };
+          pane.setScrollToLine?.(selection.line);
         }, 0);
       });
     }
@@ -314,11 +252,14 @@ export function AppShell(props: AppShellProps) {
         open={!!props.symbolPaletteOpen}
         headings={symbolHeadings()}
         onSelect={(heading) => {
-          // Jump the editor to the heading line. Bumping `version`
-          // forces the createEffect inside the Editor to dispatch even
-          // when the same line is jumped to twice in a row.
-          setEditorScrollToLine(heading.line);
-          setEditorScrollToLineVersion((v) => v + 1);
+          // Route to the active pane's scrollToLine setter (attached
+          // by its <PaneView> instance). Mutating the pane signal
+          // re-tracks the editor effect even when the same line is
+          // jumped to twice in a row.
+          const pane = s.paneManager.activePane() as PaneStore & {
+            setScrollToLine?: (line: number) => void;
+          };
+          pane.setScrollToLine?.(heading.line);
           props.onSymbolPaletteClose?.();
         }}
         onClose={() => props.onSymbolPaletteClose?.()}
@@ -376,7 +317,7 @@ export function AppShell(props: AppShellProps) {
             onWindowTitleDoubleClick={props.onWindowTitleDoubleClick}
           />
         </Show>
-        <div class="main" ref={mainRef}>
+        <div class="main">
           <Show when={props.showSidebar}>
             <aside class="sidebar" style={{ width: `${s.sidebarWidth()}px` }}>
               <FileTree
@@ -409,115 +350,45 @@ export function AppShell(props: AppShellProps) {
             <div class="resize-handle" onDblClick={s.onResizeReset} onMouseDown={(e) => s.onResizeStart(e, appRef)} />
           </Show>
           <div class="content-area">
-            <Show when={props.tabStore && props.tabStore.tabs().length > 0}>
-              <TabBar
-                tabStore={props.tabStore!}
-                activeTabDirty={s.isDirty()}
-                onActivateTab={props.onActivateTab ?? (() => {})}
-                onCloseTab={props.onCloseTab ?? (() => {})}
-                onNewTab={props.onNewTab}
-              />
-            </Show>
-            <div class="content-panels">
-              <Show when={s.editorMode() !== "preview" && s.selectedFile()}>
-                <div
-                  class="editor-panel"
-                  style={s.editorMode() === "split" ? { flex: s.editorWidth() } : { flex: 1 }}
-                >
-                  <Show when={props.showToolbar}>
-                    <EditorToolbar
-                      canRedo={canRedo()}
-                      canUndo={canUndo()}
-                      showInvisibles={s.showInvisibles()}
-                      showLineNumbers={s.showLineNumbers()}
-                      indentMode={s.indentMode()}
-                      indentSize={s.indentSize()}
-                      syncScroll={s.syncScroll()}
-                      wrapText={s.wrapText()}
-                      onRedo={() => setEditorRedoTrigger((value) => value + 1)}
-                      searchOpen={s.editorSearchOpen()}
-                      onToggleFind={() => s.setEditorSearchOpen((value) => !value)}
-                      onUndo={() => setEditorUndoTrigger((value) => value + 1)}
-                      onIndentChange={(mode, size) => {
-                        s.handleIndentModeChange(mode);
-                        s.handleIndentSizeChange(size);
-                      }}
-                      onToggleShowInvisibles={() => s.handleShowInvisiblesChange(!s.showInvisibles())}
-                      onToggleShowLineNumbers={() => s.handleLineNumbersChange(!s.showLineNumbers())}
-                      onToggleSyncScroll={() => s.handleSyncScrollChange(!s.syncScroll())}
-                      onToggleWrapText={() => s.handleWrapTextChange(!s.wrapText())}
+            <div class="panes-container" ref={panesContainerRef}>
+              <For each={s.paneManager.panes()}>
+                {(pane, i) => (
+                  <>
+                    <Show when={i() > 0}>
+                      <PaneSplitter
+                        ratio={s.paneManager.splitRatio()}
+                        container={() => panesContainerRef}
+                        onResize={s.paneManager.setSplitRatio}
+                      />
+                    </Show>
+                    <PaneView
+                      pane={pane}
+                      paneIndex={i()}
+                      isActive={i() === s.paneManager.activePaneIndex()}
+                      state={s}
+                      flexBasis={paneFlexBasis(i(), s.paneManager.panes().length, s.paneManager.splitRatio())}
+                      showToolbar={props.showToolbar}
+                      showEditorTabs={props.showEditorTabs}
+                      showRecentHistory={props.showRecentHistory}
+                      hasRoot={props.hasRoot}
+                      contentWrapper={props.contentWrapper}
+                      resolveImageSrc={props.resolveImageSrc}
+                      onLoadFile={props.onLoadFile}
+                      onOpenInNewTab={props.onOpenInNewTab}
+                      onActivateTab={props.onActivateTab}
+                      onCloseTab={props.onCloseTab}
+                      onNewTab={props.onNewTab}
+                      onOpenFolder={props.onOpenFolder}
+                      onOpenRecentFile={props.onOpenRecentFile}
+                      onOpenRecentFolder={props.onOpenRecentFolder}
+                      onWindowDragStart={props.onWindowDragStart}
+                      onNavigate={props.onNavigate}
+                      onOpenExternal={props.onOpenExternal}
+                      onActivate={() => s.paneManager.setActivePane(i())}
                     />
-                  </Show>
-                  <Editor
-                    content={s.savedContent()}
-                    darkMode={s.darkMode()}
-                    findTrigger={s.editorFindTrigger()}
-                    indentMode={s.indentMode()}
-                    indentSize={s.indentSize()}
-                    showInvisibles={s.showInvisibles()}
-                    showLineNumbers={s.showLineNumbers()}
-                    wrapText={s.wrapText()}
-                    syncScrollActive={syncScrollActive()}
-                    syncScrollTargetRatio={editorSyncTargetRatio()}
-                    syncScrollTargetVersion={editorSyncTargetVersion()}
-                    scrollToLine={editorScrollToLine()}
-                    scrollToLineVersion={editorScrollToLineVersion()}
-                    redoTrigger={editorRedoTrigger()}
-                    searchOpen={s.editorSearchOpen()}
-                    undoTrigger={editorUndoTrigger()}
-                    onScrollRatioChange={(ratio) => {
-                      if (!syncScrollActive()) return;
-                      setPreviewSyncTargetRatio(ratio);
-                      setPreviewSyncTargetVersion((value) => value + 1);
-                    }}
-                    onChange={(content) => {
-                      const entry = s.selectedFile();
-                      if (entry) {
-                        s.debouncedConvert(content, entry.path, s._readFile ?? (() => Promise.resolve(null)));
-                      }
-                    }}
-                    onHistoryStateChange={(historyState) => {
-                      setCanUndo(historyState.canUndo);
-                      setCanRedo(historyState.canRedo);
-                    }}
-                    onSearchOpenChange={s.setEditorSearchOpen}
-                  />
-                </div>
-              </Show>
-              <Show when={s.editorMode() === "split" && s.selectedFile()}>
-                <div
-                  class="resize-handle"
-                  onDblClick={s.onEditorResizeReset}
-                  onMouseDown={(e) => s.onEditorResizeStart(e, mainRef, appRef)}
-                />
-              </Show>
-              <Show when={s.editorMode() !== "edit"}>
-                <div
-                  class="preview-panel"
-                  ref={previewPanelRef}
-                  style={s.editorMode() === "split" ? { flex: 100 - s.editorWidth() } : undefined}
-                >
-                  <Show when={props.showToolbar && s.hasFile()}>
-                    <ContentToolbar
-                      autoRefresh={s.autoRefresh()}
-                      fontFamilies={s.FontFamilies}
-                      fontPrefs={s.fontPrefs()}
-                      fontSizes={s.FontSizes}
-                      onFind={s.triggerPreviewFind}
-                      searchOpen={s.previewSearchOpen()}
-                      onToggleFind={() => s.setPreviewSearchOpen((value) => !value)}
-                      onFontPrefsChange={s.handleFontPrefsChange}
-                      onToggleAutoRefresh={() => s.setAutoRefresh((v) => !v)}
-                    />
-                  </Show>
-                  <div class="content">
-                    {props.contentWrapper
-                      ? props.contentWrapper(defaultContent())
-                      : defaultContent()
-                    }
-                  </div>
-                </div>
-              </Show>
+                  </>
+                )}
+              </For>
             </div>
           </div>
           <aside
