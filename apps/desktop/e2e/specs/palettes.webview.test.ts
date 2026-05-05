@@ -24,6 +24,18 @@ let bridge: Bridge | null = null;
 beforeAll(async () => {
   try {
     bridge = await connectBridge();
+    // Pin locale to "en" before any spec runs. Specs assert against
+    // English placeholders / aria-labels; a leftover `pt-BR` from a
+    // previous manual run would silently break them all. The reload
+    // ensures the Solid adapter re-reads the pinned locale.
+    const current = await bridge.evalJs(`localStorage.getItem("asciimark-locale")`);
+    if (current !== "en") {
+      await bridge.evalJs(`localStorage.setItem("asciimark-locale", "en"); window.location.reload();`);
+      // Reconnect after the reload tears down the WebSocket.
+      bridge.close();
+      await new Promise((r) => setTimeout(r, 4000));
+      bridge = await connectBridge();
+    }
   } catch (err) {
     console.warn(
       `[e2e/webview] tauri-mcp-bridge unreachable — skipping. Start \`bun run dev:app\` first. Error: ${(err as Error).message}`,
@@ -399,20 +411,20 @@ describe("desktop palettes (Cmd/Ctrl+P family)", () => {
 
     // Click the toolbar split button.
     await bridge.evalJs(
-      `document.querySelector('[aria-label="Toggle split editor"]')?.click()`,
+      `document.querySelector('[aria-label="Split editor"]')?.click()`,
     );
     await expectEventually(async () =>
       ((await bridge!.evalJs(`document.querySelectorAll(".pane-view").length`)) as number) === 2,
     );
     // Pressed state reflects the split.
     const pressed = (await bridge.evalJs(
-      `document.querySelector('[aria-label="Toggle split editor"]')?.getAttribute("data-pressed")`,
+      `document.querySelector('[aria-label="Split editor"]')?.getAttribute("data-pressed")`,
     )) as string | null;
     expect(pressed).toBe("");
 
     // Click again → collapse.
     await bridge.evalJs(
-      `document.querySelector('[aria-label="Toggle split editor"]')?.click()`,
+      `document.querySelector('[aria-label="Split editor"]')?.click()`,
     );
     await expectEventually(async () =>
       ((await bridge!.evalJs(`document.querySelectorAll(".pane-view").length`)) as number) === 1,

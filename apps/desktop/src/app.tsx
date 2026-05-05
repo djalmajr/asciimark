@@ -930,6 +930,35 @@ export function App() {
         handleNewTab();
       }
 
+      // Open exactly one overlay at a time. Each shortcut closes the
+      // siblings before toggling its own — without this, hitting
+      // Cmd+Shift+P while Cmd+Shift+O is up stacks two palettes on
+      // screen (the second one renders over the first).
+      function openOnly(target: "quick" | "command" | "symbol" | "find" | "help") {
+        if (target !== "quick") setQuickOpenVisible(false);
+        if (target !== "command") setCommandPaletteVisible(false);
+        if (target !== "symbol") setSymbolPaletteVisible(false);
+        if (target !== "find") setFindInFilesVisible(false);
+        if (target !== "help") setShortcutsHelpVisible(false);
+        switch (target) {
+          case "quick":
+            setQuickOpenVisible((v) => !v);
+            break;
+          case "command":
+            setCommandPaletteVisible((v) => !v);
+            break;
+          case "symbol":
+            setSymbolPaletteVisible((v) => !v);
+            break;
+          case "find":
+            setFindInFilesVisible((v) => !v);
+            break;
+          case "help":
+            setShortcutsHelpVisible((v) => !v);
+            break;
+        }
+      }
+
       // Cmd/Ctrl+P: open the Quick Open overlay. preventDefault stops the
       // webview from triggering its native print dialog (Ctrl+P), even when
       // the workspace is empty — leaking the print dialog there would be a
@@ -937,7 +966,7 @@ export function App() {
       if (mod && !e.shiftKey && e.key === "p") {
         e.preventDefault();
         if (rootPaths().size === 0) return;
-        setQuickOpenVisible((v) => !v);
+        openOnly("quick");
       }
 
       // Cmd/Ctrl+Shift+P: open the command palette. Available even when
@@ -945,7 +974,7 @@ export function App() {
       // workspace-agnostic.
       if (mod && e.shiftKey && (e.key === "p" || e.key === "P")) {
         e.preventDefault();
-        setCommandPaletteVisible((v) => !v);
+        openOnly("command");
       }
 
       // Cmd/Ctrl+Shift+O: open the Go-to-Symbol palette. Only useful when
@@ -953,14 +982,14 @@ export function App() {
       if (mod && e.shiftKey && (e.key === "o" || e.key === "O")) {
         e.preventDefault();
         if (!state.selectedFile()) return;
-        setSymbolPaletteVisible((v) => !v);
+        openOnly("symbol");
       }
 
       // Cmd/Ctrl+Shift+F: open the Find in Files panel. Requires a workspace.
       if (mod && e.shiftKey && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         if (rootPaths().size === 0) return;
-        setFindInFilesVisible((v) => !v);
+        openOnly("find");
       }
 
       // Cmd/Ctrl+/: toggle the keyboard shortcuts help modal. CodeMirror's
@@ -968,7 +997,7 @@ export function App() {
       // safe even with focus inside the editor.
       if (mod && !e.shiftKey && e.key === "/") {
         e.preventDefault();
-        setShortcutsHelpVisible((v) => !v);
+        openOnly("help");
       }
 
       // Cmd/Ctrl+\\: split the editor into a second pane (or collapse
