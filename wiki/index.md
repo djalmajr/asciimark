@@ -9,7 +9,8 @@ QMD semantic search instead of grepping the source tree blindly.
 - [Testing operations](testing/operations.md) — how to run every gate
 - [Architecture overview](architecture/overview.md) — apps + packages
 - [Performance targets](performance/targets.md) — perf gates and benches
-- [Release flow](release/flow.md) — bump → tag → publish
+- [Release flow](release/flow.md) — desktop: bump → tag → publish (Tauri auto-update)
+- [Extension release](release/extension.md) — Chrome Web Store: bump → build → zip → upload
 - [IPC contract](architecture/ipc.md) — Rust ↔ Solid commands
 - [Test conventions](testing/conventions.md) — naming, layout, markers
 

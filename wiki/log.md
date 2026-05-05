@@ -2,6 +2,19 @@
 
 Operations on this wiki, newest first.
 
+## [2026-05-05] doc | Extension release flow
+
+Created `release/extension.md` and linked it from `index.md`. The
+existing `release/flow.md` covers desktop only (Tauri pipeline,
+`latest.json`, `.sig` files); the Chrome Web Store path is shaped
+differently — manual upload, human review, no auto-update — and was
+not documented anywhere. Trigger was the v1.3.0 release of the
+extension (Open Folder/Reload/Copy URL/Copy content + token-stripping
++ file-tree polish). Doc captures: bump→build→zip→upload, semver
+rules, hardener grep, smoke checklist, hard rules, and a section on
+the asciidoctor.js / MathJax CDN-fragment stripping (the v1.2.0
+rejection cause we don't want to relive).
+
 ## [2026-05-05] post-mortem | Split-panes file-loader pane race + tray duplicates + TOC panel wiring
 
 Three follow-up incidents on the split-panes feature, each surfaced
