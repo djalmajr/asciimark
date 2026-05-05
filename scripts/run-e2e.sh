@@ -6,10 +6,22 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-BRIDGE_BASE="${TAURI_MCP_BRIDGE:-http://127.0.0.1:4000}"
+# The tauri-plugin-mcp-bridge listens on a WebSocket socket, not an HTTP
+# endpoint — so health is a TCP-reachability check, not a curl /health.
+# Defaults match `apps/desktop/e2e/bridge.ts` (127.0.0.1:9223). Override
+# either piece via TAURI_MCP_BRIDGE_HOST / TAURI_MCP_BRIDGE_PORT.
+BRIDGE_HOST="${TAURI_MCP_BRIDGE_HOST:-127.0.0.1}"
+BRIDGE_PORT="${TAURI_MCP_BRIDGE_PORT:-9223}"
 LOG_DIR="$(mktemp -d -t asciimark-e2e-XXXXXX)"
 DEV_LOG="$LOG_DIR/dev.log"
 DEV_PID=""
+
+# Probe the bridge port. `nc -z` succeeds the moment the plugin's
+# tokio listener is bound — that is the same condition `connectBridge`
+# checks against, so a successful probe means specs can connect.
+probe_bridge() {
+  nc -z -w 1 "$BRIDGE_HOST" "$BRIDGE_PORT" >/dev/null 2>&1
+}
 
 cleanup() {
   if [ -n "$DEV_PID" ] && kill -0 "$DEV_PID" 2>/dev/null; then
@@ -28,16 +40,16 @@ trap cleanup EXIT INT TERM
 
 # If a bridge is already up (developer running dev:app in another terminal),
 # reuse it. Otherwise spawn one.
-if curl -sf --max-time 1 "$BRIDGE_BASE/health" >/dev/null 2>&1; then
-  echo "▶ Reusing already-running tauri-mcp-bridge at $BRIDGE_BASE"
+if probe_bridge; then
+  echo "▶ Reusing already-running tauri-mcp-bridge at $BRIDGE_HOST:$BRIDGE_PORT"
 else
   echo "▶ Spawning tauri dev (logs: $DEV_LOG)"
   bun run dev:app >"$DEV_LOG" 2>&1 &
   DEV_PID=$!
 
-  echo "▶ Waiting for bridge at $BRIDGE_BASE/health (timeout 90s)"
+  echo "▶ Waiting for bridge at $BRIDGE_HOST:$BRIDGE_PORT (timeout 90s)"
   WAITED=0
-  until curl -sf --max-time 1 "$BRIDGE_BASE/health" >/dev/null 2>&1; do
+  until probe_bridge; do
     if ! kill -0 "$DEV_PID" 2>/dev/null; then
       echo "✖ tauri dev exited before bridge came up. Last log lines:" >&2
       tail -30 "$DEV_LOG" >&2 || true
