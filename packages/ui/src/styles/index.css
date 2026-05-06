@@ -1308,6 +1308,18 @@ mark.search-highlight.search-active {
   min-width: 0;
   min-height: 0;
   position: relative;
+  /*
+   * In split mode, the inactive pane fades slightly so the focus
+   * indicator (the 2px primary stripe + the active opacity) reads at
+   * a glance. Single-pane layouts never get the inactive class so
+   * this is a no-op there.
+   */
+  transition: opacity 120ms ease;
+}
+
+/* Has an active sibling? then this one is the inactive pane. */
+.panes-container:has(.pane-view-active) .pane-view:not(.pane-view-active) {
+  opacity: 0.6;
 }
 
 .pane-view-active::before {

@@ -792,6 +792,33 @@ export function Preview(props: PreviewProps) {
   // Always sanitize before injecting into the DOM.
   let pendingNewDocument = false;
 
+  // Re-populate the shared TOC panel when this Preview becomes the
+  // pane that owns it. AppShell hands the `tocContainerRef` to whichever
+  // pane is `paneManager.activePane()`, so when the user clicks the
+  // other pane, this effect fires for both Previews — the newly-active
+  // one copies its `#toc` block into the shared container, the
+  // newly-inactive one's `tocContainer` becomes undefined and we skip.
+  // Without this, the TOC would freeze on whatever the previous active
+  // pane published.
+  createEffect(() => {
+    const container = props.tocContainer;
+    if (!container || !articleRef) return;
+    const toc = articleRef.querySelector<HTMLElement>("#toc");
+    container.textContent = "";
+    if (toc) container.appendChild(toc);
+    props.onTocChange(!!toc);
+    // Re-arm collapse toggles + scroll tracking on the new tree.
+    cleanupToc?.();
+    if (props.tocVisible && toc) {
+      const cleanupCollapse = setupTocCollapse(toc);
+      const cleanupScroll = setupTocScrollTracking(articleRef, toc);
+      cleanupToc = () => {
+        cleanupCollapse();
+        cleanupScroll?.();
+      };
+    }
+  });
+
   createEffect(() => {
     const _html = props.html;
     // Also track tocVisible so this re-runs when it changes

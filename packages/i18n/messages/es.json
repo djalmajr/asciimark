@@ -96,5 +96,14 @@
   "update_available_later": "Más tarde",
   "update_available_install": "Instalar y reiniciar",
   "update_check_failed": "No se pudieron buscar actualizaciones: {message}",
-  "update_up_to_date": "Estás en la última versión de AsciiMark."
+  "update_up_to_date": "Estás en la última versión de AsciiMark.",
+  "about_tagline": "Visor de AsciiDoc y Markdown con diagramas, matemáticas y vista previa en vivo.",
+  "about_version_label": "Versión",
+  "about_commit_label": "Commit",
+  "about_website": "Sitio web",
+  "about_releases": "Notas de versión en GitHub",
+  "about_report_issue": "Reportar un problema",
+  "about_close": "Cerrar",
+  "command_about": "Ayuda: Acerca de AsciiMark",
+  "menu_about": "Acerca de AsciiMark"
 }

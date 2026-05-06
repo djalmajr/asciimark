@@ -14,6 +14,7 @@ import { FileTree } from "./file-tree.tsx";
 import { EmptyState } from "./empty-state.tsx";
 import { Toaster } from "./ui/toast.tsx";
 import { ConfirmDialog } from "./confirm-dialog.tsx";
+import { AboutDialog } from "./about-dialog.tsx";
 import { PaneView, fromPaneDropDndId } from "./pane-view.tsx";
 import { PaneSplitter } from "./pane-splitter.tsx";
 import { fromTabDndId } from "./tab-bar.tsx";
@@ -190,6 +191,16 @@ interface AppShellProps {
    *  this off because Copy path is the only meaningful entry there
    *  and a single-item menu just adds noise. */
   showFileTreeItemMenu?: boolean;
+
+  /** About dialog. Hidden when `aboutVersion` is undefined (the
+   *  extension passes nothing — there's no separate version concept
+   *  for the in-tab viewer beyond what `manifest.json` already shows
+   *  in `chrome://extensions`). */
+  aboutOpen?: boolean;
+  aboutVersion?: string;
+  aboutCommit?: string;
+  onAboutClose?: () => void;
+  onAboutOpen?: () => void;
 }
 
 export function AppShell(props: AppShellProps) {
@@ -348,6 +359,14 @@ export function AppShell(props: AppShellProps) {
         open={!!props.shortcutsHelpOpen}
         onClose={() => props.onShortcutsHelpClose?.()}
       />
+      <Show when={props.aboutVersion}>
+        <AboutDialog
+          open={!!props.aboutOpen}
+          version={props.aboutVersion!}
+          commit={props.aboutCommit}
+          onClose={() => props.onAboutClose?.()}
+        />
+      </Show>
       <CommandPalette
         open={!!props.commandPaletteOpen}
         commands={props.commandCatalog ?? []}
@@ -397,6 +416,7 @@ export function AppShell(props: AppShellProps) {
             hasRoot={props.hasRoot}
             onCheckForUpdates={props.onCheckForUpdates}
             onShortcutsHelp={props.onShortcutsHelpOpen}
+            onAbout={props.aboutVersion ? props.onAboutOpen : undefined}
             isSplit={visiblePanes().length > 1}
             onToggleSplit={
               props.enableSplit === false

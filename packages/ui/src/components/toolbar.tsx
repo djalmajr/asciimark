@@ -9,6 +9,7 @@ import IconDownload from "~icons/lucide/download";
 import IconFileDown from "~icons/lucide/file-down";
 import IconFileText from "~icons/lucide/file-text";
 import IconFolder from "~icons/lucide/folder-open";
+import IconInfo from "~icons/lucide/info";
 import IconKeyboard from "~icons/lucide/keyboard";
 import IconLink from "~icons/lucide/link-2";
 import IconListTree from "~icons/lucide/list-tree";
@@ -66,6 +67,9 @@ interface ToolbarProps {
   /** Open the keyboard shortcuts help modal. Wired to a menu item; if
    *  omitted the item is hidden. */
   onShortcutsHelp?: () => void;
+  /** Open the About dialog. Wired to a menu item; if omitted the
+   *  item is hidden (extension passes nothing). */
+  onAbout?: () => void;
   /** Toggle the split editor (open second pane / collapse). When
    *  omitted, the toolbar split button is hidden — handy for
    *  platforms that don't support the feature. */
@@ -325,6 +329,13 @@ export function Toolbar(props: ToolbarProps) {
             <DropdownMenuItem onSelect={props.onCheckForUpdates}>
               <IconDownload width={14} height={14} />
               {(useLocale(), m.menu_check_for_updates())}
+            </DropdownMenuItem>
+          </Show>
+          <Show when={props.onAbout}>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={props.onAbout}>
+              <IconInfo width={14} height={14} />
+              {(useLocale(), m.menu_about())}
             </DropdownMenuItem>
           </Show>
         </DropdownMenuContent>

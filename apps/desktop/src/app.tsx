@@ -5,6 +5,7 @@ import type { IndexedFile } from "@asciimark/core/file-index.ts";
 import type { Command } from "@asciimark/core/command-palette.ts";
 import { getRecentFiles, type RecentFile } from "@asciimark/core/recent-files.ts";
 import { makeTabId } from "@asciimark/core/tabs.ts";
+import { getVersion } from "@tauri-apps/api/app";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "./lib/chaos-invoke.ts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -57,6 +58,8 @@ export function App() {
   const [recentFilesVersion, setRecentFilesVersion] = createSignal(0);
   // Shortcuts help (Cmd/Ctrl+/ + toolbar menu item) — same pattern.
   const [shortcutsHelpVisible, setShortcutsHelpVisible] = createSignal(false);
+  const [aboutOpen, setAboutOpen] = createSignal(false);
+  const [appVersion, setAppVersion] = createSignal<string>("");
   // Command palette (Cmd/Ctrl+Shift+P).
   const [commandPaletteVisible, setCommandPaletteVisible] = createSignal(false);
   // Symbol palette (Cmd/Ctrl+Shift+O).
@@ -292,6 +295,14 @@ export function App() {
       if (event.payload) void openFileByAbsolutePath(event.payload);
     });
     onCleanup(() => { void unlisten.then((fn) => fn()); });
+  });
+
+  // Hydrate the About dialog's version string. Pulled from
+  // @tauri-apps/api/app at runtime instead of bundling at build time so
+  // we don't have to rebuild the frontend just to update the displayed
+  // version on a hot-reloaded dev session.
+  onMount(() => {
+    void getVersion().then(setAppVersion).catch(() => {});
   });
 
   // In production, block the native WebView context menu (Reload / Inspect
@@ -760,6 +771,12 @@ export function App() {
         title: m.command_check_for_updates(),
         run: () => checkForAppUpdates(false),
       },
+      {
+        id: "help.about",
+        group: "Help",
+        title: m.command_about(),
+        run: () => { setAboutOpen(true); },
+      },
       // Language switcher — reads from the i18n package's locale list so
       // adding a new locale to `packages/i18n` automatically surfaces it
       // here. Each entry sets the locale via the Solid adapter, which
@@ -1078,6 +1095,10 @@ export function App() {
       shortcutsHelpOpen={shortcutsHelpVisible()}
       onShortcutsHelpOpen={() => setShortcutsHelpVisible(true)}
       onShortcutsHelpClose={() => setShortcutsHelpVisible(false)}
+      aboutOpen={aboutOpen()}
+      aboutVersion={appVersion()}
+      onAboutOpen={() => setAboutOpen(true)}
+      onAboutClose={() => setAboutOpen(false)}
       commandPaletteOpen={commandPaletteVisible()}
       commandCatalog={commandCatalog()}
       onCommandPaletteClose={() => setCommandPaletteVisible(false)}
