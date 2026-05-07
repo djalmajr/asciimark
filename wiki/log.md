@@ -2,6 +2,33 @@
 
 Operations on this wiki, newest first.
 
+## [2026-05-06] release | desktop v0.10.0 + site redeploy
+
+Tag `v0.10.0` pushed. Pipelines:
+- `build-desktop.yml` builds + signs macOS arm64/x64, Linux x64,
+  Windows x64; publishes to `djalmajr/asciimark-releases`.
+- `deploy-site.yml` redeploys GitHub Pages from `apps/site/**`.
+
+Commit: `6757ce1` ("feat: workspace navigation + tab UX overhaul +
+bump to 0.10.0").
+
+Highlights of the release covered by the wiki pages added this
+session:
+- Workspace navigation (Backlinks, Workspace Symbol Search,
+  Reader / Zen mode, word count + reading time) — see
+  [Preview pipeline](architecture/preview-pipeline.md).
+- VSCode-style preview tabs (≤1 preview per pane invariant) and
+  TOC segmented gutter — see [Testing strategies — Round 6](testing/strategies.md).
+- Mermaid first-render flake fix and layout-shift fix — see
+  [Preview pipeline](architecture/preview-pipeline.md) and
+  [Round 6](testing/strategies.md).
+- Cmd/Ctrl+. binding for Reader Mode (F11 fallback) — see
+  [Keyboard shortcuts](architecture/keyboard-shortcuts.md).
+
+Owner action: run `qmd update` so the new pages
+(`architecture/preview-pipeline.md`, `architecture/keyboard-shortcuts.md`)
+land in the `asciimark` index.
+
 ## [2026-05-06] ingest | preview pipeline + OS-reserved keys
 
 In-session learnings (no `raw/` source) — three diagnostic threads
