@@ -114,35 +114,12 @@ where the preview looked far cleaner with parsed structure.
   must stay silent — the user is opening the app to read a doc, not
   to confirm an update prompt that might not be relevant.
 
-## Technical debt
+## Pending work
 
-### Standalone "Release notes" dialog
-
-The current modal only appears when an update is *pending*. Users who
-want to read the changelog of an already-installed version (e.g. "what
-changed in 0.8.0?") have to open the GitHub releases page in a
-browser.
-
-Resolution path:
-- Reuse `update-available-dialog.tsx`'s scrollable layout in a
-  `<ReleaseNotesDialog>` component.
-- Fetch the relevant release body from
-  `asciimark-releases/releases/tags/v<version>` lazily.
-- Add a "Release Notes" item to the hamburger menu and Command
-  Palette that opens it for the currently installed version.
-- The same component could also drive a "What's new since you last
-  opened the app" popover post-update — but that pattern needs a
-  `lastSeenVersion` persisted in localStorage. Out of scope until
-  there's a real ask.
-
-### Auto-update progress UI
-
-`update.downloadAndInstall()` is a single awaited call — no progress
-events surfaced. On a slow connection a 30 MB download looks frozen
-for a minute. Tauri exposes a download-progress event we don't wire
-up. Resolution: stream events from the `downloadAndInstall(onEvent)`
-callback into a `<Progress>` Kobalte primitive inside the same
-modal, replacing the buttons during install.
+Updater enhancements vivem no Linear, no Project
+[AsciiMark — Technical debt & polish](https://linear.app/djalmajr/project).
+Itens conhecidos: standalone "Release notes" dialog (changelog de
+versão já instalada) e progress UI durante `downloadAndInstall()`.
 
 ## Lessons learned
 

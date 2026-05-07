@@ -417,48 +417,72 @@ manually):
 
 Registry index: https://github.com/stefan-karger/solid-ui/tree/main/apps/docs/public/r
 
-### GitHub Issues (source of truth for plans)
+### Linear workflow (source of truth for plans)
 
-Repos:
-- `djalmajr/asciimark` (private) — internal issues, development
-- `djalmajr/asciimark-releases` (public) — public issues, releases, site
+**Linear is the source of truth for epics, stories, milestones, and
+cycles.** The repo holds only code + the living wiki — no `planning/`
+folder, no markdown shadow of issue bodies.
 
-Required scope label on every issue (one or more):
-`desktop` (Tauri app), `site` (public site), `core` (core package),
-`ui` (UI components), `infra` (CI/CD, build, deploy).
-
-Plan flow:
-1. Plan mode — local draft in `.claude/plans/` (gitignored, throwaway)
-2. Leaving plan mode — open a GitHub issue with the plan body
-3. Implement — reference the issue from commits when relevant
-4. Close — close the issue when done
-
-Create issues with `gh issue create --repo djalmajr/asciimark --title "…"
---body "…" --label "<scope>"` (chain `--label` for multiple).
-
-Plan-issue body template (markdown):
+Hierarchy:
 ```
+Initiative: AsciiMark — Local-first technical writing
+  └─ Project: <Epic name>
+       ├─ Milestone: <intermediate checkpoint>
+       └─ Issue: <Story> (1 issue = 1 story; sub-issue only when task
+                          warrants own status/assignee)
+```
+
+Key rules (full method in [`wiki/process/linear-workflow.md`](wiki/process/linear-workflow.md)):
+
+- **1 issue = 1 story.** Tasks are checkboxes inside the issue body,
+  not sub-issues, unless the task earns own status/assignee.
+- **Issue body is self-contained.** Do not link to story.md files
+  in the repo — there are none. Do link to ADRs in `wiki/decisions/`,
+  architecture docs, and Figma frames.
+- **Acceptance criteria** = checklist in description + label
+  `needs-acceptance-review` to gate merge until reviewer validates.
+- **Architecture decisions** that persist beyond an epic go in
+  `wiki/decisions/NNN-titulo.md` (ADR format). Issues reference ADRs;
+  ADRs are not duplicated in issues.
+- **Roadmap-level prose** stays in `wiki/roadmap/*.md`. Story-level
+  plans live only in Linear.
+- **Labels** — use existing `Feature`/`Improvement`/`Bug` plus
+  `scope:desktop`/`scope:extension`/`scope:site`,
+  `area:ai`/`area:ui`/`area:editor`/`area:preview`/`area:infra`,
+  `needs-acceptance-review`, `blocked-external`. Don't invent
+  speculative labels.
+- **MCP** is available for Linear writes (`save_project`,
+  `save_issue`, `save_milestone`, `save_document`,
+  `create_issue_label`). Initiative writes via GraphQL when needed.
+- **Confirm before write.** Linear is shared/visible state — always
+  surface the planned operation and wait for confirmation before
+  creating projects, issues, or milestones, regardless of any
+  "auto mode" flag.
+- **Ownership default.** Every Project gets `lead: "me"`, every Issue
+  gets `assignee: "me"`. Default sem exceções até houver
+  colaboradores reais.
+
+Issue body template:
+
+```
+> Source: wiki/<doc>.md § <section>
+> Figma: <node-id>
+
 ## Contexto
-(why this change is needed)
+2-3 lines — why this story exists.
 
-## Arquivos
-(create / modify / remove)
+## Escopo
+What's in. Out of scope when ambiguous.
 
-## Detalhamento
-(schemas, endpoints, components, etc.)
+## Acceptance criteria
+- [ ] Measurable criterion 1
+- [ ] Measurable criterion 2
+- [ ] No regression in <suite>
+- [ ] DoD validated by reviewer (removes `needs-acceptance-review`)
 
-## Tarefas
-- [ ] Item 1
-
-## Verificação
-(how to test)
+## Notas técnicas
+References to ADRs, patterns to follow.
 ```
-
-Rules:
-- Issues are the source of truth for plans and tasks.
-- Local docs (`.adoc`, `.md`) are for code architecture / technical reference.
-- Never duplicate content between local docs and issues.
-- No GitHub Projects — labels are sufficient at the current stage.
 
 ### Deploy & Pipelines
 

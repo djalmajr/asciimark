@@ -62,7 +62,8 @@ spec output lacks; `breaks: true` redefines `\n` semantics).
 
 Floor 95% on `packages/core`. Current 96.45%. Untyped pockets are
 `JSON.parse` results that ought to round-trip through Valibot
-schemas — captured as a follow-up in `BACKLOG.md`.
+schemas — tracked as a follow-up in Linear (Project
+[AsciiMark — Technical debt & polish](https://linear.app/djalmajr/project/asciimark-technical-debt-and-polish-4009b2920302)).
 
 ## Test runtime budgets
 

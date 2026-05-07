@@ -197,18 +197,6 @@ tipados pegam em compile time.
 
 ---
 
-## Tier 3 — Quality contínua
-
-### 10. Mutation thresholds por arquivo
-
-**O que é**: o `stryker.config.json` ganha threshold de break por
-arquivo crítico. Hoje break = 0; subir para 60/70 nos arquivos
-core-de-produção.
-
-**Custo**: ~1h.
-
----
-
 ## Estratégias rejeitadas (avaliadas e descartadas)
 
 ### Pact / consumer-driven contracts
@@ -225,33 +213,6 @@ Web-only. Tauri webview varia por OS (WKWebView/WebKitGTK/WebView2).
 
 ### Symbolic execution / formal verification (Z3, Kani)
 Overkill para um editor markdown.
-
----
-
-## Plano de adoção
-
-### Fase 1 — quick wins (~6h)
-1. Differential testing vs `marked`
-2. CommonMark conformance suite
-3. Approval testing (5-10 fixtures reais)
-4. Stateful PBT no `createTabStore`
-
-Esperado: 3-10 bugs novos detectados imediatamente. Os mais prováveis:
-incompatibilidades CommonMark spec, regressão silenciosa de classes/IDs
-em headings, edge case em sequências de tab operations.
-
-### Fase 2 — robustez (~10h)
-5. Loom nos watchers
-6. Miri no `macos_maximize`
-7. memlab soak no `run-e2e.sh`
-8. Bindings tipados (specta)
-
-Esperado: descobre data races latentes, UB no obj-c, vazamento de
-memória em fluxos com watcher, drift de schema entre Rust e JS.
-
-### Fase 3 — qualidade contínua (~4h)
-9. Metamorphic relations no markdown
-10. Mutation testing thresholds por arquivo
 
 ---
 

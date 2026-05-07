@@ -2,6 +2,90 @@
 
 Operations on this wiki, newest first.
 
+## [2026-05-07] migration | Move pending work from wiki to Linear
+
+Pruned every "Technical debt", "Tier 3", "Future iterations", and
+roadmap section out of the wiki. Each became a Linear issue under the
+appropriate Project. Wiki now holds **only** durable knowledge:
+architecture, processes, decisions (ADRs), conventions, performance
+targets, release flows. **No plans, no roadmaps, no TODOs in markdown.**
+
+### Created in Linear (16 issues)
+
+Project · [AsciiMark — AI Assistant Phase 2+](https://linear.app/djalmajr/project/asciimark-ai-assistant-phase-2-b40e8b47a02e):
+- DJA-22..27 (Translation pipeline, summarization, threads, memory,
+  context UI, detect existing QMD)
+
+Project · [AsciiMark — Technical debt & polish](https://linear.app/djalmajr/project/asciimark-technical-debt-and-polish-4009b2920302):
+- DJA-28..32 (i18n: site, ShortcutsHelp, tab-bar menu, MRU, TS decls)
+- DJA-33..34 (Updater: release notes dialog, progress UI)
+- DJA-35..36 (Test: cross-pane stateful PBT, cargo-mutants thresholds)
+- DJA-37 (Type coverage: Valibot round-trips)
+
+All 16 issues created with `assignee: me` per the new ownership rule
+in `process/linear-workflow.md`.
+
+### Pages created
+- `wiki/decisions/004-position-as-cursor-for-technical-writing.md` —
+  preserves the positioning decision (only durable content from the
+  deleted ai-integration.md)
+
+### Pages deleted
+- `wiki/roadmap/ai-integration.md` — content split: positioning →
+  ADR-004; Tier 1 → existing MVP issues (DJA-11..21); Tier 2/3 →
+  Phase 2+ issues (DJA-22..27)
+- `wiki/roadmap/` — directory removed (now empty)
+
+### Sections removed (content went to Linear)
+- `architecture/i18n.md` § "Technical debt" (5 items → DJA-28..32)
+- `architecture/desktop-updater.md` § "Technical debt" (2 items →
+  DJA-33..34)
+- `testing/strategies.md` § "Tier 3 — Quality contínua" (1 item →
+  DJA-36)
+- `testing/strategies.md` § "Plano de adoção" (was a roadmap; the
+  individual rounds/lessons remain — they are conventions/knowledge,
+  not plans)
+- `performance/targets.md` "BACKLOG.md" follow-up (→ DJA-37)
+
+### Pages updated
+- `wiki/index.md` — reorganized; added "Plans & in-flight work"
+  section pointing at Linear; removed roadmap section
+- `wiki/process/linear-workflow.md` — added "Ownership rule"
+  section
+- `CLAUDE.md` — added ownership default to Linear workflow rules
+
+### Reindex needed
+- `qmd update` — picks up moved/deleted pages
+- `qmd embed` — refreshes embeddings on new ADR
+
+## [2026-05-07] process | Linear workflow + ADR convention
+
+Established Linear as the single source of truth for plans/work
+items. Repo no longer holds a `planning/` folder; wiki holds only
+durable knowledge (architecture, decisions, processes, roadmap).
+
+Pages created:
+- `wiki/process/linear-workflow.md` — full method (hierarchy,
+  templates, labels, acceptance flow, anti-patterns)
+- `wiki/decisions/README.md` — ADR convention, format, rules
+- `wiki/decisions/001-qmd-as-sidecar.md` — accepted
+- `wiki/decisions/002-bm25-default-tier.md` — accepted
+- `wiki/decisions/003-no-floating-modals-for-ai.md` — accepted
+
+Pages updated:
+- `wiki/index.md` — reorganized under Process / Architecture /
+  Testing / Roadmap sections; new pages indexed
+- `CLAUDE.md` — replaced "GitHub Issues" section with "Linear
+  workflow (source of truth for plans)"; key rules + issue body
+  template; full method linked
+
+Source of decisions: in-session conversation (3 sibling references
+considered: tmpay/planning/inbox-mvp/linear-guide.md,
+taskify/planning/linear-local-first/, skills/skills/agile-*).
+
+Reindex needed: `qmd update` to surface the new pages in semantic
+search.
+
 ## [2026-05-06] roadmap | AI integration multi-provider
 
 In-session brainstorm captured as a draft roadmap entry. Not
