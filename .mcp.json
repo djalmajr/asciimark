@@ -12,8 +12,10 @@
       }
     },
     "qmd": {
-      "command": "/Users/djalmajr/.local/share/essential-skills/qmd/wrappers/asciimark-qmd",
-      "args": ["mcp"]
+      "command": "/Users/djalmajr/.local/share/skills/qmd/wrappers/asciimark-qmd",
+      "args": [
+        "mcp"
+      ]
     }
   }
 }

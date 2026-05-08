@@ -16,6 +16,7 @@ repo_markdown_allowlist:
   - CHANGELOG.md
   - SETUP.md
   - LICENSE.md
+  - BACKLOG.md
   - apps/*/README.md
   - apps/*/SETUP.md
   - apps/*/CLAUDE.md
@@ -34,6 +35,10 @@ repo_markdown_allowlist:
   - apps/*/project.inlang/*.md
   - apps/*/project.inlang/**/*.md
   - apps/*/src/**/README.md
+  - apps/*/e2e/*.md
+  - apps/*/e2e/**/*.md
+  - apps/*/public/*.md
+  - apps/*/public/**/*.md
   - planning/*.md
   - planning/**/*.md
   - .opencode/*.md
@@ -42,7 +47,9 @@ repo_markdown_allowlist:
   - packages/*/CLAUDE.md
   - packages/*/AGENTS.md
   - packages/*/CHANGELOG.md
-  - packages/*/src/**/README.md
+  - packages/*/src/**/*.md
+  - packages/*/fuzz/*.md
+  - packages/*/fuzz/**/*.md
   - charts/*.md
   - charts/**/*.md
   - .github/*.md

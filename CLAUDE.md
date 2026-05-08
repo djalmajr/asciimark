@@ -653,3 +653,4 @@ Order:
 Hooks in this repo are guardrails, not a guarantee. They catch path-visible drift; semantic decisions from conversation and debugging still belong to the agent.
 <!-- wiki-init:end -->
 
+

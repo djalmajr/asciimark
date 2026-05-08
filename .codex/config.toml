@@ -3,6 +3,6 @@
 codex_hooks = true
 
 [mcp_servers.qmd]
-command = "/Users/djalmajr/.local/share/essential-skills/qmd/wrappers/asciimark-qmd"
+command = "/Users/djalmajr/.local/share/skills/qmd/wrappers/asciimark-qmd"
 args = ["mcp"]
 # wiki-init:end

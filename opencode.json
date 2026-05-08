@@ -4,7 +4,7 @@
     "qmd": {
       "type": "local",
       "command": [
-        "/Users/djalmajr/.local/share/essential-skills/qmd/wrappers/asciimark-qmd",
+        "/Users/djalmajr/.local/share/skills/qmd/wrappers/asciimark-qmd",
         "mcp"
       ],
       "enabled": true
