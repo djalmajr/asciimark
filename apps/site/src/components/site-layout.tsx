@@ -1,5 +1,8 @@
+import { For } from "solid-js";
 import { Link, Outlet } from "@tanstack/solid-router";
 import { Button } from "@asciimark/ui/components/ui/button.tsx";
+import * as m from "@asciimark/i18n";
+import { currentLocale, locales, switchLocale, useLocale } from "@asciimark/i18n/solid";
 
 function GithubIcon() {
   return (
@@ -21,11 +24,26 @@ function GithubIcon() {
   );
 }
 
+// Each navigation item carries a locale-resolving thunk instead of
+// a string key. Static references like `m.site_nav_home` let
+// Rollup tree-shake the i18n catalog — a `messages[key]()` lookup
+// would retain every message reachable via the catalog's index
+// module (worth ~13 KB gzip on the site bundle). Guide and Privacy
+// keep their English long-form copy per DJA-28 scope; only the nav
+// label is localized.
 const navigationItems = [
-  { href: "/", label: "Home" },
-  { href: "/guide", label: "Guide" },
-  { href: "/privacy", label: "Privacy" },
-];
+  { href: "/", label: m.site_nav_home },
+  { href: "/guide", label: m.site_nav_guide },
+  { href: "/privacy", label: m.site_nav_privacy },
+] as const;
+
+// Display labels for each shipping locale. Native names read better
+// than two-letter codes inside the picker.
+const LOCALE_LABELS: Record<string, string> = {
+  en: "English",
+  "pt-BR": "Português",
+  es: "Español",
+};
 
 export function SiteLayout() {
   return (
@@ -37,16 +55,37 @@ export function SiteLayout() {
             <span>AsciiMark</span>
           </Link>
           <nav class="site-nav" aria-label="Main navigation">
-            {navigationItems.map((item) => (
-              <Link
-                to={item.href}
-                class="site-nav-item"
-                activeProps={{ class: "site-nav-item site-nav-item-active", "aria-current": "page" }}
-              >
-                {item.label}
-              </Link>
-            ))}
+            <For each={navigationItems}>
+              {(item) => (
+                <Link
+                  to={item.href}
+                  class="site-nav-item"
+                  activeProps={{ class: "site-nav-item site-nav-item-active", "aria-current": "page" }}
+                >
+                  {(useLocale(), item.label())}
+                </Link>
+              )}
+            </For>
           </nav>
+          <label class="site-locale-picker">
+            <span class="visually-hidden">
+              {(useLocale(), m.site_locale_label())}
+            </span>
+            <select
+              aria-label={(useLocale(), m.site_locale_label())}
+              class="site-locale-select"
+              value={currentLocale()}
+              onChange={(event) => {
+                const next = event.currentTarget.value;
+                if (next === currentLocale()) return;
+                switchLocale(next as (typeof locales)[number]);
+              }}
+            >
+              <For each={locales}>
+                {(loc) => <option value={loc}>{LOCALE_LABELS[loc] ?? loc}</option>}
+              </For>
+            </select>
+          </label>
           <Button
             as="a"
             class="site-header-button"
@@ -65,7 +104,7 @@ export function SiteLayout() {
       </main>
 
       <footer class="site-footer">
-        <p>© 2026 AsciiMark. All rights reserved.</p>
+        <p>{(useLocale(), m.site_footer_copyright())}</p>
       </footer>
     </div>
   );

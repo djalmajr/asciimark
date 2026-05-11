@@ -1,21 +1,31 @@
 import { For, Show, createSignal, onMount } from "solid-js";
 import { Button } from "@asciimark/ui/components/ui/button.tsx";
 import { Link } from "@tanstack/solid-router";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
+
+// Features and downloads carry locale-resolving thunks instead of
+// dynamic key lookups so Vite + Rollup can tree-shake the i18n
+// catalog. A `messages[key]()` indexing pattern would force Rollup
+// to keep every message reachable through the `_index.js` module —
+// adding ~13 KB gzip to the site bundle. Static references like
+// `m.site_feature_formats_title` stay safe.
+type StringFn = () => string;
 
 interface FeatureItem {
-  description: string;
-  title: string;
+  description: StringFn;
+  title: StringFn;
 }
 
 interface DownloadItem {
   asset: string;
-  helper: string;
-  platform: string;
+  helper: StringFn;
+  platform: StringFn;
 }
 
 interface ScreenshotItem {
-  alt: string;
-  caption: string;
+  alt: StringFn;
+  caption: StringFn;
   path: string;
 }
 
@@ -26,94 +36,60 @@ const RELEASES_LATEST_URL =
 
 interface PreferredDownload {
   href: string;
-  label: string;
+  /** Locale-resolving thunk for the platform label. Resolved at
+   *  render time so the active locale wins even after detection. */
+  platform: StringFn;
 }
 
 const featureItems: FeatureItem[] = [
-  {
-    title: "AsciiDoc + Markdown",
-    description:
-      "Renders both formats with admonitions, includes, frontmatter, and reusable partials in a single viewer.",
-  },
-  {
-    title: "Split panes + preview tabs",
-    description:
-      "Open files side by side. Single-click opens preview tabs (italic), edit or double-click pins them — VSCode-style.",
-  },
-  {
-    title: "Keyboard-first navigation",
-    description:
-      "Quick Open, Command Palette, Go-to-Heading, Workspace Symbols, and Find-in-Files — all one shortcut away.",
-  },
-  {
-    title: "Backlinks panel",
-    description:
-      "The right gutter has a References tab listing every doc in the workspace that links to the active file.",
-  },
-  {
-    title: "Workspace symbol search",
-    description:
-      "Cmd/Ctrl+Alt+O fuzzy-matches headings across every doc in the workspace and jumps to the right line.",
-  },
-  {
-    title: "Reader / Zen mode",
-    description:
-      "Cmd/Ctrl+. collapses the chrome and centers the preview at a comfortable reading width. Toggle off the same way.",
-  },
-  {
-    title: "Diagrams and math",
-    description:
-      "Mermaid, PlantUML, Graphviz, and KaTeX render inside the preview without extra setup.",
-  },
-  {
-    title: "Multi-root workspaces",
-    description:
-      "Pin several folders into the sidebar at once — handy when reading docs spread across repos.",
-  },
-  {
-    title: "Local-first, auto-update",
-    description:
-      "Files stay on your machine; signed releases land via the auto-updater on startup.",
-  },
+  { title: m.site_feature_formats_title, description: m.site_feature_formats_description },
+  { title: m.site_feature_panes_title, description: m.site_feature_panes_description },
+  { title: m.site_feature_keyboard_title, description: m.site_feature_keyboard_description },
+  { title: m.site_feature_backlinks_title, description: m.site_feature_backlinks_description },
+  { title: m.site_feature_symbols_title, description: m.site_feature_symbols_description },
+  { title: m.site_feature_reader_title, description: m.site_feature_reader_description },
+  { title: m.site_feature_diagrams_title, description: m.site_feature_diagrams_description },
+  { title: m.site_feature_multiroot_title, description: m.site_feature_multiroot_description },
+  { title: m.site_feature_localfirst_title, description: m.site_feature_localfirst_description },
 ];
 
 const downloadItems: DownloadItem[] = [
   {
-    platform: "macOS (Apple Silicon)",
-    helper: "DMG installer",
+    platform: m.site_platform_mac_arm64,
+    helper: m.site_download_helper_dmg,
     asset: "AsciiMark-macos-arm64.dmg",
   },
   {
-    platform: "macOS (Intel)",
-    helper: "DMG installer",
+    platform: m.site_platform_mac_x64,
+    helper: m.site_download_helper_dmg,
     asset: "AsciiMark-macos-x64.dmg",
   },
   {
-    platform: "Linux",
-    helper: "AppImage",
+    platform: m.site_platform_linux,
+    helper: m.site_download_helper_appimage,
     asset: "AsciiMark-linux-x64.AppImage",
   },
   {
-    platform: "Linux (Debian)",
-    helper: "DEB package",
+    platform: m.site_platform_linux_deb,
+    helper: m.site_download_helper_deb,
     asset: "AsciiMark-linux-x64.deb",
   },
   {
-    platform: "Windows",
-    helper: "MSI installer",
+    platform: m.site_platform_windows,
+    helper: m.site_download_helper_msi,
     asset: "AsciiMark-windows-x64.msi",
   },
   {
-    platform: "Windows (alt)",
-    helper: "EXE installer",
+    platform: m.site_platform_windows_alt,
+    helper: m.site_download_helper_exe,
     asset: "AsciiMark-windows-x64.exe",
   },
 ];
 
 const heroPreviewItem: ScreenshotItem = {
   path: "/screenshots/desktop-workspace-preview.png",
-  alt: "AsciiMark desktop app with Markdown file, sidebar tree, and table of contents",
-  caption: "Desktop preview with sidebar, tabs, and table of contents.",
+  alt: m.site_hero_alt,
+  caption: m.site_hero_caption,
 };
 
 function releaseUrl(asset: string) {
@@ -122,7 +98,7 @@ function releaseUrl(asset: string) {
 
 function detectPreferredDownload(): PreferredDownload {
   if (typeof navigator === "undefined") {
-    return { href: RELEASES_LATEST_URL, label: "your platform" };
+    return { href: RELEASES_LATEST_URL, platform: m.site_platform_fallback };
   }
 
   const userAgent = navigator.userAgent.toLowerCase();
@@ -143,25 +119,25 @@ function detectPreferredDownload(): PreferredDownload {
     const isAppleSilicon = hasSiliconHint || !hasIntelHint;
     return {
       href: releaseUrl(isAppleSilicon ? "AsciiMark-macos-arm64.dmg" : "AsciiMark-macos-x64.dmg"),
-      label: isAppleSilicon ? "macOS (Apple Silicon)" : "macOS (Intel)",
+      platform: isAppleSilicon ? m.site_platform_mac_arm64 : m.site_platform_mac_x64,
     };
   }
 
   if (platform.includes("win")) {
     return {
       href: releaseUrl("AsciiMark-windows-x64.msi"),
-      label: "Windows",
+      platform: m.site_platform_windows,
     };
   }
 
   if (platform.includes("linux")) {
     return {
       href: releaseUrl("AsciiMark-linux-x64.AppImage"),
-      label: "Linux",
+      platform: m.site_platform_linux,
     };
   }
 
-  return { href: RELEASES_LATEST_URL, label: "your platform" };
+  return { href: RELEASES_LATEST_URL, platform: m.site_platform_fallback };
 }
 
 async function refineMacDownloadWithUserAgentData(
@@ -194,14 +170,14 @@ async function refineMacDownloadWithUserAgentData(
     if (architecture?.includes("arm")) {
       return {
         href: releaseUrl("AsciiMark-macos-arm64.dmg"),
-        label: "macOS (Apple Silicon)",
+        platform: m.site_platform_mac_arm64,
       };
     }
 
     if (architecture?.includes("x86")) {
       return {
         href: releaseUrl("AsciiMark-macos-x64.dmg"),
-        label: "macOS (Intel)",
+        platform: m.site_platform_mac_x64,
       };
     }
   } catch {
@@ -236,18 +212,18 @@ export function HomePage() {
       <section class="hero-panel">
         <div class="hero-layout">
           <div>
-            <p class="hero-kicker">AsciiDoc and Markdown Viewer</p>
-            <h1 class="hero-title">Ship docs faster with a local-first preview workflow.</h1>
+            <p class="hero-kicker">{(useLocale(), m.site_hero_kicker())}</p>
+            <h1 class="hero-title">{(useLocale(), m.site_hero_title())}</h1>
             <p class="hero-description">
-              AsciiMark keeps authoring and preview side by side across desktop and browser.
-              Install the latest build from GitHub Releases and keep everything in one ecosystem.
+              {(useLocale(), m.site_hero_description())}
             </p>
             <div class="hero-actions">
               <Button as="a" href={preferredDownload().href} rel="noreferrer" target="_blank">
-                Download for {preferredDownload().label}
+                {(useLocale(),
+                  m.site_hero_cta_download({ platform: preferredDownload().platform() }))}
               </Button>
               <Button as={Link} to="/guide" variant="secondary">
-                Read Guide
+                {(useLocale(), m.site_hero_cta_guide())}
               </Button>
             </div>
           </div>
@@ -257,45 +233,42 @@ export function HomePage() {
               onClick={() => openScreenshotModal(heroPreviewItem)}
               type="button"
             >
-              <img alt={heroPreviewItem.alt} src={heroPreviewItem.path} />
+              <img alt={(useLocale(), heroPreviewItem.alt())} src={heroPreviewItem.path} />
             </button>
-            <figcaption>{heroPreviewItem.caption}</figcaption>
+            <figcaption>{(useLocale(), heroPreviewItem.caption())}</figcaption>
           </figure>
         </div>
       </section>
 
       <section class="grid-panel">
-        <h2 class="section-title">Features</h2>
+        <h2 class="section-title">{(useLocale(), m.site_features_title())}</h2>
         <div class="feature-grid">
           <For each={featureItems}>
             {(item) => (
               <article class="feature-card">
-                <h3>{item.title}</h3>
-                <p>{item.description}</p>
+                <h3>{(useLocale(), item.title())}</h3>
+                <p>{(useLocale(), item.description())}</p>
               </article>
             )}
           </For>
           <Link class="feature-card feature-card-more" to="/guide">
-            <h3>…and much more</h3>
-            <p>
-              Themes, PDF export, the Chrome extension, the full keyboard
-              map, and more. See the guide for screenshots and details.
-            </p>
+            <h3>{(useLocale(), m.site_features_more_title())}</h3>
+            <p>{(useLocale(), m.site_features_more_description())}</p>
           </Link>
         </div>
       </section>
 
       <section class="grid-panel" id="download">
-        <h2 class="section-title">Downloads</h2>
+        <h2 class="section-title">{(useLocale(), m.site_downloads_title())}</h2>
         <p class="section-subtitle">
-          All links below point to <code>releases/latest/download</code> in the public repository.
+          {(useLocale(), m.site_downloads_subtitle())}
         </p>
         <div class="download-grid">
           <For each={downloadItems}>
             {(item) => (
               <article class="download-card">
-                <p class="download-platform">{item.platform}</p>
-                <p class="download-helper">{item.helper}</p>
+                <p class="download-platform">{(useLocale(), item.platform())}</p>
+                <p class="download-helper">{(useLocale(), item.helper())}</p>
                 <Button
                   as="a"
                   class="download-button"
@@ -315,11 +288,17 @@ export function HomePage() {
       <Show when={activeScreenshot()}>
         {(item) => (
           <div class="screenshot-modal-backdrop" onClick={closeScreenshotModal} role="presentation">
-            <div class="screenshot-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Screenshot preview">
+            <div
+              class="screenshot-modal"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label={(useLocale(), m.site_screenshot_dialog_label())}
+            >
               <div class="screenshot-modal-header">
-                <p>{item().caption}</p>
+                <p>{(useLocale(), item().caption())}</p>
                 <button
-                  aria-label="Close screenshot preview"
+                  aria-label={(useLocale(), m.site_screenshot_close_label())}
                   class="screenshot-modal-close"
                   onClick={closeScreenshotModal}
                   type="button"
@@ -329,7 +308,7 @@ export function HomePage() {
               </div>
               <div class="screenshot-modal-image-wrap">
                 <img
-                  alt={item().alt}
+                  alt={(useLocale(), item().alt())}
                   class="screenshot-modal-image"
                   src={item().path}
                 />
@@ -341,14 +320,10 @@ export function HomePage() {
 
       <section class="notice-panel">
         <p>
-          macOS may block unsigned apps on first launch. Run{" "}
-          <code>xattr -cr /Applications/AsciiMark.app</code>{" "}
-          after installing.
+          {(useLocale(),
+            m.site_notice_macos({ cmd: "xattr -cr /Applications/AsciiMark.app" }))}
         </p>
-        <p>
-          Windows SmartScreen may require <strong>More info</strong> and then
-          {" "} <strong>Run anyway</strong>.
-        </p>
+        <p>{(useLocale(), m.site_notice_windows())}</p>
       </section>
     </div>
   );
