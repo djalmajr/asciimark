@@ -1,0 +1,14 @@
+[package]
+name = "miri-helpers-tests"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Stand-alone Miri tests for the pure-Rust helpers in apps/desktop/src-tauri/src/pure_helpers.rs. Kept out of the main crate so tauri-plugin-mcp-bridge's ctor macro (which Miri can't interpret) doesn't block the run."
+
+# No dependencies — the helpers under test use only std. Adding any
+# Tauri / objc2 / notify dep here would re-introduce the same Miri
+# blockers we extracted the helpers to dodge.
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"

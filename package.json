@@ -25,7 +25,7 @@
     "test:rust:stress": "cd apps/desktop/src-tauri && cargo test --lib -- --ignored",
     "lint:rust": "cd apps/desktop/src-tauri && cargo clippy --all-targets -- -D warnings",
     "test:loom": "cd tools/loom-watcher-tests && RUSTFLAGS=\"--cfg loom\" cargo test --release",
-    "test:miri": "cd apps/desktop/src-tauri && cargo +nightly miri test --lib interpolate_frame_endpoints",
+    "test:miri": "cd tools/miri-helpers-tests && cargo +nightly miri test",
     "test:mutation:rust": "cd apps/desktop/src-tauri && cargo mutants --no-shuffle --timeout 60",
     "audit:js": "bun audit --prod",
     "audit:rust": "cd apps/desktop/src-tauri && cargo audit",

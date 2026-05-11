@@ -5,6 +5,13 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+// Pure-Rust helpers split out of this file so the Miri sub-crate
+// (`tools/miri-helpers-tests`) can exercise them without pulling in
+// the full Tauri dep graph. The `ctor` macro inside
+// `tauri-plugin-mcp-bridge` blocks Miri on the main crate; see
+// `.cargo/config.toml` for the full status note.
+pub mod pure_helpers;
+
 #[derive(Serialize, Clone)]
 pub struct DirEntry {
     pub name: String,
@@ -340,15 +347,12 @@ pub fn find_in_files_impl(
 /// inside the canonicalized root. Returns the canonicalized target on
 /// success; rejects symlink escapes, `..` traversal, and absolute paths
 /// pointing outside the workspace.
-pub fn resolve_within_root(root: &Path, relative: &str) -> Result<PathBuf, String> {
-    let target = root.join(relative);
-    let root_canon = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
-    let target_canon = std::fs::canonicalize(&target).map_err(|e| e.to_string())?;
-    if !target_canon.starts_with(&root_canon) {
-        return Err("path escapes workspace root".into());
-    }
-    Ok(target_canon)
-}
+///
+/// The implementation lives in `pure_helpers::resolve_within_root` so
+/// the Miri sub-crate can exercise the path-traversal logic without
+/// dragging in the Tauri/objc2 dep graph. This re-export keeps the
+/// public API stable for the rest of the crate.
+pub use pure_helpers::resolve_within_root;
 
 /// Move a file inside a workspace root, validating that both endpoints stay
 /// inside `root` and refusing to clobber an existing destination.
@@ -501,12 +505,17 @@ mod macos_maximize {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
 
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    pub struct CGPoint {
-        pub x: f64,
-        pub y: f64,
-    }
+    // The geometry types and the arithmetic helpers live in
+    // `crate::pure_helpers` so the Miri sub-crate can exercise them
+    // without the objc2 dependency. The `unsafe impl Encode` blocks
+    // below stay here because (a) only the macOS build needs the
+    // FFI encoding metadata, and (b) the orphan rule requires the
+    // impl to live in the same crate as the type (which pure_helpers
+    // provides — `Encode`/`RefEncode` are from objc2 but the structs
+    // are local to this crate).
+    pub use crate::pure_helpers::{
+        ease_out_cubic, interpolate_frame, Point as CGPoint, Rect as CGRect, Size as CGSize,
+    };
 
     unsafe impl Encode for CGPoint {
         const ENCODING: Encoding =
@@ -517,13 +526,6 @@ mod macos_maximize {
         const ENCODING_REF: Encoding = Encoding::Pointer(&Self::ENCODING);
     }
 
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    pub struct CGSize {
-        pub width: f64,
-        pub height: f64,
-    }
-
     unsafe impl Encode for CGSize {
         const ENCODING: Encoding =
             Encoding::Struct("CGSize", &[f64::ENCODING, f64::ENCODING]);
@@ -531,13 +533,6 @@ mod macos_maximize {
 
     unsafe impl RefEncode for CGSize {
         const ENCODING_REF: Encoding = Encoding::Pointer(&Self::ENCODING);
-    }
-
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    pub struct CGRect {
-        pub origin: CGPoint,
-        pub size: CGSize,
     }
 
     unsafe impl Encode for CGRect {
@@ -554,23 +549,6 @@ mod macos_maximize {
 
     pub const STEPS: u64 = 12;
     pub const DURATION_MS: u64 = 200;
-
-    pub fn interpolate_frame(from: CGRect, to: CGRect, t: f64) -> CGRect {
-        CGRect {
-            origin: CGPoint {
-                x: from.origin.x + (to.origin.x - from.origin.x) * t,
-                y: from.origin.y + (to.origin.y - from.origin.y) * t,
-            },
-            size: CGSize {
-                width: from.size.width + (to.size.width - from.size.width) * t,
-                height: from.size.height + (to.size.height - from.size.height) * t,
-            },
-        }
-    }
-
-    pub fn ease_out_cubic(t: f64) -> f64 {
-        1.0 - (1.0 - t).powi(3)
-    }
 
     extern "C" {
         pub static _dispatch_main_q: u8;
