@@ -12,14 +12,16 @@ describe("decideCloseAction", () => {
     ).toBe("hide");
   });
 
-  it("'quit' setting lets the window close when the updater is idle", () => {
-    // Mutation captured: a handler that ignores the `closeBehavior`
-    // preference (e.g. always returns "hide") would render the
-    // setting inert — the user toggles "Quit app" and nothing
-    // observable changes.
+  it("'quit' setting returns 'exit' so macOS actually terminates the process", () => {
+    // Mutation captured: returning `"let-close"` here (the old
+    // 2-state contract) would only close the WINDOW on macOS, not
+    // the app — the user toggles "Quit app", presses X, and the
+    // process keeps running window-less. `"exit"` forces the
+    // handler down the `process.exit(0)` path which kills the
+    // process on every platform.
     expect(
       decideCloseAction({ closeBehavior: "quit", isUpdating: false }),
-    ).toBe("let-close");
+    ).toBe("exit");
   });
 
   it("updater bypass forces let-close even when the user picked 'tray'", () => {
@@ -27,18 +29,19 @@ describe("decideCloseAction", () => {
     // would re-introduce the freeze fixed in 558de26 — the
     // Tauri updater needs the window to actually close so the
     // relaunched binary can take over. A "hide" return here would
-    // strand the install half-applied.
+    // strand the install half-applied, and "exit" here would
+    // pre-empt the relaunch's own exit logic.
     expect(
       decideCloseAction({ closeBehavior: "tray", isUpdating: true }),
     ).toBe("let-close");
   });
 
-  it("updater bypass is consistent with the 'quit' setting", () => {
-    // Sanity check: both 'updater is running' and 'user prefers
-    // quit' independently produce let-close, so their combination
-    // must too. Catches a regression where the updater branch
-    // accidentally short-circuits to "hide" on the wrong precedence
-    // ordering.
+  it("updater bypass beats the 'quit' setting too", () => {
+    // Precedence test: `isUpdating` must win over `closeBehavior`.
+    // A handler that called `exit(0)` mid-relaunch would terminate
+    // the old process BEFORE the new one finished spawning, which
+    // on Windows tends to corrupt the updater's swap. `"let-close"`
+    // here defers the exit to `relaunch()`'s own teardown.
     expect(
       decideCloseAction({ closeBehavior: "quit", isUpdating: true }),
     ).toBe("let-close");

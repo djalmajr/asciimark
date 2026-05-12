@@ -33,6 +33,7 @@ import { setupTauriDnd } from "./lib/dnd.ts";
 import { setupAppMenu } from "./lib/menu.ts";
 import { setupTray } from "./lib/tray.ts";
 import { decideCloseAction } from "./lib/window-close.ts";
+import { exit } from "@tauri-apps/plugin-process";
 import {
   _devSetDownloadProgress,
   _devSetPendingUpdate,
@@ -324,7 +325,20 @@ export function App() {
           (window as unknown as { __asciimark_updating?: boolean }).__asciimark_updating ??
           false,
       });
-      if (action === "let-close") return;
+      if (action === "let-close") {
+        // Updater bypass: relaunch() handles the actual exit of
+        // the old process; we just let the close proceed.
+        return;
+      }
+      if (action === "exit") {
+        // User picked "Quit app". Tauri's default close-window
+        // flow on macOS only destroys the WINDOW — the process
+        // keeps running with no UI. Call exit explicitly so the
+        // gesture matches the user's intent on every platform.
+        await exit(0);
+        return;
+      }
+      // action === "hide": pre-DJA-50 default.
       event.preventDefault();
       await win.hide();
       await invoke("set_dock_visible", { visible: false });
