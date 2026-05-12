@@ -49,6 +49,12 @@ interface AppShellProps {
    */
   showWindowControls?: boolean;
   windowFrameToolbar?: boolean;
+  /** Desktop-only: render the "Window" submenu in the toolbar
+   *  dropdown that toggles the OS-close behaviour between
+   *  "minimize to tray" and "quit app". Extensions leave this
+   *  undefined; the submenu is hidden because the gesture has no
+   *  meaning in a browser tab. */
+  showCloseBehaviorToggle?: boolean;
 
   // Platform-derived toolbar strings
   toolbarFilePath: string | null;
@@ -94,6 +100,12 @@ interface AppShellProps {
    */
   resolveImageSrc?: (src: string) => string | null;
   onToggleShowHiddenEntries?: (enabled: boolean) => void | Promise<void>;
+  /** Desktop-only: paired with the new file-tree dropdown toggle that
+   *  filters entries through `.gitignore`. The shell flips
+   *  `respectGitignore` state and forwards the new value so the host
+   *  can refresh the workspace roots. Extension passes nothing → the
+   *  toggle is hidden. */
+  onToggleRespectGitignore?: (enabled: boolean) => void | Promise<void>;
   /**
    * Force-reload a single workspace root from disk. Optional — currently
    * wired by the extension to recover from stale handles after a permission
@@ -491,6 +503,7 @@ export function AppShell(props: AppShellProps) {
             showRecentHistory={!!props.showRecentHistory}
             sidebarVisible={s.sidebarVisible()}
             themeMode={s.themeMode()}
+            closeBehavior={props.showCloseBehaviorToggle ? s.closeBehavior() : undefined}
             tocVisible={s.tocVisible()}
             onEditorModeChange={(m) => s.setEditorMode(m)}
             onExportPdf={props.showPdfExport !== false ? s.handleExportPdf : undefined}
@@ -500,6 +513,9 @@ export function AppShell(props: AppShellProps) {
             onOpenRecentFile={props.onOpenRecentFile}
             onOpenRecentFolder={props.onOpenRecentFolder}
             onThemeChange={s.handleThemeChange}
+            onCloseBehaviorChange={
+              props.showCloseBehaviorToggle ? s.handleCloseBehaviorChange : undefined
+            }
             onToggleSidebar={() => s.setSidebarVisible((v) => !v)}
             onToggleToc={() => s.setTocVisible((v) => !v)}
             onReload={props.onReload}
@@ -520,6 +536,7 @@ export function AppShell(props: AppShellProps) {
                 showHiddenEntries={s.showHiddenEntries()}
                 showAllDirs={s.showAllDirs()}
                 showAllFiles={s.showAllFiles()}
+                respectGitignore={s.respectGitignore()}
                 onCloseRoot={props.onCloseRoot}
                 onCopyPath={props.onCopyPath}
                 onRename={props.onRename}
@@ -534,6 +551,13 @@ export function AppShell(props: AppShellProps) {
                     const next = !s.showHiddenEntries();
                     s.setShowHiddenEntries(next);
                     void props.onToggleShowHiddenEntries?.(next);
+                  }
+                  : undefined}
+                onToggleRespectGitignore={props.onToggleRespectGitignore
+                  ? () => {
+                    const next = !s.respectGitignore();
+                    s.handleRespectGitignoreChange(next);
+                    void props.onToggleRespectGitignore?.(next);
                   }
                   : undefined}
                 onToggleShowAllDirs={() => s.setShowAllDirs((v) => !v)}

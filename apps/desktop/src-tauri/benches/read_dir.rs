@@ -169,7 +169,7 @@ fn bench_flat(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::from_parameter(fx.file_count),
             &fx.path,
-            |b, path| b.iter(|| read_dir_recursive(path, path, false).unwrap()),
+            |b, path| b.iter(|| read_dir_recursive(path, path, false, None).unwrap()),
         );
     }
     group.finish();
@@ -184,7 +184,7 @@ fn bench_shapes(c: &mut Criterion) {
     ] {
         group.throughput(Throughput::Elements(fx.file_count));
         group.bench_with_input(BenchmarkId::from_parameter(name), &fx.path, |b, path| {
-            b.iter(|| read_dir_recursive(path, path, false).unwrap())
+            b.iter(|| read_dir_recursive(path, path, false, None).unwrap())
         });
     }
     group.finish();
@@ -195,10 +195,10 @@ fn bench_filters(c: &mut Criterion) {
     let fx = &*MONOREPO;
     group.throughput(Throughput::Elements(fx.file_count));
     group.bench_function("monorepo_hidden_off", |b| {
-        b.iter(|| read_dir_recursive(&fx.path, &fx.path, false).unwrap())
+        b.iter(|| read_dir_recursive(&fx.path, &fx.path, false, None).unwrap())
     });
     group.bench_function("monorepo_hidden_on", |b| {
-        b.iter(|| read_dir_recursive(&fx.path, &fx.path, true).unwrap())
+        b.iter(|| read_dir_recursive(&fx.path, &fx.path, true, None).unwrap())
     });
     group.finish();
 }

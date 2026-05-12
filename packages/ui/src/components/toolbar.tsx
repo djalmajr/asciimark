@@ -18,8 +18,11 @@ import IconMoon from "~icons/lucide/moon";
 import IconPanelLeft from "~icons/lucide/panel-left";
 import IconColumns from "~icons/lucide/columns-2";
 import IconMenu from "~icons/lucide/menu";
+import IconAppWindow from "~icons/lucide/app-window";
 import IconRefreshCw from "~icons/lucide/refresh-cw";
 import IconSun from "~icons/lucide/sun";
+import IconLogOut from "~icons/lucide/log-out";
+import IconMinimize2 from "~icons/lucide/minimize-2";
 import * as m from "@asciimark/i18n";
 import { useLocale } from "@asciimark/i18n/solid";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx";
@@ -61,6 +64,10 @@ interface ToolbarProps {
   showRecentHistory?: boolean;
   sidebarVisible: boolean;
   themeMode: string;
+  /** Desktop-only: which behaviour the OS close gesture takes. The
+   *  submenu is hidden when this prop is undefined (Chrome extension
+   *  has no tray, no window lifecycle to manage). */
+  closeBehavior?: "tray" | "quit";
   tocVisible: boolean;
   onEditorModeChange: (mode: "edit" | "split" | "preview") => void;
   onCheckForUpdates?: () => void;
@@ -89,6 +96,9 @@ interface ToolbarProps {
   onOpenRecentFile?: (recentFile: RecentFile) => void | Promise<void>;
   onOpenRecentFolder?: (path: string) => void | Promise<void>;
   onThemeChange: (mode: string) => void;
+  /** Desktop-only: change the OS-close behaviour. Paired with
+   *  `closeBehavior`; both undefined hides the submenu. */
+  onCloseBehaviorChange?: (value: "tray" | "quit") => void;
   onToggleSidebar: () => void;
   onToggleToc: () => void;
   onWindowDragStart?: () => void | Promise<void>;
@@ -313,6 +323,36 @@ export function Toolbar(props: ToolbarProps) {
             </DropdownMenuRadioGroup>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        {/* Window-close behaviour submenu — desktop only. Hidden
+            in the extension where there's no tray / no window
+            lifecycle to choose between. Items mirror the Theme
+            submenu's radio-group pattern so the affordance is
+            consistent across the toolbar dropdown. */}
+        <Show when={props.closeBehavior !== undefined && props.onCloseBehaviorChange}>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <IconAppWindow width={14} height={14} />
+              {(useLocale(), m.menu_window())}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent class="w-44">
+              <DropdownMenuRadioGroup
+                value={props.closeBehavior!}
+                onChange={(value) =>
+                  props.onCloseBehaviorChange?.(value as "tray" | "quit")
+                }
+              >
+                <DropdownMenuRadioItem value="tray">
+                  <IconMinimize2 width={14} height={14} />
+                  {(useLocale(), m.menu_window_close_tray())}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="quit">
+                  <IconLogOut width={14} height={14} />
+                  {(useLocale(), m.menu_window_close_quit())}
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </Show>
         {/* Action group — Export, Shortcuts, Updates, About all
               belong to "things you do from the menu" so they read as
               a single block. One separator before the group divides

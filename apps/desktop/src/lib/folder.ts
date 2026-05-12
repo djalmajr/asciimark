@@ -34,7 +34,11 @@ export function createFolder(deps: FolderDeps) {
 
     try {
       state.setLoading(true);
-      const entries = await readTree(path, state.showHiddenEntries());
+      const entries = await readTree(
+        path,
+        state.showHiddenEntries(),
+        state.respectGitignore(),
+      );
 
       // Add to rootPaths map
       setRootPaths((prev) => {
@@ -86,7 +90,11 @@ export function createFolder(deps: FolderDeps) {
     // would clear the wrong pane's preview. See wiki Round 4 Lesson 6.
     const targetPane = state.paneManager.activePane();
     try {
-      const entries = await readTree(rootPath, state.showHiddenEntries());
+      const entries = await readTree(
+        rootPath,
+        state.showHiddenEntries(),
+        state.respectGitignore(),
+      );
       const currentPath = targetPane.selectedFile()?.path;
       state.updateRootEntries(rootId, entries);
 
@@ -100,7 +108,18 @@ export function createFolder(deps: FolderDeps) {
     }
   }
 
-  async function refreshAllRoots(includeHiddenEntries: boolean) {
+  /**
+   * Re-read every workspace root from disk. Reads the current values
+   * of `showHiddenEntries` and `respectGitignore` from state at call
+   * time — callers used to pass `includeHiddenEntries` as a
+   * parameter, but that diverged from `refreshRoot`'s state-driven
+   * path. Reading the toggles inline keeps the two refresh entry
+   * points consistent and is required for the new `respectGitignore`
+   * toggle to take effect when re-reading.
+   */
+  async function refreshAllRoots() {
+    const includeHiddenEntries = state.showHiddenEntries();
+    const respectGitignore = state.respectGitignore();
     const ids = Array.from(rootPaths().keys());
     // Same race rule as refreshRoot: pin at call time so a pane flip
     // during the parallel reads doesn't redirect the cleanup to the
@@ -110,7 +129,7 @@ export function createFolder(deps: FolderDeps) {
       const rootPath = rootPaths().get(rootId);
       if (!rootPath) return;
 
-      const entries = await readTree(rootPath, includeHiddenEntries);
+      const entries = await readTree(rootPath, includeHiddenEntries, respectGitignore);
       const currentPath = targetPane.selectedFile()?.path;
       state.updateRootEntries(rootId, entries);
 

@@ -31,6 +31,11 @@ interface FileTreeProps {
   showHiddenEntries?: boolean;
   showAllDirs?: boolean;
   showAllFiles?: boolean;
+  /** Desktop-only: paired with `onToggleRespectGitignore`, drives a
+   *  new dropdown item that filters tree entries through the
+   *  workspace's `.gitignore`. The Chrome extension passes nothing
+   *  (no FS access) and the toggle is hidden. */
+  respectGitignore?: boolean;
   onCloseRoot?: (rootId: string) => void;
   onCopyPath?: (entry: FSEntry, rootId: string) => void | Promise<void>;
   onRename?: (entry: FSEntry, rootId: string, newName: string) => Promise<void>;
@@ -43,6 +48,10 @@ interface FileTreeProps {
   onToggleShowHiddenEntries?: () => void;
   onToggleShowAllDirs?: () => void;
   onToggleShowAllFiles?: () => void;
+  /** Desktop-only: flips the `respectGitignore` preference. When
+   *  undefined the dropdown item is hidden — matches the existing
+   *  pattern with the other three visibility toggles. */
+  onToggleRespectGitignore?: () => void;
   /** Forwarded to each `FileTreeItem`. Hides the per-item three-dot
    *  dropdown and the right-click context menu when false. Used by the
    *  extension where the only menu entry would be "Copy path" of a
@@ -593,7 +602,27 @@ export function FileTree(props: FileTreeProps) {
             <IconSlidersHorizontal width={16} height={16} />
           </DropdownMenuTrigger>
           <DropdownMenuContent>
-            <Show when={props.onToggleShowAllDirs || props.onToggleShowAllFiles || props.onToggleShowHiddenEntries}>
+            <Show
+              when={
+                props.onToggleShowAllDirs
+                || props.onToggleShowAllFiles
+                || props.onToggleShowHiddenEntries
+                || props.onToggleRespectGitignore
+              }
+            >
+              <Show when={props.onToggleRespectGitignore}>
+                <DropdownMenuItem
+                  closeOnSelect={false}
+                  onSelect={() => props.onToggleRespectGitignore?.()}
+                >
+                  <span class="flex-1">{(useLocale(), m.file_tree_respect_gitignore())}</span>
+                  <Switch checked={props.respectGitignore ?? false} class="file-tree-switch">
+                    <SwitchControl class="file-tree-switch-control">
+                      <SwitchThumb class="file-tree-switch-thumb" />
+                    </SwitchControl>
+                  </Switch>
+                </DropdownMenuItem>
+              </Show>
               <Show when={props.onToggleShowHiddenEntries}>
                 <DropdownMenuItem
                   closeOnSelect={false}

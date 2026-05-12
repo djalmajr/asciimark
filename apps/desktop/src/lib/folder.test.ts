@@ -110,6 +110,7 @@ function makeState(paneManager: ReturnType<typeof createPaneManager>): AppState 
     setShowAllDirs: () => {},
     setShowAllFiles: () => {},
     showHiddenEntries: () => false,
+    respectGitignore: () => true,
     pushRecentFolder: () => {},
     addRoot: () => {},
     updateRootEntries: () => {},

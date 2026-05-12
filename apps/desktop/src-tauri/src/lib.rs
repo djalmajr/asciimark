@@ -60,7 +60,32 @@ pub const HIDDEN_TOOL_DIRS: &[&str] = &[
     ".nyc_output",
 ];
 
-pub fn read_dir_recursive(dir: &Path, base: &Path, include_hidden_entries: bool) -> Result<Vec<DirEntry>, String> {
+/// Builds an `ignore::gitignore::Gitignore` matcher rooted at `base`.
+/// The matcher reads `<base>/.gitignore` (the `ignore` crate also
+/// honours nested `.gitignore` files automatically when paths under
+/// `base` are queried). When no `.gitignore` file exists or the
+/// matcher fails to build, returns the empty matcher — querying it
+/// is always a no-op, which keeps callers branch-free.
+pub fn build_gitignore_matcher(base: &Path) -> ignore::gitignore::Gitignore {
+    let mut builder = ignore::gitignore::GitignoreBuilder::new(base);
+    let gitignore_path = base.join(".gitignore");
+    if gitignore_path.exists() {
+        // `add` only returns an Option<Error> — we discard parse
+        // errors in malformed files rather than failing the whole
+        // `read_dir`. Worst case is the file tree shows entries the
+        // user expected to be hidden, which they can recover from
+        // by fixing the .gitignore.
+        let _ = builder.add(gitignore_path);
+    }
+    builder.build().unwrap_or_else(|_| ignore::gitignore::Gitignore::empty())
+}
+
+pub fn read_dir_recursive(
+    dir: &Path,
+    base: &Path,
+    include_hidden_entries: bool,
+    ignore_matcher: Option<&ignore::gitignore::Gitignore>,
+) -> Result<Vec<DirEntry>, String> {
     let mut entries = Vec::new();
     let read = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
 
@@ -74,8 +99,8 @@ pub fn read_dir_recursive(dir: &Path, base: &Path, include_hidden_entries: bool)
         }
 
         let file_type = entry.file_type().map_err(|e| e.to_string())?;
-        let rel_path = entry
-            .path()
+        let entry_path = entry.path();
+        let rel_path = entry_path
             .strip_prefix(base)
             .map_err(|e| e.to_string())?
             .to_string_lossy()
@@ -91,7 +116,15 @@ pub fn read_dir_recursive(dir: &Path, base: &Path, include_hidden_entries: bool)
             if !include_hidden_entries && HIDDEN_TOOL_DIRS.contains(&name.as_str()) {
                 continue;
             }
-            let children = read_dir_recursive(&entry.path(), base, include_hidden_entries)?;
+            // Gitignore — applied AFTER the hard-coded skip lists so the
+            // worst-case freeze guards keep firing even when the user
+            // toggled the gitignore filter off.
+            if let Some(matcher) = ignore_matcher {
+                if matcher.matched(&entry_path, true).is_ignore() {
+                    continue;
+                }
+            }
+            let children = read_dir_recursive(&entry_path, base, include_hidden_entries, ignore_matcher)?;
             entries.push(DirEntry {
                 name,
                 kind: "directory".into(),
@@ -99,6 +132,11 @@ pub fn read_dir_recursive(dir: &Path, base: &Path, include_hidden_entries: bool)
                 children: Some(children),
             });
         } else if file_type.is_file() {
+            if let Some(matcher) = ignore_matcher {
+                if matcher.matched(&entry_path, false).is_ignore() {
+                    continue;
+                }
+            }
             entries.push(DirEntry {
                 name,
                 kind: "file".into(),
@@ -131,9 +169,23 @@ async fn open_directory_dialog(app: AppHandle) -> Result<Option<String>, String>
 }
 
 #[tauri::command]
-async fn read_dir(path: String, include_hidden_entries: Option<bool>) -> Result<Vec<DirEntry>, String> {
+async fn read_dir(
+    path: String,
+    include_hidden_entries: Option<bool>,
+    respect_gitignore: Option<bool>,
+) -> Result<Vec<DirEntry>, String> {
     let path = PathBuf::from(&path);
-    read_dir_recursive(&path, &path, include_hidden_entries.unwrap_or(false))
+    let matcher = if respect_gitignore.unwrap_or(false) {
+        Some(build_gitignore_matcher(&path))
+    } else {
+        None
+    };
+    read_dir_recursive(
+        &path,
+        &path,
+        include_hidden_entries.unwrap_or(false),
+        matcher.as_ref(),
+    )
 }
 
 #[tauri::command]
@@ -792,7 +844,7 @@ mod tests {
         fs::create_dir(root.join("zfolder")).unwrap();
         fs::create_dir(root.join("alpha-folder")).unwrap();
 
-        let entries = read_dir_recursive(root, root, false).unwrap();
+        let entries = read_dir_recursive(root, root, false, None).unwrap();
         assert_eq!(names(&entries), vec!["alpha-folder", "zfolder", "apple.md", "zebra.md"]);
         assert!(entries[0].children.is_some(), "directories should carry a children vec");
         assert!(entries[2].children.is_none(), "files must not carry children");
@@ -805,10 +857,10 @@ mod tests {
         touch(&root.join(".secret"));
         touch(&root.join("README.md"));
 
-        let entries = read_dir_recursive(root, root, false).unwrap();
+        let entries = read_dir_recursive(root, root, false, None).unwrap();
         assert_eq!(names(&entries), vec!["README.md"]);
 
-        let entries = read_dir_recursive(root, root, true).unwrap();
+        let entries = read_dir_recursive(root, root, true, None).unwrap();
         assert_eq!(names(&entries), vec![".secret", "README.md"]);
     }
 
@@ -822,7 +874,7 @@ mod tests {
         }
         touch(&root.join("README.md"));
 
-        let entries = read_dir_recursive(root, root, true).unwrap();
+        let entries = read_dir_recursive(root, root, true, None).unwrap();
         assert_eq!(names(&entries), vec!["README.md"]);
     }
 
@@ -834,10 +886,10 @@ mod tests {
         fs::create_dir(root.join(".vscode")).unwrap();
         touch(&root.join("README.md"));
 
-        let entries = read_dir_recursive(root, root, false).unwrap();
+        let entries = read_dir_recursive(root, root, false, None).unwrap();
         assert_eq!(names(&entries), vec!["README.md"]);
 
-        let entries = read_dir_recursive(root, root, true).unwrap();
+        let entries = read_dir_recursive(root, root, true, None).unwrap();
         let entry_names = names(&entries);
         assert!(entry_names.contains(&".git"));
         assert!(entry_names.contains(&".vscode"));
@@ -851,7 +903,7 @@ mod tests {
         fs::create_dir(root.join("docs")).unwrap();
         touch(&root.join("docs").join("guide.adoc"));
 
-        let entries = read_dir_recursive(root, root, false).unwrap();
+        let entries = read_dir_recursive(root, root, false, None).unwrap();
         let docs = entries.iter().find(|e| e.name == "docs").unwrap();
         let children = docs.children.as_ref().unwrap();
         assert_eq!(children.len(), 1);
@@ -868,7 +920,7 @@ mod tests {
         fs::create_dir_all(&deep).unwrap();
         touch(&deep.join("leaf.md"));
 
-        let entries = read_dir_recursive(root, root, false).unwrap();
+        let entries = read_dir_recursive(root, root, false, None).unwrap();
         let a = entries.iter().find(|e| e.name == "a").unwrap();
         let b = a.children.as_ref().unwrap().iter().find(|e| e.name == "b").unwrap();
         let c = b.children.as_ref().unwrap().iter().find(|e| e.name == "c").unwrap();
@@ -878,10 +930,66 @@ mod tests {
     }
 
     #[test]
+    fn read_dir_respects_gitignore_when_matcher_is_supplied() {
+        // Mutation captured: dropping either the file-level or
+        // directory-level `matcher.matched(...).is_ignore()` check in
+        // `read_dir_recursive` makes the corresponding assertion below
+        // fail. Two separate checks → two separate assertions.
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        fs::write(root.join(".gitignore"), b"ignored/\n*.log\n").unwrap();
+        fs::create_dir(root.join("ignored")).unwrap();
+        touch(&root.join("ignored").join("inside.md"));
+        touch(&root.join("debug.log"));
+        touch(&root.join("README.md"));
+
+        let matcher = build_gitignore_matcher(root);
+        let entries = read_dir_recursive(root, root, false, Some(&matcher)).unwrap();
+        let entry_names = names(&entries);
+        assert!(entry_names.contains(&"README.md"), "kept entries: {:?}", entry_names);
+        assert!(!entry_names.contains(&"ignored"), "directory rule must skip the dir entry");
+        assert!(!entry_names.contains(&"debug.log"), "file rule must skip matching files");
+    }
+
+    #[test]
+    fn read_dir_ignores_gitignore_when_matcher_is_none() {
+        // Mutation captured: a "matcher is always applied" bug (e.g. an
+        // internal `unwrap_or_else(|| build_gitignore_matcher(base))`)
+        // would filter even with the user-facing toggle off. Probing
+        // with `None` confirms the gitignore path is opt-in.
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        fs::write(root.join(".gitignore"), b"debug.log\n").unwrap();
+        touch(&root.join("debug.log"));
+        touch(&root.join("README.md"));
+
+        let entries = read_dir_recursive(root, root, false, None).unwrap();
+        let entry_names = names(&entries);
+        assert!(entry_names.contains(&"debug.log"));
+        assert!(entry_names.contains(&"README.md"));
+    }
+
+    #[test]
+    fn read_dir_gitignore_with_empty_matcher_filters_nothing() {
+        // Workspaces without a `.gitignore` end up with an empty
+        // matcher (per `build_gitignore_matcher`'s no-file fallback).
+        // The toggle being ON for such a workspace must be a no-op,
+        // not surprise the user by hiding random entries.
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        touch(&root.join("notes.md"));
+        touch(&root.join("debug.log"));
+
+        let matcher = build_gitignore_matcher(root);
+        let entries = read_dir_recursive(root, root, false, Some(&matcher)).unwrap();
+        assert_eq!(names(&entries), vec!["debug.log", "notes.md"]);
+    }
+
+    #[test]
     fn read_dir_returns_error_on_missing_directory() {
         let dir = tempdir().unwrap();
         let bogus = dir.path().join("does-not-exist");
-        let result = read_dir_recursive(&bogus, &bogus, false);
+        let result = read_dir_recursive(&bogus, &bogus, false, None);
         assert!(result.is_err());
     }
 
@@ -901,7 +1009,7 @@ mod tests {
         }
 
         let start = std::time::Instant::now();
-        let entries = read_dir_recursive(root, root, false).unwrap();
+        let entries = read_dir_recursive(root, root, false, None).unwrap();
         let elapsed = start.elapsed();
 
         assert_eq!(entries.len(), 5_000, "all files should be visible");
@@ -929,7 +1037,7 @@ mod tests {
         }
 
         let start = std::time::Instant::now();
-        let entries = read_dir_recursive(root, root, false).unwrap();
+        let entries = read_dir_recursive(root, root, false, None).unwrap();
         let elapsed = start.elapsed();
 
         assert_eq!(entries.len(), 1, "only README.md should be visible");
@@ -1137,7 +1245,7 @@ mod tests {
                 let _ = fs::create_dir(root.join(d));
             }
 
-            let entries = match read_dir_recursive(root, root, false) {
+            let entries = match read_dir_recursive(root, root, false, None) {
                 Ok(e) => e,
                 Err(_) => return Ok(()), // tempdir collisions in the random set are fine
             };
@@ -1425,7 +1533,7 @@ mod tests {
         }
         fs::write(path.join("leaf.md"), b"# leaf\n").unwrap();
 
-        let result = read_dir_recursive(dir.path(), dir.path(), false);
+        let result = read_dir_recursive(dir.path(), dir.path(), false, None);
         assert!(result.is_ok());
     }
 
@@ -1437,7 +1545,7 @@ mod tests {
         touch(&root.join("apple.md"));
         touch(&root.join("Cherry.md"));
 
-        let entries = read_dir_recursive(root, root, false).unwrap();
+        let entries = read_dir_recursive(root, root, false, None).unwrap();
         assert_eq!(names(&entries), vec!["apple.md", "Banana.md", "Cherry.md"]);
     }
 
@@ -1799,7 +1907,7 @@ mod tests {
         touch(&root.join("alpha.md"));
         touch(&root.join("bravo.md"));
 
-        let entries = super::read_dir(root.to_string_lossy().to_string(), None)
+        let entries = super::read_dir(root.to_string_lossy().to_string(), None, None)
             .await
             .unwrap();
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();

@@ -7,8 +7,16 @@ export async function openDirectory(): Promise<string | null> {
   return await invoke<string | null>("open_directory_dialog");
 }
 
-export async function readTree(rootPath: string, includeHiddenEntries = false): Promise<FSEntry[]> {
-  return await invoke<FSEntry[]>("read_dir", { includeHiddenEntries, path: rootPath });
+export async function readTree(
+  rootPath: string,
+  includeHiddenEntries = false,
+  respectGitignore = false,
+): Promise<FSEntry[]> {
+  return await invoke<FSEntry[]>("read_dir", {
+    includeHiddenEntries,
+    respectGitignore,
+    path: rootPath,
+  });
 }
 
 export async function readFileContent(filePath: string): Promise<string> {

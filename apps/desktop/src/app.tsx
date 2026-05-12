@@ -32,6 +32,7 @@ import { confirm } from "@asciimark/ui/components/confirm-dialog.tsx";
 import { setupTauriDnd } from "./lib/dnd.ts";
 import { setupAppMenu } from "./lib/menu.ts";
 import { setupTray } from "./lib/tray.ts";
+import { decideCloseAction } from "./lib/window-close.ts";
 import {
   _devSetDownloadProgress,
   _devSetPendingUpdate,
@@ -157,9 +158,8 @@ export function App() {
       toggleShowAllFiles: () => state.setShowAllFiles((v) => !v),
       toggleShowAllDirs: () => state.setShowAllDirs((v) => !v),
       toggleShowHidden: () => {
-        const next = !state.showHiddenEntries();
-        state.setShowHiddenEntries(next);
-        return folder.refreshAllRoots(next);
+        state.setShowHiddenEntries((v) => !v);
+        return folder.refreshAllRoots();
       },
       getState: () => ({
         showAllFiles: state.showAllFiles(),
@@ -308,12 +308,23 @@ export function App() {
       onOpenFolder: folder.handleOpenFolder,
     }).catch((e) => console.error("Failed to set up tray:", e));
 
-    // Close-to-tray: clicking the window X hides instead of quitting.
-    // The app keeps running in the tray. Only Cmd+Q or "Quit" from the
-    // tray menu actually terminates.
+    // Close-to-tray: clicking the window X hides instead of quitting
+    // by default. The user can flip the `closeBehavior` preference to
+    // `"quit"` via the toolbar to make X / Cmd+W actually terminate.
+    // Cmd+Q always quits regardless (delivered by macOS as a
+    // process-exit, never reaches `onCloseRequested`).
+    //
+    // `decideCloseAction` is the pure form of this decision so the
+    // rule can be unit-tested without a Tauri runtime.
     const win = getCurrentWindow();
     void win.onCloseRequested(async (event) => {
-      if ((window as any).__asciimark_updating) return;
+      const action = decideCloseAction({
+        closeBehavior: state.closeBehavior(),
+        isUpdating:
+          (window as unknown as { __asciimark_updating?: boolean }).__asciimark_updating ??
+          false,
+      });
+      if (action === "let-close") return;
       event.preventDefault();
       await win.hide();
       await invoke("set_dock_visible", { visible: false });
@@ -803,7 +814,10 @@ export function App() {
         group: "View",
         title: m.command_toggle_hidden_files(),
         when: () => hasRoot,
-        run: () => folder.refreshAllRoots(!state.showHiddenEntries()),
+        run: () => {
+          state.setShowHiddenEntries((v) => !v);
+          void folder.refreshAllRoots();
+        },
       },
       {
         id: "view.editorMode.edit",
@@ -861,7 +875,9 @@ export function App() {
         group: "Workspace",
         title: "Refresh Workspace",
         when: () => hasRoot,
-        run: () => folder.refreshAllRoots(state.showHiddenEntries()),
+        run: () => {
+          void folder.refreshAllRoots();
+        },
       },
       {
         id: "nav.goToSymbol",
@@ -1281,6 +1297,7 @@ export function App() {
       showToolbar={rootPaths().size > 0}
       showSidebar={state.sidebarVisible() && rootPaths().size > 0}
       showWindowControls={navigator.platform.startsWith("Win")}
+      showCloseBehaviorToggle={true}
       toolbarFilePath={state.selectedFile()?.path ?? null}
       toolbarRootName={state.rootName()}
       windowFrameToolbar={true}
@@ -1352,7 +1369,8 @@ export function App() {
         }
       }}
       resolveImageSrc={resolveImageSrc}
-      onToggleShowHiddenEntries={(enabled) => folder.refreshAllRoots(enabled)}
+      onToggleShowHiddenEntries={() => folder.refreshAllRoots()}
+      onToggleRespectGitignore={() => folder.refreshAllRoots()}
       onReorderRoots={(newOrder) => state.reorderRoots(newOrder)}
     />
     <UpdateAvailableDialog

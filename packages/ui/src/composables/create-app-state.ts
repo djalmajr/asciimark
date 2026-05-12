@@ -64,6 +64,15 @@ import {
   setStoredWrapText,
 } from "@asciimark/core/editor-prefs.ts";
 import {
+  getStoredRespectGitignore,
+  setStoredRespectGitignore,
+} from "@asciimark/core/file-tree-prefs.ts";
+import {
+  type CloseBehavior,
+  getStoredCloseBehavior,
+  setStoredCloseBehavior,
+} from "@asciimark/core/window-prefs.ts";
+import {
   type FavoriteFile,
   addFavorite,
   getFavorites,
@@ -186,6 +195,8 @@ export function createAppState(config: AppStateConfig) {
   const [showAllDirs, setShowAllDirs] = createSignal(false);
   const [showAllFiles, setShowAllFiles] = createSignal(false);
   const [showHiddenEntries, setShowHiddenEntries] = createSignal(false);
+  const [respectGitignore, setRespectGitignore] = createSignal(getStoredRespectGitignore());
+  const [closeBehavior, setCloseBehavior] = createSignal<CloseBehavior>(getStoredCloseBehavior());
 
   // Derived: list of all roots ordered by rootOrder
   const rootsList = () => {
@@ -350,6 +361,16 @@ export function createAppState(config: AppStateConfig) {
   function handleIndentSizeChange(size: number) {
     setIndentSize(size);
     setStoredIndentSize(size);
+  }
+
+  function handleRespectGitignoreChange(enabled: boolean) {
+    setRespectGitignore(enabled);
+    setStoredRespectGitignore(enabled);
+  }
+
+  function handleCloseBehaviorChange(value: CloseBehavior) {
+    setCloseBehavior(value);
+    setStoredCloseBehavior(value);
   }
 
   function triggerEditorFind() {
@@ -790,6 +811,8 @@ export function createAppState(config: AppStateConfig) {
     showAllDirs,
     showAllFiles,
     showHiddenEntries,
+    respectGitignore,
+    closeBehavior,
     sidebarVisible,
     sidebarWidth,
     themeMode,
@@ -832,6 +855,8 @@ export function createAppState(config: AppStateConfig) {
     setShowAllDirs,
     setShowAllFiles,
     setShowHiddenEntries,
+    setRespectGitignore,
+    setCloseBehavior,
     setSidebarVisible,
     setSidebarWidth,
     setThemeMode,
@@ -874,6 +899,8 @@ export function createAppState(config: AppStateConfig) {
     handleRemoveRecentFolder,
     handleShowInvisiblesChange,
     handleSyncScrollChange,
+    handleRespectGitignoreChange,
+    handleCloseBehaviorChange,
     handleThemeChange,
     handleWrapTextChange,
     onEditorResizeReset,

@@ -27,6 +27,10 @@ tauri-plugin-process = "2.3.1"
 tauri-plugin-single-instance = "2.4.1"
 tauri-plugin-opener = "2"
 trash = "5"
+# `ignore` is the same gitignore crate that powers ripgrep — handles
+# nested .gitignore files, negation, globs. Used by `read_dir` when
+# the user toggles "Respect .gitignore" in the file tree.
+ignore = "0.4"
 
 # Dev-only: registered with #[cfg(debug_assertions)] in lib.rs so release
 # builds get stripped by LTO. Lets AI agents drive the running app via the
