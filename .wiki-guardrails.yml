@@ -3,7 +3,7 @@ qmd_index: "asciimark"
 wiki_collection: "asciimark"
 language: "pt-BR"
 query_language: "pt-BR"
-qmd_command: "/Users/djalmajr/.local/share/essential-skills/qmd/wrappers/asciimark-qmd"
+qmd_command: "~/.local/share/essential-skills/qmd/wrappers/asciimark-qmd"
 harnesses:
   claude: true
   codex: true

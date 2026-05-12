@@ -4,7 +4,7 @@ set -euo pipefail
 INPUT="$(cat)"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 WIKI_DIR="$(cd "$ROOT/./wiki" 2>/dev/null && pwd -P || printf '%s\n' "$ROOT/./wiki")"
-QMD_COMMAND="/Users/djalmajr/.local/share/skills/qmd/wrappers/asciimark-qmd"
+QMD_COMMAND="$HOME/.local/share/skills/qmd/wrappers/asciimark-qmd"
 
 TOOL="$(printf '%s' "$INPUT" | jq -r '.tool_name // empty')"
 case "$TOOL" in
