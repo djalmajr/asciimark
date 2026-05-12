@@ -3,8 +3,15 @@
 ## Skip everything once with: `LEFTHOOK=0 git commit ...`. Skip a specific hook
 ## with: `LEFTHOOK_EXCLUDE=test git push ...`.
 
+## `parallel: false` because `test-bun` and `test-ui` both spin up
+## vite-style transforms. In parallel they race for the vite plugin
+## context cache and trip `TransformPluginContext.error` from
+## `vite/dist/node/chunks/dep-*.js`. The `create-pane-manager`
+## stateful PBT was also producing false-positive counter-examples
+## under that race. Sequential adds ~3-5s per commit; cheap insurance
+## against having to LEFTHOOK=0 around every multi-area change.
 pre-commit:
-  parallel: true
+  parallel: false
   commands:
     typecheck:
       glob: "*.{ts,tsx}"
