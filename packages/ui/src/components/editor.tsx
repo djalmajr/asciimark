@@ -1,5 +1,5 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Annotation, Compartment, EditorState } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -16,6 +16,18 @@ import { defaultKeymap, history, historyKeymap, redo, redoDepth, undo, undoDepth
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, defaultHighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { findTextMatches, SearchOverlay, type SearchOptions } from "./search-overlay.tsx";
+
+/**
+ * Marks a CodeMirror dispatch as "content swapped from outside" —
+ * i.e. the parent component replaced `props.content` (file load,
+ * undo-after-load, programmatic refresh). The `updateListener`
+ * checks this annotation before firing `onChange`, because the
+ * downstream "first keystroke pins the preview tab" rule treats
+ * any onChange as a user edit. Without the annotation, opening a
+ * file would instantly promote its preview tab to pinned the same
+ * tick its content lands.
+ */
+const externalContentSwap = Annotation.define<true>();
 
 type IndentMode = "tabs" | "spaces";
 
@@ -310,7 +322,16 @@ export function Editor(props: EditorProps) {
         EditorView.updateListener.of((update) => {
           emitHistoryState(update.state);
           if (update.docChanged) {
-            props.onChange(update.state.doc.toString());
+            // Skip onChange when the doc swap came from the parent
+            // setting `props.content` (file load, etc.). Otherwise
+            // the pin-on-edit rule in pane-view treats every file
+            // open as the user's first keystroke.
+            const isExternalSwap = update.transactions.some((t) =>
+              t.annotation(externalContentSwap),
+            );
+            if (!isExternalSwap) {
+              props.onChange(update.state.doc.toString());
+            }
             if (props.searchOpen && searchQuery()) {
               recomputeMatches(searchQuery(), searchOptions());
             }
@@ -382,6 +403,9 @@ export function Editor(props: EditorProps) {
     if (view.state.doc.toString() !== newContent) {
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: newContent },
+        // Tag the dispatch so updateListener can skip onChange —
+        // this is a content swap from the parent, not a user edit.
+        annotations: externalContentSwap.of(true),
       });
       if (props.searchOpen && searchQuery()) {
         recomputeMatches(searchQuery(), searchOptions());

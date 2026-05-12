@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { Editor } from "./editor.tsx";
 
 interface BaseProps {
@@ -87,6 +88,33 @@ describe("Editor", () => {
     );
     expect(input).not.toBeNull();
     expect(input?.placeholder).toMatch(/find/i);
+  });
+
+  it("external content swap does NOT fire onChange (preview tab stays preview on file load)", async () => {
+    // Mutation captured: dropping the `externalContentSwap` annotation
+    // on the createEffect's dispatch in editor.tsx — or removing the
+    // `isExternalSwap` short-circuit in `updateListener` — re-introduces
+    // the pin-on-load regression. The pane-view binds the editor's
+    // onChange to "pin the active preview tab" (first keystroke = pin),
+    // so any onChange firing during a file load instantly promotes the
+    // brand-new preview slot to a pinned tab and breaks the VSCode
+    // preview UX.
+    const onChange = vi.fn();
+    const [content, setContent] = createSignal("initial");
+    const { container } = render(() => (
+      <Editor {...withDefaults({ content: content(), onChange })} />
+    ));
+    // Editor mounts with "initial". Now the parent swaps the doc — same
+    // path file-load takes when single-clicking a file in the tree.
+    setContent("swapped from outside");
+    // Let the createEffect that bridges `props.content` -> view.dispatch
+    // flush. Solid effects run synchronously after signal writes, but the
+    // microtask awaits leave room for CodeMirror's updateListener.
+    await Promise.resolve();
+    expect(container.querySelector(".cm-content")?.textContent).toContain(
+      "swapped from outside",
+    );
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("triggers onSearchOpenChange when Cmd/Ctrl+F is pressed inside the editor", () => {
