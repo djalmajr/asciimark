@@ -578,6 +578,41 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   position: relative;
 }
 
+/* Editor/preview split — match the pane-splitter visual. The handle
+   keeps the same hit area (8px effective via negative margins) but
+   adds a static 1px line plus the same primary-coloured highlight
+   on hover and during the drag (parent `.content-panels.resizing`).
+   Scoped to `.content-panels > .resize-handle` so the sidebar
+   resize handle keeps its original transparent look — the sidebar
+   already shows a 1px border separator from the file tree. */
+.content-panels > .resize-handle {
+  width: 8px;
+  margin-left: -4px;
+  margin-right: -4px;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  background: transparent;
+  user-select: none;
+}
+
+.content-panels > .resize-handle::before {
+  content: "";
+  width: 1px;
+  background: hsl(var(--border));
+  transition: background 80ms ease, width 80ms ease;
+}
+
+.content-panels > .resize-handle:hover::before,
+.content-panels.resizing > .resize-handle::before {
+  background: hsl(var(--primary));
+  width: 2px;
+}
+
+.content-panels.resizing > .resize-handle {
+  background: hsl(var(--primary) / 0.05);
+}
+
 
 /* === File Tree === */
 .file-tree {
