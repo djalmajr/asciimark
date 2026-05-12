@@ -318,6 +318,23 @@ export function HomePage() {
         )}
       </Show>
 
+      <section class="chrome-ext-panel">
+        <div>
+          <h2 class="section-title">{(useLocale(), m.site_chrome_ext_title())}</h2>
+          <p class="section-subtitle">
+            {(useLocale(), m.site_chrome_ext_description())}
+          </p>
+        </div>
+        <Button
+          as="a"
+          href="https://chromewebstore.google.com/detail/asciimark/dmcihjkjbeckainfkaddpkeghlllmkbk"
+          rel="noreferrer"
+          target="_blank"
+        >
+          {(useLocale(), m.site_chrome_ext_cta())}
+        </Button>
+      </section>
+
       <section class="notice-panel">
         <p>
           {(useLocale(),
