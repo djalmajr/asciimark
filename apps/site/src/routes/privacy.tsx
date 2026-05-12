@@ -1,8 +1,14 @@
+import { lazy } from "solid-js";
 import { createFileRoute } from "@tanstack/solid-router";
-import { PrivacyPage } from "../pages/privacy-page.tsx";
+
+// Lazy: ship Privacy content + its i18n chunk only when the user
+// navigates to `/privacy`. Initial Home load stays untouched.
+const LazyPrivacy = lazy(() =>
+  import("../pages/privacy-page.tsx").then((mod) => ({ default: mod.PrivacyPage })),
+);
 
 function PrivacyRouteComponent() {
-  return <PrivacyPage />;
+  return <LazyPrivacy />;
 }
 
 export const Route = createFileRoute("/privacy")({
