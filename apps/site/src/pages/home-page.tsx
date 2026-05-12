@@ -30,9 +30,9 @@ interface ScreenshotItem {
 }
 
 const RELEASES_BASE_URL =
-  "https://github.com/djalmajr/asciimark-releases/releases/latest/download";
+  "https://github.com/djalmajr/asciimark/releases/latest/download";
 const RELEASES_LATEST_URL =
-  "https://github.com/djalmajr/asciimark-releases/releases/latest";
+  "https://github.com/djalmajr/asciimark/releases/latest";
 
 interface PreferredDownload {
   href: string;

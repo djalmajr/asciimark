@@ -9,14 +9,20 @@ on:
       - "packages/ui/src/components/ui/**"
       - "packages/core/src/**"
 
+# After the Phase A migration the site deploys to the source repo's
+# gh-pages branch (djalmajr/asciimark). asciimark-releases is left
+# untouched until Phase C archives it. See
+# wiki/process/operations-followups.md.
 env:
-  PUBLIC_RELEASES_REPO: djalmajr/asciimark-releases
+  DEPLOY_REPO: djalmajr/asciimark
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # `contents: write` so GITHUB_TOKEN can force-push to the
+      # gh-pages branch of the source repo.
+      contents: write
     steps:
       - uses: actions/checkout@v6
 
@@ -29,24 +35,13 @@ jobs:
       - name: Build site
         run: bun run --filter @asciimark/site build
 
-      - name: Validate public deploy configuration
-        env:
-          GH_TOKEN: ${{ secrets.PUBLIC_DIST_TOKEN }}
-        run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::error::PUBLIC_DIST_TOKEN is not set. Configure this secret with write access to $PUBLIC_RELEASES_REPO."
-            exit 1
-          fi
-          gh repo view "$PUBLIC_RELEASES_REPO" >/dev/null
-
       - name: Publish site to GitHub Pages branch
         env:
-          GH_TOKEN: ${{ secrets.PUBLIC_DIST_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           DEPLOY_DIR="apps/site/dist"
           DEPLOY_BRANCH="gh-pages"
-          DEPLOY_REPO="${PUBLIC_RELEASES_REPO}"
           CNAME="asciimark.djalmajr.dev"
 
           # Set up a temp dir with the deploy content
@@ -62,5 +57,7 @@ jobs:
           git add .
           git commit -m "Deploy public site"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${DEPLOY_REPO}.git"
+          # Force-push because GitHub Pages publishes from whatever's at
+          # the tip of gh-pages — keeping history adds no value here.
           git push --force origin "${DEPLOY_BRANCH}"
           rm -rf "${WORK}"

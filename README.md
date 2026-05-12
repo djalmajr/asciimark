@@ -9,7 +9,7 @@ navigation layer; everything renders locally without telemetry.
 
 * **Desktop** — pre-built signed installers for macOS (arm64 + x64),
   Linux (AppImage + .deb), and Windows (MSI + EXE) at
-  [github.com/djalmajr/asciimark-releases](https://github.com/djalmajr/asciimark-releases/releases/latest).
+  [github.com/djalmajr/asciimark](https://github.com/djalmajr/asciimark/releases/latest).
   Auto-update wired in via the Tauri updater.
 * **Chrome extension** —
   [Chrome Web Store listing](https://chromewebstore.google.com/detail/asciimark/dmcihjkjbeckainfkaddpkeghlllmkbk).

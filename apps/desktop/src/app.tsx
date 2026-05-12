@@ -43,7 +43,7 @@ import {
 import { fetchReleaseHistory, type ReleaseHistoryEntry } from "./lib/release-notes.ts";
 
 const RELEASES_INDEX_URL =
-  "https://github.com/djalmajr/asciimark-releases/releases";
+  "https://github.com/djalmajr/asciimark/releases";
 import { UpdateAvailableDialog } from "@asciimark/ui/components/update-available-dialog.tsx";
 import { ReleaseNotesDialog } from "@asciimark/ui/components/release-notes-dialog.tsx";
 import { findInFiles } from "./lib/fs.ts";

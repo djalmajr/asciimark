@@ -67,7 +67,7 @@ function formatDate(iso: string): string {
  * Standalone read-only dialog that shows the recent release history
  * for AsciiMark — used by the "Release notes" menu entry and Command
  * Palette command. Pulls the last ~10 entries from
- * djalmajr/asciimark-releases and lays them out as a scrollable
+ * djalmajr/asciimark and lays them out as a scrollable
  * stack; the entry that matches the currently-installed version is
  * highlighted so users can locate "what's mine".
  */

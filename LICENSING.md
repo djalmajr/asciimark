@@ -10,7 +10,7 @@ or competing products.
 If you want to use AsciiMark, install the binary from one of the
 official channels:
 
-* Desktop: [github.com/djalmajr/asciimark-releases](https://github.com/djalmajr/asciimark-releases)
+* Desktop: [github.com/djalmajr/asciimark](https://github.com/djalmajr/asciimark/releases/latest)
 * Browser: [Chrome Web Store](https://chromewebstore.google.com/detail/asciimark/dmcihjkjbeckainfkaddpkeghlllmkbk)
 
 That's it — the binary is free to use forever.
