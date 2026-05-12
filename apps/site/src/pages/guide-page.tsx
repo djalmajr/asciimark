@@ -71,6 +71,8 @@ const guideScreenshots: GuideScreenshot[] = [
   { src: "/screenshots/desktop-workspace-symbols.png", alt: m.guide_symbols_h2, caption: m.guide_symbols_caption },
   { src: "/screenshots/desktop-reader-mode.png", alt: m.guide_reader_h2, caption: m.guide_reader_caption },
   { src: "/screenshots/desktop-edit-preview.png", alt: m.guide_editor_h2, caption: m.guide_editor_split_p },
+  { src: "/screenshots/desktop-respect-gitignore.png", alt: m.guide_opening_gitignore_alt, caption: m.guide_opening_gitignore_caption },
+  { src: "/screenshots/desktop-close-behavior.png", alt: m.guide_appearance_close_behavior_alt, caption: m.guide_appearance_close_behavior_caption },
   { src: "/screenshots/desktop-quick-open.png", alt: m.guide_shortcut_quick_open, caption: m.guide_shortcut_quick_open },
   { src: "/screenshots/desktop-command-palette.png", alt: m.guide_shortcut_command_palette, caption: m.guide_shortcut_command_palette },
   { src: "/screenshots/desktop-symbol-palette.png", alt: m.guide_shortcut_go_heading, caption: m.guide_shortcut_go_heading },
@@ -213,6 +215,27 @@ export function GuidePage() {
           </figure>
           <h3>{(useLocale(), m.guide_opening_dnd_h3())}</h3>
           <p>{(useLocale(), m.guide_opening_dnd_p())}</p>
+          <h3>{(useLocale(), m.guide_opening_gitignore_h3())}</h3>
+          <HtmlP html={(useLocale(), m.guide_opening_gitignore_p())} />
+          <figure class="guide-media">
+            <button
+              class="guide-media-button"
+              onClick={() =>
+                openImageWith(
+                  m.guide_opening_gitignore_alt,
+                  m.guide_opening_gitignore_caption,
+                  "/screenshots/desktop-respect-gitignore.png",
+                )
+              }
+              type="button"
+            >
+              <img
+                alt={(useLocale(), m.guide_opening_gitignore_alt())}
+                src="/screenshots/desktop-respect-gitignore.png"
+              />
+            </button>
+            <figcaption>{(useLocale(), m.guide_opening_gitignore_caption())}</figcaption>
+          </figure>
           <h3>{(useLocale(), m.guide_opening_url_h3())}</h3>
           <HtmlP html={(useLocale(), m.guide_opening_url_p())} />
           <h3>{(useLocale(), m.guide_opening_file_url_h3())}</h3>
@@ -355,6 +378,27 @@ export function GuidePage() {
               <img alt={(useLocale(), m.guide_appearance_caption())} src="/screenshots/desktop-dark-theme.png" />
             </button>
             <figcaption>{(useLocale(), m.guide_appearance_caption())}</figcaption>
+          </figure>
+          <h3>{(useLocale(), m.guide_appearance_close_behavior_h3())}</h3>
+          <HtmlP html={(useLocale(), m.guide_appearance_close_behavior_p())} />
+          <figure class="guide-media">
+            <button
+              class="guide-media-button"
+              onClick={() =>
+                openImageWith(
+                  m.guide_appearance_close_behavior_alt,
+                  m.guide_appearance_close_behavior_caption,
+                  "/screenshots/desktop-close-behavior.png",
+                )
+              }
+              type="button"
+            >
+              <img
+                alt={(useLocale(), m.guide_appearance_close_behavior_alt())}
+                src="/screenshots/desktop-close-behavior.png"
+              />
+            </button>
+            <figcaption>{(useLocale(), m.guide_appearance_close_behavior_caption())}</figcaption>
           </figure>
         </section>
 
