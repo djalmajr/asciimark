@@ -184,9 +184,6 @@ const PANE_COUNT = 2;
 function entry(name: string, path = name): FSEntry {
   return { name, path, kind: "file" };
 }
-function tabIdOf(name: string): string {
-  return `${ROOT_ID}::${name}`;
-}
 
 /**
  * Oracle that tracks, for every tab id, the last content the user
@@ -201,6 +198,19 @@ interface ContentModel {
 
 function emptyContentModel(): ContentModel {
   return { lastObservedContent: new Map() };
+}
+
+/**
+ * Oracle key. Tab IDs are **pane-scoped**, not global: two panes
+ * can each hold a tab whose id is `r1::app` with completely
+ * different content. Keying the model on `tabId` alone collapses
+ * those into a single entry and the second Open silently
+ * overwrites the first pane's record, surfacing as a false P1/P2
+ * failure on the next assert. Composite key keeps the panes
+ * isolated in the model the same way they are in the manager.
+ */
+function oracleKey(paneId: string, tabId: string): string {
+  return `${paneId}|${tabId}`;
 }
 
 interface ContentCmd {
@@ -226,12 +236,19 @@ const openCmd = fc
       const targetPane = mgr.panes()[paneIdx];
       if (!targetPane) return;
       mgr.setActivePane(paneIdx);
-      targetPane.tabs.openTab(entry(name), ROOT_ID);
+      // openTab returns the actual tab id. It generates a unique
+      // suffix (`r1::name#2`) when the same path is opened a second
+      // time, so we MUST capture the return value — deriving the id
+      // from the name only works for the first open and corrupts
+      // the oracle on duplicate-name sequences (the model would
+      // overwrite the original tab's record instead of tracking the
+      // newly-created duplicate).
+      const tabId = targetPane.tabs.openTab(entry(name), ROOT_ID);
       // Mirror what the editor would do: push the content into both
       // the live signal and the underlying TabState snapshot.
       targetPane.setEditorContent(content);
       targetPane.tabs.updateActiveTabContent({ editorContent: content });
-      model.lastObservedContent.set(tabIdOf(name), content);
+      model.lastObservedContent.set(oracleKey(targetPane.paneId, tabId), content);
     },
     describe: () => `Open(${name}, p${paneIdx}, "${content}")`,
   }));
@@ -252,7 +269,7 @@ const switchCmd = fc
       // live signal. The oracle records what the user now sees so
       // a subsequent WriteContent — without re-observing this tab —
       // doesn't drift.
-      model.lastObservedContent.set(tab.id, pane.editorContent());
+      model.lastObservedContent.set(oracleKey(pane.paneId, tab.id), pane.editorContent());
     },
     describe: () => `Switch(p${paneIdx}, slot${slot})`,
   }));
@@ -264,7 +281,7 @@ const writeContentCmd = fc.record({ content: contentArb }).map<ContentCmd>(({ co
     if (!activeId) return;
     pane.setEditorContent(content);
     pane.tabs.updateActiveTabContent({ editorContent: content });
-    model.lastObservedContent.set(activeId, content);
+    model.lastObservedContent.set(oracleKey(pane.paneId, activeId), content);
   },
   describe: () => `WriteContent("${content}")`,
 }));
@@ -282,7 +299,7 @@ const closeActiveCmd = fc.record({ paneIdx: paneIndexArb }).map<ContentCmd>(({ p
     // nearest sibling becomes active — `closeTab` already restored
     // its TabState snapshot into the pane's live signal, so the
     // oracle's previous record for that tab still holds.
-    model.lastObservedContent.delete(id);
+    model.lastObservedContent.delete(oracleKey(pane.paneId, id));
   },
   describe: () => `Close(p${paneIdx})`,
 }));
@@ -303,13 +320,23 @@ const moveActiveCmd = fc.record({ fromPaneIdx: paneIndexArb }).map<ContentCmd>((
     // Replays handleMoveTab from app.tsx: activate target, openTab,
     // push the snapshot into the new TabState, close source.
     mgr.setActivePane(targetIdx);
-    targetPane.tabs.openTab(entry(movedTab.fileName, movedTab.filePath), movedTab.rootId);
+    // Capture the returned tab id — when target already had a tab
+    // with the same filePath, openTab creates `path#N` instead of
+    // reusing `path`. Without capturing this, the model would set
+    // the source's now-closed id and silently overwrite the
+    // target's pre-existing tab entry, which then trips P2 on the
+    // very next assertion.
+    const newTabId = targetPane.tabs.openTab(
+      entry(movedTab.fileName, movedTab.filePath),
+      movedTab.rootId,
+    );
     targetPane.tabs.updateActiveTabContent({ editorContent: snapshotContent });
     targetPane.setEditorContent(snapshotContent);
     sourcePane.tabs.closeTab(sourceActiveId);
-    // Oracle: the moved tab is now active in target with the same
-    // content it had on the source side.
-    model.lastObservedContent.set(sourceActiveId, snapshotContent);
+    // Oracle bookkeeping: source's id is gone; target gets the
+    // moved content under whichever id openTab returned.
+    model.lastObservedContent.delete(oracleKey(sourcePane.paneId, sourceActiveId));
+    model.lastObservedContent.set(oracleKey(targetPane.paneId, newTabId), snapshotContent);
   },
   describe: () => `Move(p${fromPaneIdx}->p${fromPaneIdx === 0 ? 1 : 0})`,
 }));
@@ -336,7 +363,7 @@ function assertP2(mgr: PaneManager, model: ContentModel, trace: string[]): void 
     const pane = mgr.panes()[p];
     if (!pane) continue;
     for (const tab of pane.tabs.tabs()) {
-      const expected = model.lastObservedContent.get(tab.id);
+      const expected = model.lastObservedContent.get(oracleKey(pane.paneId, tab.id));
       if (expected === undefined) continue;
       const snapshotted = tab.editorContent;
       if (snapshotted !== expected) {
@@ -386,7 +413,7 @@ describe("createPaneManager — cross-pane content invariants (DJA-35 + DJA-40)"
             if (tabs.length === 0) continue;
             const originalActive = pane.tabs.activeTabId();
             for (const tab of tabs) {
-              const expected = model.lastObservedContent.get(tab.id);
+              const expected = model.lastObservedContent.get(oracleKey(pane.paneId, tab.id));
               if (expected === undefined) continue;
               mgr.setActivePane(p);
               pane.tabs.activateTab(tab.id);
