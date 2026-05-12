@@ -79,9 +79,8 @@ Pages updated:
   workflow (source of truth for plans)"; key rules + issue body
   template; full method linked
 
-Source of decisions: in-session conversation (3 sibling references
-considered: tmpay/planning/inbox-mvp/linear-guide.md,
-taskify/planning/linear-local-first/, skills/skills/agile-*).
+Source of decisions: in-session conversation drawing on
+prior-project Linear workflows and the agile-* skill set.
 
 Reindex needed: `qmd update` to surface the new pages in semantic
 search.

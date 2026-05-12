@@ -1,7 +1,6 @@
 // Floating Figma Capture button — only visible in dev mode.
 //
-// Mirrors the toggle pattern used by mnemit's figma-capture-button:
-// writes a `#figmacapture=<key>&figmaselector=#root` hash to the URL
+// Writes a `#figmacapture=<key>&figmaselector=#root` hash to the URL
 // (via history.replaceState — NOT a full reload) and re-injects
 // `capture.js` from mcp.figma.com so it serializes the live DOM and
 // drops the snapshot into the clipboard for paste-into-Figma.

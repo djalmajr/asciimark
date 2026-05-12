@@ -3,9 +3,7 @@ title: "Linear workflow"
 audience: dev
 sources:
   - in-session decision 2026-05-07
-  - sibling reference: tmpay/planning/inbox-mvp/linear-guide.md
-  - sibling reference: taskify/planning/linear-local-first/
-updated: 2026-05-07
+updated: 2026-05-12
 tags: [process, linear, planning, workflow]
 status: stable
 ---
@@ -237,6 +235,3 @@ absoluto.
 
 - [Decisions index](../decisions/README.md) — convenção e lista de ADRs
 - [Wiki index](../index.md)
-- Sibling references (não copiar daqui — referência conceitual):
-  - `tmpay/planning/inbox-mvp/linear-guide.md`
-  - `taskify/planning/linear-local-first/`

@@ -17,7 +17,6 @@ export function setupTauriDnd(deps: TauriDndDeps) {
   onMount(() => {
     const webview = getCurrentWebviewWindow();
     const unlisten = webview.onDragDropEvent(async (event) => {
-      console.log("[dnd]", event.payload.type, event.payload);
       if (event.payload.type === "over") {
         state.setDragOver(true);
       } else if (event.payload.type === "leave") {
@@ -25,23 +24,17 @@ export function setupTauriDnd(deps: TauriDndDeps) {
       } else if (event.payload.type === "drop") {
         state.setDragOver(false);
         const paths = event.payload.paths;
-        if (!paths || paths.length === 0) {
-          console.warn("[dnd] drop event with no paths");
-          return;
-        }
+        if (!paths || paths.length === 0) return;
 
         const droppedPath = paths[0];
-        console.log("[dnd] processing drop:", droppedPath);
         try {
           // Try reading as directory first
           const entries = await readTree(droppedPath, state.showHiddenEntries());
-          console.log("[dnd] readTree succeeded, entries:", entries.length);
           if (entries.length > 0) {
             await addRoot(droppedPath);
             return;
           }
-        } catch (e) {
-          console.warn("[dnd] readTree failed:", e);
+        } catch {
           // Not a directory or empty, try as file
         }
 
