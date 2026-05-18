@@ -24,7 +24,7 @@
     "postcss": "^8.5.6",
     "tailwindcss": "3",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "unplugin-icons": "^23.0.1",
     "vite": "^8.0.10",
     "vite-plugin-solid": "^2.11.10"
