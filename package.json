@@ -43,7 +43,7 @@
     "prepare": "lefthook install"
   },
   "devDependencies": {
-    "lefthook": "^1.13.6",
+    "lefthook": "^2.1.6",
     "type-coverage": "^2.29.7"
   }
 }
