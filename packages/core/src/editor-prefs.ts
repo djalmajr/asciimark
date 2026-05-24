@@ -6,6 +6,7 @@ const SHOW_INVISIBLES_KEY = "asciimark-editor-show-invisibles";
 const SYNC_SCROLL_KEY = "asciimark-editor-sync-scroll";
 const INDENT_MODE_KEY = "asciimark-editor-indent-mode";
 const INDENT_SIZE_KEY = "asciimark-editor-indent-size";
+const TABLE_WRAP_KEY = "asciimark-preview-table-wrap";
 
 function getStoredBoolean(key: string, defaultValue: boolean): boolean {
   const stored = localStorage.getItem(key);
@@ -45,6 +46,17 @@ function setStoredSyncScroll(enabled: boolean): void {
   localStorage.setItem(SYNC_SCROLL_KEY, String(enabled));
 }
 
+/** Preview tables wrap to fit width (true, the default) vs scroll
+ *  horizontally (false). Wrapping is on by default so wide tables stay
+ *  readable without a horizontal scrollbar. */
+function getStoredTableWrap(): boolean {
+  return getStoredBoolean(TABLE_WRAP_KEY, true);
+}
+
+function setStoredTableWrap(enabled: boolean): void {
+  localStorage.setItem(TABLE_WRAP_KEY, String(enabled));
+}
+
 function getStoredIndentMode(): IndentMode {
   const stored = localStorage.getItem(INDENT_MODE_KEY);
   if (stored === "tabs" || stored === "spaces") return stored;
@@ -73,11 +85,13 @@ export {
   getStoredLineNumbers,
   getStoredShowInvisibles,
   getStoredSyncScroll,
+  getStoredTableWrap,
   getStoredWrapText,
   setStoredIndentMode,
   setStoredIndentSize,
   setStoredLineNumbers,
   setStoredShowInvisibles,
   setStoredSyncScroll,
+  setStoredTableWrap,
   setStoredWrapText,
 };

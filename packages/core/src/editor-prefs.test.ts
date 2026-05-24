@@ -5,12 +5,14 @@ import {
   getStoredLineNumbers,
   getStoredShowInvisibles,
   getStoredSyncScroll,
+  getStoredTableWrap,
   getStoredWrapText,
   setStoredIndentMode,
   setStoredIndentSize,
   setStoredLineNumbers,
   setStoredShowInvisibles,
   setStoredSyncScroll,
+  setStoredTableWrap,
   setStoredWrapText,
 } from "./editor-prefs.ts";
 import { installLocalStorageMock } from "./test-utils.ts";
@@ -29,6 +31,9 @@ describe("editor preferences defaults", () => {
     expect(getStoredSyncScroll()).toBe(true);
     expect(getStoredIndentMode()).toBe("spaces");
     expect(getStoredIndentSize()).toBe(2);
+    // Wide tables wrap to fit the width by default so they stay readable
+    // without a horizontal scrollbar; scrolling is the opt-out.
+    expect(getStoredTableWrap()).toBe(true);
   });
 });
 
@@ -50,6 +55,9 @@ describe("editor preferences round-trip", () => {
 
       setStoredSyncScroll(value);
       expect(getStoredSyncScroll()).toBe(value);
+
+      setStoredTableWrap(value);
+      expect(getStoredTableWrap()).toBe(value);
     }
   });
 

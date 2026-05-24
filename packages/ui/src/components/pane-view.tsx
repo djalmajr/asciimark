@@ -2,6 +2,7 @@ import { Show, createEffect, createSignal, type JSX } from "solid-js";
 import { useDroppable } from "@dnd-kit/solid";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import { fileKind, UNSUPPORTED_CONTENT } from "@asciimark/core/utils.ts";
+import { setStoredTableWrap } from "@asciimark/core/editor-prefs.ts";
 import * as m from "@asciimark/i18n";
 import { useLocale } from "@asciimark/i18n/solid";
 import type { RecentFile } from "@asciimark/core/recent-files.ts";
@@ -215,6 +216,7 @@ export function PaneView(props: PaneViewProps) {
           syncScrollTargetRatio={previewSyncTargetRatio()}
           syncScrollTargetVersion={previewSyncTargetVersion()}
           tocVisible={s.tocVisible()}
+          wrapTables={pane().tableWrap()}
           tocContainer={props.tocContainer}
           currentFilePath={pane().selectedFile()?.path ?? null}
           pendingFragment={s.pendingFragment()}
@@ -390,6 +392,16 @@ export function PaneView(props: PaneViewProps) {
                 onToggleFind={() => s.setPreviewSearchOpen((value) => !value)}
                 onFontPrefsChange={s.handleFontPrefsChange}
                 onToggleAutoRefresh={() => s.setAutoRefresh((v) => !v)}
+                tableWrap={pane().tableWrap()}
+                onToggleTableWrap={() => {
+                  // Per-pane: flip THIS pane's signal only. Persist the
+                  // new value as the seed so freshly split panes and the
+                  // next session inherit the last choice; live panes stay
+                  // independent (each already captured its own seed).
+                  const next = !pane().tableWrap();
+                  pane().setTableWrap(next);
+                  setStoredTableWrap(next);
+                }}
               />
             </Show>
             <div class="content">

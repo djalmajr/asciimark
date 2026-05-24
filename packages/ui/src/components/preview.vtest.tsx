@@ -13,6 +13,7 @@ interface BaseProps {
   syncScrollTargetRatio?: number | null;
   syncScrollTargetVersion?: number;
   tocVisible?: boolean;
+  wrapTables?: boolean;
   tocContainer?: HTMLElement;
   findTrigger?: number;
   currentFilePath?: string | null;
@@ -34,6 +35,7 @@ function withDefaults(p: BaseProps = {}) {
     syncScrollTargetRatio: p.syncScrollTargetRatio ?? null,
     syncScrollTargetVersion: p.syncScrollTargetVersion ?? 0,
     tocVisible: p.tocVisible ?? false,
+    wrapTables: p.wrapTables ?? false,
     tocContainer: p.tocContainer,
     findTrigger: p.findTrigger ?? 0,
     currentFilePath: p.currentFilePath ?? null,
@@ -68,6 +70,23 @@ describe("Preview", () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(container.textContent).toContain("Hello");
     expect(container.textContent).toContain("body paragraph");
+  });
+
+  it("adds .doc-tables-wrap on the article when wrapTables is on, omits it when off", async () => {
+    // Mutation captured: dropping the `classList={{ "doc-tables-wrap": ... }}`
+    // binding on the article leaves wide tables stuck in horizontal-scroll
+    // mode regardless of the preference. The wrap CSS keys off this class.
+    const on = render(() => (
+      <Preview {...withDefaults({ html: "<table><tbody><tr><td>x</td></tr></tbody></table>", wrapTables: true })} />
+    ));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(on.container.querySelector(".doc-body")?.classList.contains("doc-tables-wrap")).toBe(true);
+
+    const off = render(() => (
+      <Preview {...withDefaults({ html: "<table><tbody><tr><td>x</td></tr></tbody></table>", wrapTables: false })} />
+    ));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(off.container.querySelector(".doc-body")?.classList.contains("doc-tables-wrap")).toBe(false);
   });
 
   it("strips <script> tags from supplied HTML (defense in depth)", async () => {

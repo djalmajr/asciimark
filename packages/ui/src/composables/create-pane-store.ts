@@ -1,6 +1,7 @@
 import { createSignal, type Setter } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import type { Frontmatter } from "@asciimark/core/frontmatter.ts";
+import { getStoredTableWrap } from "@asciimark/core/editor-prefs.ts";
 import { migrateLegacyTabSession } from "@asciimark/core/tabs.ts";
 import { createTabStore, type TabStore } from "./create-tab-store.ts";
 
@@ -46,6 +47,13 @@ export interface PaneStore extends PaneViewSlice {
   /** TabStore scoped to this pane. Each pane has its own tab list,
    *  active tab, and closed-tabs LIFO. */
   tabs: TabStore;
+  /** Whether wide preview tables wrap to fit width (true) or scroll
+   *  horizontally (false). Per-pane, NOT per-tab — deliberately kept off
+   *  the PaneViewSlice so the TabStore doesn't snapshot it: split panes
+   *  toggle wrap independently. Seeded from the saved default; the
+   *  caller persists changes (as the seed for future panes). */
+  tableWrap: () => boolean;
+  setTableWrap: Setter<boolean>;
 }
 
 /**
@@ -62,6 +70,9 @@ export function createPaneStore(paneId: string): PaneStore {
   const [selectedFile, setSelectedFile] = createSignal<FSEntry | null>(null);
   const [selectedRootId, setSelectedRootId] = createSignal<string | null>(null);
   const [loading, setLoading] = createSignal(false);
+  // Per-pane view pref (not part of the tab-snapshotted slice). Seeded
+  // from the saved default so a fresh pane respects the last choice.
+  const [tableWrap, setTableWrap] = createSignal(getStoredTableWrap());
 
   const slice: PaneViewSlice = {
     editorContent,
@@ -98,5 +109,7 @@ export function createPaneStore(paneId: string): PaneStore {
     paneId,
     ...slice,
     tabs,
+    tableWrap,
+    setTableWrap,
   };
 }

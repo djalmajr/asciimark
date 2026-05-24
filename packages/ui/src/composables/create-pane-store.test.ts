@@ -1,6 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import type { FSEntry } from "@asciimark/core/types.ts";
+import { installLocalStorageMock } from "@asciimark/core/test-utils.ts";
 import { createPaneStore } from "./create-pane-store.ts";
+
+// createPaneStore now seeds tableWrap from the stored default, so it
+// reads localStorage at construction — provide the mock like the sibling
+// store tests do.
+installLocalStorageMock();
 
 describe("createPaneStore", () => {
   it("starts with empty content and preview mode", () => {
@@ -43,5 +49,21 @@ describe("createPaneStore", () => {
     expect(pane.selectedFile()).toBe(entry);
     pane.setSelectedFile(null);
     expect(pane.selectedFile()).toBeNull();
+  });
+
+  it("tableWrap is per-pane: seeded from the stored default, never leaks across panes", () => {
+    // Domain rule: split panes own their view prefs — toggling wrap in one
+    // pane must not move the other. Mutation captured: reading the wrap
+    // flag from a shared AppState signal (the old global) would make
+    // `right` flip when `left` does.
+    localStorage.setItem("asciimark-preview-table-wrap", "true");
+    const left = createPaneStore("p0");
+    const right = createPaneStore("p1");
+    expect(left.tableWrap()).toBe(true); // both seed from the saved default
+    expect(right.tableWrap()).toBe(true);
+
+    left.setTableWrap(false);
+    expect(left.tableWrap()).toBe(false);
+    expect(right.tableWrap()).toBe(true); // unaffected
   });
 });

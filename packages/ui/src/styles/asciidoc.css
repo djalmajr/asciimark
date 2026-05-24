@@ -276,6 +276,25 @@
   margin-bottom: 0;
 }
 
+/* "Wrap" table mode (preference): instead of scrolling horizontally, wide
+   tables stay within the content width and let cell text wrap. `table-layout:
+   fixed` distributes the columns evenly so no single column forces overflow. */
+.doc-body.doc-tables-wrap .table-wrapper {
+  overflow-x: visible;
+}
+
+.doc-body.doc-tables-wrap .table-wrapper > table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.doc-body.doc-tables-wrap table th,
+.doc-body.doc-tables-wrap table td {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .doc-body table thead th {
   background: hsl(var(--secondary));
   font-weight: 600;
