@@ -1,5 +1,10 @@
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
+/* Base resets live in @layer base so Tailwind v4 utilities (which sit in
+   the later `utilities` layer) win over them — notably `a { color: inherit }`
+   below, which otherwise overrides `text-primary-foreground` on link-buttons
+   (v4 puts utilities in a cascade layer; unlayered CSS would beat them). */
+@layer base {
 html,
 body,
 #root {
@@ -39,6 +44,7 @@ pre {
 a {
   color: inherit;
   text-decoration: none;
+}
 }
 
 .site-shell {
