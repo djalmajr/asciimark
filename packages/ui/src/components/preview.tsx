@@ -651,6 +651,9 @@ interface PreviewProps {
   syncScrollTargetRatio: number | null;
   syncScrollTargetVersion: number;
   tocVisible: boolean;
+  /** When true, wide tables wrap to fit the width instead of scrolling
+   *  horizontally (adds `.doc-tables-wrap` on the article). */
+  wrapTables: boolean;
   /** External container element where #toc will be moved to (flex sibling of .content) */
   tocContainer?: HTMLElement;
   /** Current file path (relative to root), used to resolve xref links */
@@ -1161,6 +1164,7 @@ export function Preview(props: PreviewProps) {
             setHasArticle(true);
           }}
           class="doc-body"
+          classList={{ "doc-tables-wrap": props.wrapTables }}
           onClick={handleClick}
         />
       </div>

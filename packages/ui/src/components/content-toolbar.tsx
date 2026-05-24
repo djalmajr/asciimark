@@ -4,6 +4,7 @@ import IconPlus from "~icons/lucide/plus";
 import IconRefreshCw from "~icons/lucide/refresh-cw";
 import IconSearch from "~icons/lucide/search";
 import IconType from "~icons/lucide/type";
+import IconTable from "~icons/lucide/table";
 
 import type { FontPrefs } from "@asciimark/core/font-prefs.ts";
 import { Toggle } from "./ui/toggle.tsx";
@@ -27,6 +28,9 @@ interface ContentToolbarProps {
   onToggleFind?: () => void;
   onFontPrefsChange: (prefs: Partial<FontPrefs>) => void;
   onToggleAutoRefresh: () => void;
+  /** When pressed, wide tables wrap to fit the width instead of scrolling. */
+  tableWrap: boolean;
+  onToggleTableWrap: () => void;
 }
 
 export function ContentToolbar(props: ContentToolbarProps) {
@@ -67,6 +71,19 @@ export function ContentToolbar(props: ContentToolbarProps) {
           <IconRefreshCw width={14} height={14} />
         </TooltipTrigger>
         <TooltipContent>Auto-refresh</TooltipContent>
+      </Tooltip>
+      {/* Wrap wide tables (fit width) vs horizontal scroll */}
+      <Tooltip>
+        <TooltipTrigger
+          as={Toggle}
+          size="sm"
+          pressed={props.tableWrap}
+          onChange={props.onToggleTableWrap}
+          aria-label="Wrap wide tables"
+        >
+          <IconTable width={14} height={14} />
+        </TooltipTrigger>
+        <TooltipContent>Wrap wide tables (no horizontal scroll)</TooltipContent>
       </Tooltip>
       <Show when={props.onFind || props.onToggleFind}>
         <Tooltip>
