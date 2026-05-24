@@ -1,5 +1,6 @@
 import type { Accessor, Setter } from "solid-js";
 import { writeText as clipboardWriteText } from "@tauri-apps/plugin-clipboard-manager";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import type { AppState } from "@asciimark/ui/composables/create-app-state.ts";
 import { openDirectory, readTree, renameFile, trashPath, writeFile } from "./fs.ts";
@@ -195,6 +196,20 @@ export function createFolder(deps: FolderDeps) {
     }
   }
 
+  async function handleRevealInFileManager(entry: FSEntry, rootId: string): Promise<void> {
+    const rootPath = rootPaths().get(rootId);
+    if (!rootPath) return;
+    // Root id IS the absolute path on desktop; join with the relative entry.
+    const absolutePath = entry.path ? `${rootPath}/${entry.path}` : rootPath;
+    try {
+      // Reveals (and selects) the item in Finder / Explorer / the Linux
+      // file manager via tauri-plugin-opener.
+      await revealItemInDir(absolutePath);
+    } catch (e) {
+      console.error("Failed to reveal in file manager:", e);
+    }
+  }
+
   async function handleRename(entry: FSEntry, rootId: string, newName: string): Promise<void> {
     const rootPath = rootPaths().get(rootId);
     if (!rootPath) throw new Error("Root not found");
@@ -254,6 +269,7 @@ export function createFolder(deps: FolderDeps) {
     getPathName,
     handleCloseRoot,
     handleCopyPath,
+    handleRevealInFileManager,
     handleDelete,
     handleEditorSave,
     handleOpenFolder,

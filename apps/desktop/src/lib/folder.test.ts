@@ -56,6 +56,12 @@ mock.module("./fs.ts", () => ({
 mock.module("@tauri-apps/plugin-clipboard-manager", () => ({
   writeText: async () => {},
 }));
+let revealCalls: string[] = [];
+mock.module("@tauri-apps/plugin-opener", () => ({
+  revealItemInDir: async (path: string) => {
+    revealCalls.push(path);
+  },
+}));
 // Same defensive mocks the file-loader.test.ts ships — the
 // plugin-clipboard-manager and other Tauri plugins pull in
 // `@tauri-apps/api/core` which exports `Resource`. Stubbing core
@@ -227,5 +233,57 @@ describe("createFolder.refreshRoot — pin per-doc target before await (DJA-41)"
 
     expect(pane0.selectedFile()).toBeNull(); // gone — cleared on origin pane
     expect(pane1.selectedFile()?.path).toBe("kept.md"); // intact
+  });
+});
+
+describe("handleRevealInFileManager", () => {
+  beforeEach(() => {
+    revealCalls = [];
+  });
+
+  it("reveals the entry's absolute path (root joined with relative path)", async () => {
+    // Mutation captured: building the path from `entry.path` alone (or
+    // forgetting the root join) would reveal the wrong location — the
+    // assertion pins the absolute path the OS file manager receives.
+    const paneManager = createPaneManager();
+    const state = makeState(paneManager);
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+
+    await folder.handleRevealInFileManager(
+      { name: "diagram.png", path: "assets/diagram.png", kind: "file" },
+      "root1",
+    );
+    expect(revealCalls).toEqual(["/work/root1/assets/diagram.png"]);
+  });
+
+  it("reveals the root itself when the entry has an empty path", async () => {
+    const paneManager = createPaneManager();
+    const state = makeState(paneManager);
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+    await folder.handleRevealInFileManager({ name: "root1", path: "", kind: "directory" }, "root1");
+    expect(revealCalls).toEqual(["/work/root1"]);
+  });
+
+  it("is a no-op for an unknown root (no reveal call)", async () => {
+    const paneManager = createPaneManager();
+    const state = makeState(paneManager);
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+    await folder.handleRevealInFileManager({ name: "x.md", path: "x.md", kind: "file" }, "ghost");
+    expect(revealCalls).toEqual([]);
   });
 });

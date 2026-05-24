@@ -24,11 +24,13 @@ installLocalStorageMock();
 // with deterministic stubs.
 const FAKE_FILE_CONTENT = "= intro.adoc\n\nbody\n";
 let resolveRead: ((value: string) => void) | undefined;
+let rejectRead: ((err: Error) => void) | undefined;
 
 mock.module("./fs.ts", () => ({
   readFileContent: () =>
-    new Promise<string>((resolve) => {
+    new Promise<string>((resolve, reject) => {
       resolveRead = resolve;
+      rejectRead = reject;
     }),
   readFileByPath: async () => null,
   readFilesRelative: async () => new Map<string, string>(),
@@ -206,5 +208,133 @@ describe("createFileLoader / loadFileContent — pane race regression", () => {
 
     expect(pane0.html()).toContain("Error converting file");
     expect(pane1.html()).toBe("");
+  });
+});
+
+describe("createFileLoader / loadFileContent — image & PDF skip the text pipeline", () => {
+  beforeEach(() => {
+    resolveRead = undefined;
+    localStorage.clear();
+  });
+
+  it.each(["photo.png", "scan.pdf"])(
+    "selects %s without reading content or converting",
+    async (fileName) => {
+      // Mutation captured: removing the image/pdf early-return makes the
+      // loader fall through to readFileContent() (which never resolves in
+      // this mock — the await would hang and the test times out) and to
+      // state.convert (the spy below flips convertCalled and fails the
+      // assertion). Either way the binary would be force-read as UTF-8.
+      const paneManager = createPaneManager();
+      paneManager.setActivePane(0);
+      const pane0 = paneManager.panes()[0]!;
+
+      let convertCalled = false;
+      let stopCalled = false;
+
+      const state = {
+        paneManager,
+        pushNavHistory: () => {},
+        autoRefresh: () => false,
+        convert: async () => {
+          convertCalled = true;
+          return { html: "", frontmatter: null, toc: null, meta: {} };
+        },
+        set _readFile(_v: unknown) {},
+      } as unknown as AppState;
+
+      const watcher = {
+        setTarget: () => {},
+        start: () => {},
+        stop: () => { stopCalled = true; },
+        destroy: () => {},
+      } as unknown as Parameters<
+        typeof import("./file-loader.ts").createFileLoader
+      >[0]["watcher"];
+
+      const rootPaths = () => new Map<string, string>([["root-0", "/tmp/ws"]]);
+
+      const { createFileLoader } = await import("./file-loader.ts");
+      const loader = createFileLoader({ rootPaths, state, watcher });
+
+      // No resolveRead() call here: a correct binary branch resolves the
+      // load on its own. If readFileContent were awaited this would hang.
+      await loader.loadFileContent(
+        { kind: "file", name: fileName, path: fileName },
+        false,
+        false,
+        "root-0",
+      );
+
+      expect(pane0.selectedFile()?.path).toBe(fileName);
+      expect(pane0.html()).toBe("");
+      expect(pane0.editorContent()).toBe("");
+      expect(pane0.savedContent()).toBe("");
+      expect(pane0.loading()).toBe(false);
+      expect(convertCalled).toBe(false);
+      expect(stopCalled).toBe(true);
+    },
+  );
+});
+
+describe("createFileLoader / loadFileContent — binary non-text marks the pane unsupported", () => {
+  beforeEach(() => {
+    resolveRead = undefined;
+    rejectRead = undefined;
+    localStorage.clear();
+  });
+
+  it("a non-image/pdf file whose read fails (binary) gets UNSUPPORTED_CONTENT, not a convert", async () => {
+    // Mutation captured: removing the read-failure branch lets the error
+    // propagate to the generic catch ("Error converting file: …") instead
+    // of the unsupported sentinel — flipping html away from
+    // UNSUPPORTED_CONTENT and failing this assertion. read_to_string throws
+    // on non-UTF8, which is exactly how the app detects binary junk.
+    const { UNSUPPORTED_CONTENT } = await import("@asciimark/core/utils.ts");
+    const paneManager = createPaneManager();
+    paneManager.setActivePane(0);
+    const pane0 = paneManager.panes()[0]!;
+
+    let convertCalled = false;
+    const state = {
+      paneManager,
+      pushNavHistory: () => {},
+      autoRefresh: () => false,
+      convert: async () => {
+        convertCalled = true;
+        return { html: "", frontmatter: null, toc: null, meta: {} };
+      },
+      set _readFile(_v: unknown) {},
+    } as unknown as AppState;
+
+    const watcher = {
+      setTarget: () => {},
+      start: () => {},
+      stop: () => {},
+      destroy: () => {},
+    } as unknown as Parameters<
+      typeof import("./file-loader.ts").createFileLoader
+    >[0]["watcher"];
+
+    const rootPaths = () => new Map<string, string>([["root-0", "/tmp/ws"]]);
+    const { createFileLoader } = await import("./file-loader.ts");
+    const loader = createFileLoader({ rootPaths, state, watcher });
+
+    const loadPromise = loader.loadFileContent(
+      { kind: "file", name: "archive.zip", path: "archive.zip" },
+      false,
+      false,
+      "root-0",
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    // Simulate read_to_string failing on a binary file.
+    rejectRead!(new Error("stream did not contain valid UTF-8"));
+    await loadPromise;
+
+    expect(pane0.selectedFile()?.path).toBe("archive.zip");
+    expect(pane0.html()).toBe(UNSUPPORTED_CONTENT);
+    expect(pane0.editorContent()).toBe("");
+    expect(pane0.loading()).toBe(false);
+    expect(convertCalled).toBe(false);
   });
 });

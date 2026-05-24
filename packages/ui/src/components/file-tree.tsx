@@ -38,6 +38,7 @@ interface FileTreeProps {
   respectGitignore?: boolean;
   onCloseRoot?: (rootId: string) => void;
   onCopyPath?: (entry: FSEntry, rootId: string) => void | Promise<void>;
+  onRevealInFileManager?: (entry: FSEntry, rootId: string) => void | Promise<void>;
   onRename?: (entry: FSEntry, rootId: string, newName: string) => Promise<void>;
   onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   onReorderRoots?: (newOrder: string[]) => void;
@@ -398,6 +399,7 @@ export function FileTree(props: FileTreeProps) {
                 rootId={rootId}
                 selectedPath={propsRoot.rootSelectedPath()}
                 onCopyPath={props.onCopyPath}
+                onRevealInFileManager={props.onRevealInFileManager}
                 onRename={props.onRename}
                 onDelete={props.onDelete}
                 onSelect={(e) => props.onSelect(e, rootId)}

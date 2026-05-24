@@ -79,7 +79,7 @@ import {
   isFavorite,
   removeFavorite,
 } from "@asciimark/core/favorites.ts";
-import { isMdFile, isSupportedFile } from "@asciimark/core/utils.ts";
+import { fileKind, isMdFile, UNSUPPORTED_CONTENT } from "@asciimark/core/utils.ts";
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -293,15 +293,54 @@ export function createAppState(config: AppStateConfig) {
    * Whether the currently selected file can be previewed (markdown or
    * asciidoc). Other formats (json, txt, yaml, …) are edit-only.
    */
-  const previewSupported = () => {
+  /**
+   * Which builtin view the selected file opens in. `document` rides the
+   * editor/preview pipeline; `image`/`pdf` route to the media viewer
+   * (PaneView swaps the whole content area); `other` is edit-only text.
+   * Null when no file is selected.
+   */
+  const viewerKind = () => {
     const f = selectedFile();
-    return f ? isSupportedFile(f.name) : true;
+    return f ? fileKind(f.name) : null;
   };
 
-  // When the user opens a non-previewable file, force the editor view —
-  // there's nothing meaningful to render in the preview.
+  /**
+   * Capabilities that drive the edit/split/preview toggle (and the matching
+   * command-palette entries — keep the three surfaces in sync). Three tiers:
+   *   document (md/adoc)     → edit + preview (split allowed)
+   *   image / pdf / svg      → preview only (the media viewer; not editable)
+   *   other text (txt/json…) → edit only (no rendered preview)
+   * With no file selected both are false (the toggle is disabled anyway).
+   */
+  /**
+   * The loaded file is a binary the app can neither render nor edit (not an
+   * image/PDF, not valid UTF-8 text). The file-loader marks this by writing
+   * `UNSUPPORTED_CONTENT` into the pane's `html`; PaneView shows the
+   * "unsupported format" notice and both capabilities below go false.
+   */
+  const isUnsupported = () => html() === UNSUPPORTED_CONTENT;
+
+  const canEdit = () => {
+    if (isUnsupported()) return false;
+    const k = viewerKind();
+    return k === "document" || k === "other";
+  };
+  const canPreview = () => {
+    if (isUnsupported()) return false;
+    const k = viewerKind();
+    return k === "document" || k === "image" || k === "pdf";
+  };
+
+  // Force the mode that matches the file's capabilities. Media (image/pdf/
+  // svg) is preview-only — the viewer ignores editorMode, but forcing
+  // "preview" keeps the toggle's active state honest. Non-previewable text
+  // is edit-only. Documents (and unsupported binaries, which show their own
+  // notice) are left wherever the user put them.
   createEffect(() => {
-    if (!previewSupported() && editorMode() !== "edit") {
+    const k = viewerKind();
+    if ((k === "image" || k === "pdf") && editorMode() !== "preview") {
+      setEditorMode("preview");
+    } else if (k === "other" && !isUnsupported() && editorMode() !== "edit") {
       setEditorMode("edit");
     }
   });
@@ -871,7 +910,9 @@ export function createAppState(config: AppStateConfig) {
     hasFile,
     hasToc,
     isDirty,
-    previewSupported,
+    viewerKind,
+    canEdit,
+    canPreview,
     readingMetrics,
     readingTimeLabel,
     readerMode,

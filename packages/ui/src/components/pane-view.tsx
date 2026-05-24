@@ -1,6 +1,9 @@
 import { Show, createEffect, createSignal, type JSX } from "solid-js";
 import { useDroppable } from "@dnd-kit/solid";
 import type { FSEntry } from "@asciimark/core/types.ts";
+import { fileKind, UNSUPPORTED_CONTENT } from "@asciimark/core/utils.ts";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
 import type { RecentFile } from "@asciimark/core/recent-files.ts";
 import type { RecentFolder } from "@asciimark/core/recent-folders.ts";
 import type { FavoriteFile } from "@asciimark/core/favorites.ts";
@@ -10,6 +13,7 @@ import { ContentToolbar } from "./content-toolbar.tsx";
 import { Editor } from "./editor.tsx";
 import { EditorToolbar } from "./editor-toolbar.tsx";
 import { EmptyState } from "./empty-state.tsx";
+import { MediaViewer } from "./media-viewer.tsx";
 import { Preview } from "./preview.tsx";
 import { TabBar } from "./tab-bar.tsx";
 
@@ -56,6 +60,10 @@ export interface PaneViewProps {
   favorites?: FavoriteFile[];
   contentWrapper?: (content: JSX.Element) => JSX.Element;
   resolveImageSrc?: (src: string) => string | null;
+  /** Resolve a workspace-relative file path into an asset URL the webview
+   *  can load (desktop via `convertFileSrc`). Used by the media viewer to
+   *  display images/PDFs. Returns null when the host can't resolve it. */
+  resolveFileSrc?: (rootId: string, relativePath: string) => string | null;
   onLoadFile?: (entry: FSEntry, rootId: string) => void;
   onOpenInNewTab?: (entry: FSEntry, rootId: string) => void;
   onActivateTab?: (tabId: string) => void;
@@ -96,6 +104,29 @@ export interface PaneViewProps {
 export function PaneView(props: PaneViewProps) {
   const pane = () => props.pane;
   const s = props.state;
+
+  // When the selected file is an image or PDF, the media viewer takes
+  // over the whole content area — there's no text to edit or convert.
+  // Derived from THIS pane's file (not the AppState proxy) so split panes
+  // route independently.
+  const mediaKind = () => {
+    const f = pane().selectedFile();
+    if (!f) return null;
+    const k = fileKind(f.name);
+    return k === "image" || k === "pdf" ? k : null;
+  };
+  const isMedia = () => mediaKind() !== null;
+  const mediaSrc = () => {
+    const f = pane().selectedFile();
+    const rootId = pane().selectedRootId();
+    if (!f || !rootId || !props.resolveFileSrc) return null;
+    return props.resolveFileSrc(rootId, f.path);
+  };
+
+  // The file-loader writes UNSUPPORTED_CONTENT into html when the file can
+  // be neither rendered nor edited (a binary that isn't an image/PDF). Show
+  // the notice instead of editor/preview.
+  const isUnsupported = () => pane().html() === UNSUPPORTED_CONTENT;
 
   // Per-pane editor controls — undo/redo triggers, history flags, and
   // the scroll-to-line bus shared between this pane's editor and
@@ -239,7 +270,25 @@ export function PaneView(props: PaneViewProps) {
         />
       </Show>
       <div class="content-panels" ref={contentPanelsRef}>
-        <Show when={pane().editorMode() !== "preview" && pane().selectedFile()}>
+        <Show when={isMedia()}>
+          <div class="preview-panel">
+            <MediaViewer
+              kind={mediaKind()!}
+              src={mediaSrc()}
+              fileName={pane().selectedFile()!.name}
+            />
+          </div>
+        </Show>
+        <Show when={isUnsupported()}>
+          <div class="preview-panel">
+            <div class="media-stage">
+              <div class="media-message">
+                {(useLocale(), m.viewer_unsupported_format({ name: pane().selectedFile()?.name ?? "" }))}
+              </div>
+            </div>
+          </div>
+        </Show>
+        <Show when={!isMedia() && !isUnsupported() && pane().editorMode() !== "preview" && pane().selectedFile()}>
           <div
             class="editor-panel"
             ref={editorPanelRef}
@@ -317,14 +366,14 @@ export function PaneView(props: PaneViewProps) {
             />
           </div>
         </Show>
-        <Show when={pane().editorMode() === "split" && pane().selectedFile()}>
+        <Show when={!isMedia() && !isUnsupported() && pane().editorMode() === "split" && pane().selectedFile()}>
           <div
             class="resize-handle"
             onDblClick={s.onEditorResizeReset}
             onMouseDown={(e) => s.onEditorResizeStart(e, contentPanelsRef, contentPanelsRef)}
           />
         </Show>
-        <Show when={pane().editorMode() !== "edit"}>
+        <Show when={!isMedia() && !isUnsupported() && pane().editorMode() !== "edit"}>
           <div
             class="preview-panel"
             ref={previewPanelRef}

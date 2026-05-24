@@ -2,7 +2,7 @@ import type { Accessor } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import { getIncludePaths } from "@asciimark/core/asciidoc.ts";
 import { getMarkdownIncludePaths } from "@asciimark/core/markdown.ts";
-import { isMdFile, isSupportedFile } from "@asciimark/core/utils.ts";
+import { fileKind, isMdFile, isSupportedFile, UNSUPPORTED_CONTENT } from "@asciimark/core/utils.ts";
 import type { AppState } from "@asciimark/ui/composables/create-app-state.ts";
 import {
   readFileByPath,
@@ -55,16 +55,49 @@ export function createFileLoader(deps: FileLoaderDeps) {
       });
     }
 
+    // Image/PDF skip the text pipeline entirely. The media viewer reads
+    // the file straight off disk via the asset protocol, so there's
+    // nothing to read into JS (reading binary as UTF-8 would throw) and
+    // nothing to convert. Clear the text-centric signals, stop any
+    // watcher left running on the previous file, and let PaneView swap
+    // to the viewer based on viewerKind().
+    const kind = fileKind(entry.path);
+    if (kind === "image" || kind === "pdf") {
+      targetPane.setHtml("");
+      targetPane.setFrontmatter(null);
+      targetPane.setEditorContent("");
+      targetPane.setSavedContent("");
+      void watcher.stop();
+      targetPane.setLoading(false);
+      return;
+    }
+
     // Yield to let the UI render loading state before heavy conversion
     await new Promise((r) => setTimeout(r, 0));
 
     try {
       const absolutePath = `${root}/${entry.path}`;
-      const content = await readFileContent(absolutePath);
+      let content: string;
+      try {
+        content = await readFileContent(absolutePath);
+      } catch (readErr) {
+        // read_file (read_to_string) throws on non-UTF8 input. A binary
+        // that isn't an image/PDF (handled above) can be neither rendered
+        // nor edited as text → mark it unsupported so PaneView shows the
+        // notice. A *document* that fails to read is a real error — rethrow
+        // to the outer catch.
+        if (isSupportedFile(entry.path)) throw readErr;
+        targetPane.setHtml(UNSUPPORTED_CONTENT);
+        targetPane.setFrontmatter(null);
+        targetPane.setEditorContent("");
+        targetPane.setSavedContent("");
+        void watcher.stop();
+        return;
+      }
 
-      // Non-previewable formats (json, txt, yaml, …) skip conversion entirely
-      // and open straight in the editor. The createEffect in app state forces
-      // editor mode to "edit" because previewSupported() turns false.
+      // Non-previewable text (json, txt, yaml, …) skips conversion entirely
+      // and opens straight in the editor. The createEffect in app state
+      // forces "edit" mode because canPreview() is false for these.
       if (!isSupportedFile(entry.path)) {
         targetPane.setHtml("");
         targetPane.setFrontmatter(null);

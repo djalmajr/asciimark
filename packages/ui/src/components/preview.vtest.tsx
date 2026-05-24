@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSignal } from "solid-js";
 import { render } from "@solidjs/testing-library";
-import { Preview } from "./preview.tsx";
+import { Preview, setupTocScrollTracking } from "./preview.tsx";
 import type { Frontmatter } from "@asciimark/core/frontmatter.ts";
 
 interface BaseProps {
@@ -379,5 +379,40 @@ describe("Preview", () => {
       // same way as a real browser, we just verify the handler shape.
       expect(typeof onNavigate).toBe("function");
     }
+  });
+});
+
+describe("setupTocScrollTracking — stale active cleanup (split→unsplit desync)", () => {
+  // Builds the article (headings) + a toc whose links point at them. One
+  // toc link carries a leftover `.toc-active` — the exact state a cached
+  // toc node lands in after split→unsplit re-attaches it.
+  function build(staleHref: string) {
+    const article = document.createElement("div");
+    article.innerHTML = `<h1 id="a">A</h1><h2 id="b">B</h2>`;
+    const toc = document.createElement("div");
+    toc.id = "toc";
+    toc.innerHTML = `<ul>
+      <li><a href="#a">A</a></li>
+      <li><a href="#b">B</a></li>
+    </ul>`;
+    const stale = toc.querySelector<HTMLElement>(`a[href="${staleHref}"]`)!;
+    stale.classList.add("toc-active");
+    return { article, toc };
+  }
+
+  it("clears a leftover .toc-active so tracking starts from a clean slate", () => {
+    // Mutation captured: deleting the stale-clear loop leaves #b active.
+    // The fresh tracking closure (currentActive=null) would then add a
+    // SECOND active link on the next scroll instead of moving the first —
+    // the desync the user reported after closing split mode.
+    const { article, toc } = build("#b");
+    expect(toc.querySelectorAll(".toc-active").length).toBe(1);
+
+    const cleanup = setupTocScrollTracking(article, toc);
+
+    // Synchronously after setup, before any scroll fires, no link should
+    // still carry the stale highlight.
+    expect(toc.querySelectorAll(".toc-active").length).toBe(0);
+    cleanup?.();
   });
 });

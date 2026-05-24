@@ -48,8 +48,12 @@ interface ToolbarProps {
   editorMode: "edit" | "split" | "preview";
   hasFile: boolean;
   hasRoot: boolean;
-  /** Whether the current file supports preview (markdown / asciidoc). */
+  /** Whether the current file has a rendered preview (markdown/asciidoc
+   *  document, or an image/PDF in the media viewer). */
   supportsPreview: boolean;
+  /** Whether the current file's text can be edited (document or plain
+   *  text — false for images/PDF and unsupported binaries). */
+  supportsEdit: boolean;
   inWindowFrame?: boolean;
   /**
    * Render sidebar/TOC toggles and the menu dropdown on the left side of the
@@ -469,9 +473,9 @@ export function Toolbar(props: ToolbarProps) {
             onChange={(v) => props.onEditorModeChange(v as "edit" | "split" | "preview")}
           >
             <TabsList>
-              <TabsTrigger disabled={!props.hasFile} value="edit">{(useLocale(), m.toolbar_editor_mode_edit())}</TabsTrigger>
+              <TabsTrigger disabled={!props.hasFile || !props.supportsEdit} value="edit">{(useLocale(), m.toolbar_editor_mode_edit())}</TabsTrigger>
               <TabsTrigger
-                disabled={!props.hasFile || !props.supportsPreview}
+                disabled={!props.hasFile || !props.supportsEdit || !props.supportsPreview}
                 value="split"
               >
                 {(useLocale(), m.toolbar_editor_mode_split())}

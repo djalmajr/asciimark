@@ -7,7 +7,7 @@ import {
   PopoverTrigger,
 } from "@asciimark/ui/components/ui/popover.tsx";
 import * as m from "@asciimark/i18n";
-import { currentLocale, locales, switchLocale, useLocale } from "@asciimark/i18n/solid";
+import { locales, switchLocale, useLocale } from "@asciimark/i18n/solid";
 
 function GithubIcon() {
   return (
@@ -127,7 +127,7 @@ export function SiteLayout() {
                 class="site-locale-trigger"
                 aria-label={(useLocale(), m.site_locale_label())}
               >
-                {(useLocale(), <Flag locale={currentLocale()} />)}
+                <Flag locale={useLocale()} />
               </PopoverTrigger>
               <PopoverContent class="site-locale-popover">
                 <ul class="site-locale-list" role="listbox">
@@ -137,13 +137,17 @@ export function SiteLayout() {
                         <button
                           type="button"
                           role="option"
-                          aria-selected={currentLocale() === loc}
+                          aria-selected={useLocale() === loc}
                           class="site-locale-option"
                           classList={{
-                            "site-locale-option-active": currentLocale() === loc,
+                            // Track the reactive locale signal (useLocale),
+                            // NOT currentLocale() — the latter is a one-shot
+                            // read, so the active highlight froze on the
+                            // previous locale after switching.
+                            "site-locale-option-active": useLocale() === loc,
                           }}
                           onClick={() => {
-                            if (currentLocale() === loc) return;
+                            if (useLocale() === loc) return;
                             switchLocale(loc as (typeof locales)[number]);
                           }}
                         >

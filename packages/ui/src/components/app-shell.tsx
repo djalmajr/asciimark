@@ -88,6 +88,9 @@ interface AppShellProps {
    * copying the workspace-relative path when omitted.
    */
   onCopyPath?: (entry: FSEntry, rootId: string) => void | Promise<void>;
+  /** Desktop-only: reveal a file/folder in the OS file manager (Finder /
+   *  Explorer / file manager). Omitted on web/extension. */
+  onRevealInFileManager?: (entry: FSEntry, rootId: string) => void | Promise<void>;
   /**
    * Rename a file or directory. Only platforms with write access (desktop)
    * pass this; if absent, the file tree hides the Rename menu item.
@@ -99,6 +102,10 @@ interface AppShellProps {
    * paths to Tauri asset URLs so the webview can load files from disk.
    */
   resolveImageSrc?: (src: string) => string | null;
+  /** Resolve a workspace-relative file path into an asset URL for the
+   *  builtin image/PDF viewer. Desktop maps it through Tauri's asset
+   *  protocol. */
+  resolveFileSrc?: (rootId: string, relativePath: string) => string | null;
   onToggleShowHiddenEntries?: (enabled: boolean) => void | Promise<void>;
   /** Desktop-only: paired with the new file-tree dropdown toggle that
    *  filters entries through `.gitignore`. The shell flips
@@ -493,7 +500,8 @@ export function AppShell(props: AppShellProps) {
                     }
                   }
             }
-            supportsPreview={s.previewSupported()}
+            supportsPreview={s.canPreview()}
+            supportsEdit={s.canEdit()}
             inWindowFrame={!!props.windowFrameToolbar}
             controlsOnLeft={!!props.showWindowControls}
             recentFiles={s.recentFiles()}
@@ -539,6 +547,7 @@ export function AppShell(props: AppShellProps) {
                 respectGitignore={s.respectGitignore()}
                 onCloseRoot={props.onCloseRoot}
                 onCopyPath={props.onCopyPath}
+                onRevealInFileManager={props.onRevealInFileManager}
                 onRename={props.onRename}
                 onDelete={props.onDelete}
                 onReorderRoots={props.onReorderRoots}
@@ -614,6 +623,7 @@ export function AppShell(props: AppShellProps) {
                         hasRoot={props.hasRoot}
                         contentWrapper={props.contentWrapper}
                         resolveImageSrc={props.resolveImageSrc}
+                        resolveFileSrc={props.resolveFileSrc}
                         onLoadFile={props.onLoadFile}
                         onOpenInNewTab={props.onOpenInNewTab}
                         onActivateTab={props.onActivateTab}

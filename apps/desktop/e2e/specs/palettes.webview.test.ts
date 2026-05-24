@@ -619,3 +619,42 @@ describe("desktop palettes (Cmd/Ctrl+P family)", () => {
     );
   });
 });
+
+describe("file-tree reveal-in-file-manager", () => {
+  // Regression: the "Reveal in Finder/Explorer/file manager" context-menu
+  // entry must reach NESTED rows, not only roots. The bug was a missing
+  // `onRevealInFileManager` passthrough in FileTreeItem's recursive child
+  // render — root rows (wired by FileTree) had it, children didn't.
+  it("shows the reveal entry on a nested file's context menu", async () => {
+    if (!bridge) return;
+    await openFixtureWorkspace(bridge);
+
+    // Expand the `partials/` directory so its child `intro.adoc` mounts.
+    await expectEventually(async () =>
+      (await bridge!.evalJs(`!!document.querySelector('.tree-item[data-path="partials"]')`)) === true,
+    );
+    await bridge.evalJs(
+      `(() => { const d = document.querySelector('.tree-item[data-path="partials"]');
+        for (const t of ["mousedown","mouseup","click"]) d?.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,button:0}));
+      })()`,
+    );
+    await expectEventually(async () =>
+      (await bridge!.evalJs(`!!document.querySelector('.tree-item[data-path="partials/intro.adoc"]')`)) === true,
+    );
+
+    // Right-click the nested file to open its context menu.
+    await bridge.evalJs(
+      `document.querySelector('.tree-item[data-path="partials/intro.adoc"]')
+        ?.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true}))`,
+    );
+
+    // The menu must contain a reveal entry. Label is OS-dependent
+    // (Finder / Explorer / file manager) — match any of the three.
+    await expectEventually(async () => {
+      const labels = (await bridge!.evalJs(
+        `JSON.stringify([...document.querySelectorAll('[role="menuitem"]')].map(e => e.textContent || ""))`,
+      )) as string;
+      return /Reveal in Finder|Show in Explorer|Open in File Manager/.test(labels);
+    });
+  });
+});

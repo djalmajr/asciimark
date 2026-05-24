@@ -1207,6 +1207,103 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   backface-visibility: hidden;
 }
 
+/* === Media Viewer (images / PDF) === */
+.media-viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.media-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid hsl(var(--border));
+  flex-shrink: 0;
+}
+
+.media-filename {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
+.media-toolbar-spacer {
+  flex: 1;
+}
+
+.media-zoom-value,
+.media-page-value {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5ch;
+  text-align: center;
+  user-select: none;
+}
+
+/* `margin: auto` on the child (not flex centering) keeps small media
+   centered while leaving tall/wide content fully scrollable — flex
+   centering would clip the top/left of overflowing content. */
+.media-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  padding: 16px;
+  background: hsl(var(--background));
+}
+
+/* Checkerboard so transparent images read clearly in either theme. */
+.media-stage-image {
+  background-color: hsl(var(--muted));
+  background-image:
+    linear-gradient(45deg, hsl(var(--border)) 25%, transparent 25%),
+    linear-gradient(-45deg, hsl(var(--border)) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, hsl(var(--border)) 75%),
+    linear-gradient(-45deg, transparent 75%, hsl(var(--border)) 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+
+.media-image {
+  display: block;
+  margin: auto;
+}
+
+.media-image-fit {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Continuous vertical scroll: every page stacked, no page navigation. */
+.media-pdf-doc {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.media-pdf-page {
+  display: block;
+  max-width: 100%;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.2);
+}
+
+.media-message {
+  margin: auto;
+  color: hsl(var(--muted-foreground));
+  font-size: 14px;
+}
+
 /* === TOC Panel (flex sibling of .content) === */
 .toc-panel {
   width: 260px;

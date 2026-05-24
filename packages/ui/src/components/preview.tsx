@@ -453,9 +453,20 @@ function setupTocCollapse(tocEl: HTMLElement): () => void {
 }
 
 /** Set up IntersectionObserver to highlight the current TOC link based on scroll position */
-function setupTocScrollTracking(container: HTMLElement, tocEl?: HTMLElement): (() => void) | undefined {
+export function setupTocScrollTracking(container: HTMLElement, tocEl?: HTMLElement): (() => void) | undefined {
   const toc = tocEl || container.querySelector("#toc");
   if (!toc) return;
+
+  // A re-attached toc (notably after split→unsplit, where a pane's toc
+  // node is cached, detached by the other pane's wipe, then put back) can
+  // still carry a `.toc-active` from its previous tracking session. The
+  // fresh closure below starts with `currentActive = null`, so on the next
+  // scroll it would ADD a second active link without clearing the stale
+  // one — two highlights, out of sync. Wipe leftover active state so this
+  // session starts from a clean slate.
+  for (const stale of Array.from(toc.querySelectorAll<HTMLElement>(".toc-active"))) {
+    stale.classList.remove("toc-active");
+  }
 
   const tocLinks = Array.from(toc.querySelectorAll<HTMLAnchorElement>("a[href^='#']"));
   if (tocLinks.length === 0) return;

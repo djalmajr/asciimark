@@ -22,6 +22,7 @@ function HtmlLi(props: { html: string }) {
 const sectionIds = [
   "installation",
   "opening-files",
+  "media",
   "tabs",
   "navigation",
   "toc",
@@ -40,6 +41,7 @@ const sectionIds = [
 const sectionLabels: Record<(typeof sectionIds)[number], () => string> = {
   installation: m.guide_section_installation,
   "opening-files": m.guide_section_opening_files,
+  media: m.guide_section_media,
   tabs: m.guide_section_tabs,
   navigation: m.guide_section_navigation,
   toc: m.guide_section_toc,
@@ -243,6 +245,23 @@ export function GuidePage() {
             <HtmlLi html={(useLocale(), m.guide_opening_file_url_item1())} />
             <HtmlLi html={(useLocale(), m.guide_opening_file_url_item2())} />
             <HtmlLi html={(useLocale(), m.guide_opening_file_url_item3())} />
+          </ul>
+        </section>
+
+        <section class="content-panel" id="media">
+          <h2>{(useLocale(), m.guide_media_h2())}</h2>
+          <p>{(useLocale(), m.guide_media_intro_p())}</p>
+          <h3>{(useLocale(), m.guide_media_images_h3())}</h3>
+          <HtmlP html={(useLocale(), m.guide_media_images_p())} />
+          <h3>{(useLocale(), m.guide_media_pdf_h3())}</h3>
+          <p>{(useLocale(), m.guide_media_pdf_p())}</p>
+          <h3>{(useLocale(), m.guide_media_modes_h3())}</h3>
+          <p>{(useLocale(), m.guide_media_modes_p())}</p>
+          <ul>
+            <HtmlLi html={(useLocale(), m.guide_media_modes_item_doc())} />
+            <HtmlLi html={(useLocale(), m.guide_media_modes_item_media())} />
+            <HtmlLi html={(useLocale(), m.guide_media_modes_item_text())} />
+            <HtmlLi html={(useLocale(), m.guide_media_modes_item_unsupported())} />
           </ul>
         </section>
 

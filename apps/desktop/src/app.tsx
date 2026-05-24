@@ -500,6 +500,18 @@ export function App() {
     return convertFileSrc(absolutePath);
   }
 
+  /**
+   * Resolve a workspace-relative file path into a Tauri asset URL for the
+   * builtin media viewer (images/PDF). Unlike `resolveImageSrc`, the path is
+   * already workspace-relative (it's the selected file's own path), so no
+   * directory walking is needed — just join it onto the root.
+   */
+  function resolveFileSrc(rootId: string, relativePath: string): string | null {
+    const rootPath = rootPaths().get(rootId);
+    if (!rootPath) return null;
+    return convertFileSrc(`${rootPath}/${relativePath}`);
+  }
+
   async function handleOpenRecentFile(recentFile: RecentFile) {
     const opened = await folder.openFolderPath(recentFile.rootPath);
     if (!opened) {
@@ -837,7 +849,7 @@ export function App() {
         id: "view.editorMode.edit",
         group: "View",
         title: m.command_editor_mode_edit(),
-        when: () => hasFile,
+        when: () => hasFile && state.canEdit(),
         run: () => {
           state.setEditorMode("edit");
         },
@@ -846,7 +858,7 @@ export function App() {
         id: "view.editorMode.split",
         group: "View",
         title: m.command_editor_mode_split(),
-        when: () => hasFile && state.previewSupported(),
+        when: () => hasFile && state.canEdit() && state.canPreview(),
         run: () => {
           state.setEditorMode("split");
         },
@@ -855,7 +867,7 @@ export function App() {
         id: "view.editorMode.preview",
         group: "View",
         title: m.command_editor_mode_preview(),
-        when: () => hasFile && state.previewSupported(),
+        when: () => hasFile && state.canPreview(),
         run: () => {
           state.setEditorMode("preview");
         },
@@ -1350,6 +1362,7 @@ export function App() {
       onFindInFilesClose={() => setFindInFilesVisible(false)}
       onCloseRoot={(rootId) => folder.handleCloseRoot(rootId)}
       onCopyPath={folder.handleCopyPath}
+      onRevealInFileManager={folder.handleRevealInFileManager}
       onGoBack={navigation.handleGoBack}
       onGoForward={navigation.handleGoForward}
       onLoadFile={handleLoadFileWithTab}
@@ -1383,6 +1396,7 @@ export function App() {
         }
       }}
       resolveImageSrc={resolveImageSrc}
+      resolveFileSrc={resolveFileSrc}
       onToggleShowHiddenEntries={() => folder.refreshAllRoots()}
       onToggleRespectGitignore={() => folder.refreshAllRoots()}
       onReorderRoots={(newOrder) => state.reorderRoots(newOrder)}

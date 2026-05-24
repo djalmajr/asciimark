@@ -12,6 +12,7 @@ const BASE_PROPS = {
   hasFile: false,
   hasRoot: true,
   supportsPreview: false,
+  supportsEdit: false,
   recentFiles: [],
   recentFolders: [],
   showEditorTabs: true,
@@ -138,5 +139,45 @@ describe("Toolbar — Release Notes prop wiring (DJA-33)", () => {
     // accidental crash from the new prop pathway).
     expect(baseElement.querySelector('[aria-label="Menu"]')).not.toBeNull();
     expect(onReleaseNotes).not.toHaveBeenCalled();
+  });
+});
+
+describe("Toolbar — editor-mode tabs gated by capabilities", () => {
+  function tabState(baseElement: Element) {
+    const tabs = [...baseElement.querySelectorAll<HTMLButtonElement>('.toolbar-center [role="tab"]')];
+    return Object.fromEntries(tabs.map((t) => [t.textContent?.trim(), t.disabled]));
+  }
+
+  it("media (preview-only): edit + split disabled, preview enabled", () => {
+    // Mutation captured: wiring `disabled` to !supportsPreview on the
+    // edit tab (the pre-feature behavior) would re-enable Edit for an
+    // image — flipping this assertion.
+    const { baseElement } = render(() => (
+      <Toolbar {...BASE_PROPS} hasFile supportsPreview supportsEdit={false} />
+    ));
+    const t = tabState(baseElement);
+    expect(t["Edit"]).toBe(true);
+    expect(t["Edit & Preview"]).toBe(true);
+    expect(t["Preview"]).toBe(false);
+  });
+
+  it("plain text (edit-only): edit enabled, split + preview disabled", () => {
+    const { baseElement } = render(() => (
+      <Toolbar {...BASE_PROPS} hasFile supportsEdit supportsPreview={false} />
+    ));
+    const t = tabState(baseElement);
+    expect(t["Edit"]).toBe(false);
+    expect(t["Edit & Preview"]).toBe(true);
+    expect(t["Preview"]).toBe(true);
+  });
+
+  it("document (both): all three tabs enabled", () => {
+    const { baseElement } = render(() => (
+      <Toolbar {...BASE_PROPS} hasFile supportsEdit supportsPreview />
+    ));
+    const t = tabState(baseElement);
+    expect(t["Edit"]).toBe(false);
+    expect(t["Edit & Preview"]).toBe(false);
+    expect(t["Preview"]).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
+import { UNSUPPORTED_CONTENT } from "@asciimark/core/utils.ts";
 import { createAppState, type ThemeMode } from "./create-app-state.ts";
 
 // Storage helpers — happy-dom ships localStorage, but we still clear
@@ -254,6 +255,58 @@ describe("AppState — navigation slice (DJA-42)", () => {
       state.setNavIndex(0);
       expect(state.canGoBack()).toBe(false);
       expect(state.canGoForward()).toBe(true);
+    });
+  });
+});
+
+describe("AppState — viewer capabilities (edit/preview por tipo)", () => {
+  const f = (name: string): FSEntry => ({ name, path: name, kind: "file" });
+
+  it("document (md/adoc) habilita edit E preview", () => {
+    withState((state) => {
+      state.setSelectedFile(f("doc.md"));
+      expect(state.canEdit()).toBe(true);
+      expect(state.canPreview()).toBe(true);
+    });
+  });
+
+  it("imagem/pdf/svg são preview-only (sem edit)", () => {
+    // Mutation: canEdit retornando true para mídia acenderia as tabs
+    // edit/split de um binário que o usuário não pode editar.
+    withState((state) => {
+      for (const name of ["pic.png", "photo.jpeg", "anim.gif", "scan.pdf", "logo.svg"]) {
+        state.setSelectedFile(f(name));
+        expect(state.canEdit()).toBe(false);
+        expect(state.canPreview()).toBe(true);
+      }
+    });
+  });
+
+  it("texto puro (json/txt/yaml) é edit-only (sem preview renderizado)", () => {
+    withState((state) => {
+      for (const name of ["data.json", "notes.txt", "conf.yaml"]) {
+        state.setSelectedFile(f(name));
+        expect(state.canEdit()).toBe(true);
+        expect(state.canPreview()).toBe(false);
+      }
+    });
+  });
+
+  it("binário não suportado (UNSUPPORTED_CONTENT no html) desabilita ambos", () => {
+    // Mutation: remover o short-circuit isUnsupported() deixaria canEdit
+    // true (como um .json) e abriria editor para lixo binário.
+    withState((state) => {
+      state.setSelectedFile(f("archive.zip"));
+      state.setHtml(UNSUPPORTED_CONTENT);
+      expect(state.canEdit()).toBe(false);
+      expect(state.canPreview()).toBe(false);
+    });
+  });
+
+  it("sem arquivo selecionado ambos são false (toggle desabilitado)", () => {
+    withState((state) => {
+      expect(state.canEdit()).toBe(false);
+      expect(state.canPreview()).toBe(false);
     });
   });
 });

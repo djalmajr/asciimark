@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createSignal } from "solid-js";
 import { fireEvent, render } from "@solidjs/testing-library";
 import type { FSEntry } from "@asciimark/core/types.ts";
+import { UNSUPPORTED_CONTENT } from "@asciimark/core/utils.ts";
 import type { AppState } from "../composables/create-app-state.ts";
 import type { PaneStore } from "../composables/create-pane-store.ts";
 
@@ -26,9 +27,9 @@ function fileEntry(name = "doc.md"): FSEntry {
   return { name, path: name, kind: "file" };
 }
 
-function makePane(): PaneStore {
-  const [editorMode] = createSignal<"edit" | "split" | "preview">("split");
-  const [selectedFile] = createSignal<FSEntry | null>(fileEntry());
+function makePane(opts: { file?: FSEntry; mode?: "edit" | "split" | "preview"; html?: string; rootId?: string } = {}): PaneStore {
+  const [editorMode] = createSignal<"edit" | "split" | "preview">(opts.mode ?? "split");
+  const [selectedFile] = createSignal<FSEntry | null>(opts.file ?? fileEntry());
   return {
     paneId: "p0",
     editorMode,
@@ -36,14 +37,14 @@ function makePane(): PaneStore {
     // Methods PaneView's children would consume — children are mocked
     // so these are never reached, but the type cast needs SOMETHING.
     tabs: { tabs: () => [], getActiveTab: () => null, pinTab: () => {} },
-    html: () => "",
+    html: () => opts.html ?? "",
     editorContent: () => "",
     setEditorContent: () => {},
     savedContent: () => "",
     setSavedContent: () => {},
     frontmatter: () => null,
     setFrontmatter: () => {},
-    selectedRootId: () => null,
+    selectedRootId: () => opts.rootId ?? null,
     setSelectedRootId: () => {},
     setSelectedFile: () => {},
     setEditorMode: () => {},
@@ -133,5 +134,43 @@ describe("PaneView resize handle", () => {
     expect(ref).toBeDefined();
     expect(ref!.querySelector(".editor-panel")).not.toBeNull();
     expect(ref!.querySelector(".content")).not.toBeNull();
+  });
+});
+
+describe("PaneView content routing by file kind", () => {
+  it("an image file renders the media viewer, not the editor/preview", () => {
+    // Mutation captured: dropping the isMedia() branch (or its guards on
+    // the editor/preview Shows) would mount the text editor for a binary
+    // image — there'd be an .editor-panel and no .media-viewer.
+    const pane = makePane({ file: fileEntry("pic.png"), mode: "preview", rootId: "root-0" });
+    const state = makeState(() => {});
+    const { container } = render(() => (
+      <PaneView
+        pane={pane}
+        state={state}
+        paneIndex={0}
+        isActive={true}
+        resolveFileSrc={(_root, p) => `asset://${p}`}
+      />
+    ));
+    expect(container.querySelector(".media-viewer")).not.toBeNull();
+    expect(container.querySelector(".editor-panel")).toBeNull();
+    expect(container.querySelector("img.media-image")?.getAttribute("src")).toBe("asset://pic.png");
+  });
+
+  it("an unsupported binary (UNSUPPORTED_CONTENT html) shows the notice, no editor/viewer", () => {
+    // Mutation captured: removing the isUnsupported() branch leaves the
+    // editor/preview Shows to render an empty editor for binary junk.
+    // The notice carries the filename regardless of locale.
+    const pane = makePane({ file: fileEntry("archive.zip"), mode: "edit", html: UNSUPPORTED_CONTENT });
+    const state = makeState(() => {});
+    const { container } = render(() => (
+      <PaneView pane={pane} state={state} paneIndex={0} isActive={true} />
+    ));
+    const notice = container.querySelector(".media-message");
+    expect(notice).not.toBeNull();
+    expect(notice!.textContent).toContain("archive.zip");
+    expect(container.querySelector(".editor-panel")).toBeNull();
+    expect(container.querySelector(".media-viewer")).toBeNull();
   });
 });

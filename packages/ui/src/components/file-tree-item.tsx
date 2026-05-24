@@ -1,15 +1,19 @@
-import { createSignal, createEffect, createMemo, Show, For, onMount, onCleanup } from "solid-js";
+import { createSignal, createEffect, createMemo, Show, For, onMount, onCleanup, type JSX } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
+import { fileKind, fileManagerKind } from "@asciimark/core/utils.ts";
 import * as m from "@asciimark/i18n";
 import { useLocale } from "@asciimark/i18n/solid";
 import type { ExpandAction } from "./file-tree.tsx";
 import IconChevronRight from "~icons/lucide/chevron-right";
 import IconFolder from "~icons/lucide/folder";
 import IconFile from "~icons/lucide/file-text";
+import IconFileImage from "~icons/lucide/file-image";
+import IconFilePlain from "~icons/lucide/file";
 import IconEllipsisVertical from "~icons/lucide/ellipsis-vertical";
 import IconClipboard from "~icons/lucide/clipboard-copy";
 import IconPencil from "~icons/lucide/pencil";
 import IconTrash from "~icons/lucide/trash-2";
+import IconFolderOpen from "~icons/lucide/folder-open";
 import IconExternalLink from "~icons/lucide/external-link";
 import {
   ContextMenu,
@@ -39,6 +43,30 @@ const RENAME_SHORTCUT_LABEL = IS_MAC ? "⌘↵" : "F2";
 /** Copy-path shortcut: ⇧⌘C on macOS, Alt+Shift+C elsewhere. */
 const COPY_SHORTCUT_LABEL = IS_MAC ? "⇧⌘C" : "Alt+Shift+C";
 
+/** Middle-click affordance glyph shown next to "Open in New Tab". */
+function MiddleClickGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="6" y="3" width="12" height="18" rx="6" />
+      <line x1="12" y1="7" x2="12" y2="11" />
+    </svg>
+  );
+}
+
+/** One row of the file-item menu, shared by the right-click ContextMenu
+ *  and the ⋮ DropdownMenu. `label` is a Paraglide thunk so each render
+ *  site can track the locale signal. `shortcut` is a string (mono label)
+ *  or an element (glyph); absent for actions without a shortcut. */
+interface TreeMenuEntry {
+  id: string;
+  icon: JSX.Element;
+  label: () => string;
+  onSelect: () => void;
+  shortcut?: JSX.Element | string;
+  separatorBefore?: boolean;
+  itemClass: string;
+}
+
 interface FileTreeItemProps {
   depth: number;
   entry: FSEntry;
@@ -63,6 +91,10 @@ interface FileTreeItemProps {
    * access), the relative `entry.path` is copied as a fallback.
    */
   onCopyPath?: (entry: FSEntry, rootId: string) => void | Promise<void>;
+  /** Platform-provided "reveal in OS file manager" action (Finder /
+   *  Explorer / file manager). Desktop-only; omitted on web/extension,
+   *  where the menu entry is hidden. */
+  onRevealInFileManager?: (entry: FSEntry, rootId: string) => void | Promise<void>;
   onRename?: (entry: FSEntry, rootId: string, newName: string) => Promise<void>;
   onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   onSelect: (entry: FSEntry) => void;
@@ -88,6 +120,21 @@ function isValidFilename(name: string): boolean {
   // Disallow path separators and common reserved/control characters
   // eslint-disable-next-line no-control-regex
   return !/[<>:"/\\|?*\x00-\x1f]/.test(trimmed);
+}
+
+/** File-row icon, chosen by kind so images and PDFs read distinctly from
+ *  text documents (which keep the default lined-file glyph). */
+function FileIcon(props: { name: string }) {
+  const kind = () => fileKind(props.name);
+  return (
+    <Show when={kind() === "image"} fallback={
+      <Show when={kind() === "pdf"} fallback={<IconFile width={14} height={14} />}>
+        <IconFilePlain width={14} height={14} />
+      </Show>
+    }>
+      <IconFileImage width={14} height={14} />
+    </Show>
+  );
 }
 
 export function FileTreeItem(props: FileTreeItemProps) {
@@ -205,9 +252,83 @@ export function FileTreeItem(props: FileTreeItemProps) {
     });
   }
 
+  function revealInFileManager() {
+    void Promise.resolve(props.onRevealInFileManager?.(props.entry, props.rootId)).catch(() => {
+      // Platform implementation handles its own errors; ignore here.
+    });
+  }
+
+  // OS-appropriate label for the "reveal in file manager" entry. The menu
+  // only renders this when `onRevealInFileManager` is provided (desktop),
+  // where `navigator.userAgent` reliably identifies the host OS.
+  function revealLabel(): string {
+    useLocale();
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const kind = fileManagerKind(ua);
+    if (kind === "finder") return m.tree_reveal_finder();
+    if (kind === "explorer") return m.tree_reveal_explorer();
+    return m.tree_reveal_file_manager();
+  }
+
   function startRename() {
     app.setEditingPath(props.entry.path);
   }
+
+  // Single source of truth for the per-item menu. Rendered into BOTH the
+  // right-click ContextMenu and the ⋮ DropdownMenu — Kobalte binds each
+  // Item primitive to its own menu context, so the primitives differ, but
+  // the entries (icon / label / action / shortcut / order) live here once.
+  const menuEntries = (): TreeMenuEntry[] => {
+    const list: TreeMenuEntry[] = [];
+    if (!isDirectory() && props.onOpenInNewTab) {
+      list.push({
+        id: "open-in-new-tab",
+        icon: <IconExternalLink width={14} height={14} />,
+        label: m.tree_open_in_new_tab,
+        onSelect: () => props.onOpenInNewTab?.(props.entry),
+        shortcut: <MiddleClickGlyph />,
+        itemClass: "justify-between gap-3",
+      });
+    }
+    list.push({
+      id: "copy-path",
+      icon: <IconClipboard width={14} height={14} />,
+      label: m.tree_copy_path,
+      onSelect: copyPath,
+      shortcut: COPY_SHORTCUT_LABEL,
+      itemClass: "justify-between gap-3",
+    });
+    if (props.onRename) {
+      list.push({
+        id: "rename",
+        icon: <IconPencil width={14} height={14} />,
+        label: m.tree_rename,
+        onSelect: startRename,
+        shortcut: RENAME_SHORTCUT_LABEL,
+        itemClass: "justify-between gap-3",
+      });
+    }
+    if (props.onRevealInFileManager) {
+      list.push({
+        id: "reveal",
+        icon: <IconFolderOpen width={14} height={14} />,
+        label: revealLabel,
+        onSelect: revealInFileManager,
+        itemClass: "gap-2",
+      });
+    }
+    if (props.onDelete) {
+      list.push({
+        id: "trash",
+        icon: <IconTrash width={14} height={14} />,
+        label: m.tree_move_to_trash,
+        onSelect: () => props.onDelete?.(props.entry, props.rootId),
+        separatorBefore: true,
+        itemClass: "gap-2",
+      });
+    }
+    return list;
+  };
 
   /**
    * Return focus to the file-tree `<nav>` so the user can keep navigating
@@ -311,7 +432,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
           <span class={`tree-icon ${isDirectory() ? "folder-icon" : ""}`}>
             <Show
               when={isDirectory()}
-              fallback={<IconFile width={14} height={14} />}
+              fallback={<FileIcon name={props.entry.name} />}
             >
               <IconFolder width={14} height={14} />
             </Show>
@@ -349,28 +470,19 @@ export function FileTreeItem(props: FileTreeItemProps) {
                 <IconEllipsisVertical width={14} height={14} />
               </DropdownMenuTrigger>
               <DropdownMenuContent class="min-w-48">
-                <Show when={!isDirectory() && props.onOpenInNewTab}>
-                  <DropdownMenuItem class="justify-between gap-3" onSelect={() => props.onOpenInNewTab?.(props.entry)}>
-                    <span class="flex items-center gap-2"><IconExternalLink width={14} height={14} /> {(useLocale(), m.tree_open_in_new_tab())}</span>
-                    <span class="ml-auto opacity-40"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="6" /><line x1="12" y1="7" x2="12" y2="11" /></svg></span>
-                  </DropdownMenuItem>
-                </Show>
-                <DropdownMenuItem class="justify-between gap-3" onSelect={copyPath}>
-                  <span class="flex items-center gap-2"><IconClipboard width={14} height={14} /> {(useLocale(), m.tree_copy_path())}</span>
-                  <span class="ml-auto text-xs tracking-widest opacity-40">{COPY_SHORTCUT_LABEL}</span>
-                </DropdownMenuItem>
-                <Show when={props.onRename}>
-                  <DropdownMenuItem class="justify-between gap-3" onSelect={startRename}>
-                    <span class="flex items-center gap-2"><IconPencil width={14} height={14} /> {(useLocale(), m.tree_rename())}</span>
-                    <span class="ml-auto text-xs tracking-widest opacity-40">{RENAME_SHORTCUT_LABEL}</span>
-                  </DropdownMenuItem>
-                </Show>
-                <Show when={props.onDelete}>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem class="gap-2" onSelect={() => props.onDelete?.(props.entry, props.rootId)}>
-                    <IconTrash width={14} height={14} /> {(useLocale(), m.tree_move_to_trash())}
-                  </DropdownMenuItem>
-                </Show>
+                <For each={menuEntries()}>
+                  {(entry) => (
+                    <>
+                      <Show when={entry.separatorBefore}><DropdownMenuSeparator /></Show>
+                      <DropdownMenuItem class={entry.itemClass} onSelect={entry.onSelect}>
+                        <span class="flex items-center gap-2">{entry.icon} {(useLocale(), entry.label())}</span>
+                        <Show when={entry.shortcut !== undefined}>
+                          <span class={typeof entry.shortcut === "string" ? "ml-auto text-xs tracking-widest opacity-40" : "ml-auto opacity-40"}>{entry.shortcut}</span>
+                        </Show>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </For>
               </DropdownMenuContent>
             </DropdownMenu>
           </Show>
@@ -389,28 +501,19 @@ export function FileTreeItem(props: FileTreeItemProps) {
          */}
         <Show when={menuEnabled()}>
           <ContextMenuContent class="tree-context-menu min-w-48">
-          <Show when={!isDirectory() && props.onOpenInNewTab}>
-            <ContextMenuItem class="justify-between gap-3" onSelect={() => props.onOpenInNewTab?.(props.entry)}>
-              <span class="flex items-center gap-2"><IconExternalLink width={14} height={14} /> {(useLocale(), m.tree_open_in_new_tab())}</span>
-              <ContextMenuShortcut class="ml-0 opacity-40"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="6" /><line x1="12" y1="7" x2="12" y2="11" /></svg></ContextMenuShortcut>
-            </ContextMenuItem>
-          </Show>
-          <ContextMenuItem class="justify-between gap-3" onSelect={copyPath}>
-            <span class="flex items-center gap-2"><IconClipboard width={14} height={14} /> {(useLocale(), m.tree_copy_path())}</span>
-            <ContextMenuShortcut class="ml-0 opacity-40">{COPY_SHORTCUT_LABEL}</ContextMenuShortcut>
-          </ContextMenuItem>
-          <Show when={props.onRename}>
-            <ContextMenuItem class="justify-between gap-3" onSelect={startRename}>
-              <span class="flex items-center gap-2"><IconPencil width={14} height={14} /> {(useLocale(), m.tree_rename())}</span>
-              <ContextMenuShortcut class="ml-0 opacity-40">{RENAME_SHORTCUT_LABEL}</ContextMenuShortcut>
-            </ContextMenuItem>
-          </Show>
-          <Show when={props.onDelete}>
-            <ContextMenuSeparator />
-            <ContextMenuItem class="gap-2" onSelect={() => props.onDelete?.(props.entry, props.rootId)}>
-              <IconTrash width={14} height={14} /> {(useLocale(), m.tree_move_to_trash())}
-            </ContextMenuItem>
-          </Show>
+            <For each={menuEntries()}>
+              {(entry) => (
+                <>
+                  <Show when={entry.separatorBefore}><ContextMenuSeparator /></Show>
+                  <ContextMenuItem class={entry.itemClass} onSelect={entry.onSelect}>
+                    <span class="flex items-center gap-2">{entry.icon} {(useLocale(), entry.label())}</span>
+                    <Show when={entry.shortcut !== undefined}>
+                      <ContextMenuShortcut class="ml-0 opacity-40">{entry.shortcut}</ContextMenuShortcut>
+                    </Show>
+                  </ContextMenuItem>
+                </>
+              )}
+            </For>
           </ContextMenuContent>
         </Show>
       </ContextMenu>
@@ -429,6 +532,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
               rootId={props.rootId}
               selectedPath={props.selectedPath}
               onCopyPath={props.onCopyPath}
+              onRevealInFileManager={props.onRevealInFileManager}
               onRename={props.onRename}
               onDelete={props.onDelete}
               onSelect={props.onSelect}
