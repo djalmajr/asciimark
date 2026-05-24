@@ -48,7 +48,7 @@ panic = "abort"
 
 [dev-dependencies]
 tempfile = "3"
-criterion = { version = "0.5", default-features = false }
+criterion = { version = "0.8", default-features = false }
 tokio = { version = "1", features = ["rt", "macros"] }
 # proptest mirrors fast-check on the JS side: randomized inputs + shrinking
 # for property-based tests on the pure helpers.
