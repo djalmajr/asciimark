@@ -71,7 +71,7 @@
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    --primary: 188 76% 34%;
+    --primary: 188 76% 30%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 14% 96%;
     --secondary-foreground: 220 9% 46%;
@@ -83,7 +83,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 188 76% 34%;
+    --ring: 188 76% 30%;
     --radius: 0.5rem;
 
     /* Layout tokens (used by custom CSS below) */
