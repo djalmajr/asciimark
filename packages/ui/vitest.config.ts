@@ -4,7 +4,10 @@ import Icons from "unplugin-icons/vite";
 
 export default defineConfig({
   plugins: [
-    solid(),
+    // hot: false disables solid-refresh (HMR) — pointless in a test run, and
+    // under Bun 1.3.x the injected `@solid-refresh` virtual id gets fed to
+    // fileURLToPath, throwing "argument 'filename' must be a file URL ...".
+    solid({ hot: false }),
     // Mirrors the host apps' setup so `~icons/lucide/<name>` resolves to a
     // Solid component during tests. Without this, every component that
     // renders an icon would error during module evaluation.
