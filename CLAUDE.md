@@ -640,6 +640,35 @@ envs; per-platform build logs mention "Signing updater bundle".
 `tauri.conf.json` is incorrect/empty; client offline; client running a
 dev build (no valid semver).
 
+**`bun run dev:app` hangs on Windows with a blank webview** — Vite 8's
+dep-optimizer uses rolldown (native Rust), and its win32 binding
+intermittently hangs during the cold-cache dependency scan: the log
+stops at `[optimizer] scanning dependencies...` and never reaches
+`bundling`/`optimized`, so Vite holds the index.html request forever
+(`holdUntilCrawlEnd`) and the page never loads.
+- **Intermittent, Windows-only.** mac/linux run Vite 8 fine; same Windows
+  run sometimes serves in ~1s, sometimes hangs. Aggravated by clearing the
+  `.vite` cache and by CPU contention with the concurrent `cargo` build.
+- Vite was bumped 8.0.10 → 8.0.14 (rolldown `rc.17` → stable `1.0.2`),
+  which **mitigates** the hang — it does NOT cure it.
+- **Fix when it hangs: just restart `bun run dev:app`** (a fresh attempt
+  almost always catches; keep the `.vite` cache warm — don't `rm -rf` it).
+- Do NOT "fix" this by downgrading to Vite 7 (penalizes mac/linux for a
+  Windows-only bug) or by adding `optimizeDeps.noDiscovery`/`holdUntilCrawlEnd`
+  (noDiscovery breaks CJS deps — dayjs via mermaid throws "no default
+  export"; holdUntilCrawlEnd didn't help in the real Bun+Tauri context).
+  Watch for rolldown 1.0.3+ to stabilize upstream.
+
+**`bun test` fails with `process.env.hasOwnProperty is not a function`** —
+Bun 1.3.x dropped that method from `process.env`; `@asciidoctor/opal-runtime`
+calls it. Fixed by `test-setup.ts` (registered via `preload` in
+`bunfig.toml`). If asciidoc tests start failing again, confirm that preload
+is still wired.
+
+**Vitest `.vtest` files fail with `file:///@solid-refresh` /
+`fileURLToPath`** — under Bun 1.3.x, vite-plugin-solid's injected HMR
+runtime breaks. Fixed by `solid({ hot: false })` in `packages/ui/vitest.config.ts`.
+
 <!-- wiki-init:start -->
 ## LLM Wiki
 
