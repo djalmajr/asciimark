@@ -1,4 +1,4 @@
-// packages/frame/src/constants.ts
+// ../frame/packages/frame/src/constants.ts
 var MessageEvent = {
   INIT: "__INIT__",
   READY: "__READY__",
@@ -14,7 +14,7 @@ var VALID_MESSAGE_TYPES = new Set(Object.values(MessageEvent));
 var FUNCTION_CALL_TIMEOUT = 5000;
 var FUNCTION_REGISTRY_MAX_SIZE = 1000;
 
-// node_modules/.bun/flatted@3.3.3/node_modules/flatted/esm/index.js
+// ../frame/node_modules/.bun/flatted@3.3.3/node_modules/flatted/esm/index.js
 var { parse: $parse, stringify: $stringify } = JSON;
 var { keys } = Object;
 var Primitive = String;
@@ -87,7 +87,7 @@ var stringify = (value, replacer, space) => {
   }
 };
 
-// packages/frame/src/helpers/serialization.ts
+// ../frame/packages/frame/src/helpers/serialization.ts
 function isTransferable(value) {
   if (typeof value !== "object" || value === null)
     return false;
@@ -159,7 +159,7 @@ function deserializeValue(value, createProxyFunction) {
   return deserialize(value);
 }
 
-// packages/frame/src/helpers/test-guards.ts
+// ../frame/packages/frame/src/helpers/test-guards.ts
 function assertTestEnv() {
   const isTest = typeof globalThis.process !== "undefined" && globalThis.process?.env?.NODE_ENV === "test" || globalThis.__TEST_ENV__ === true;
   if (!isTest) {
@@ -167,7 +167,7 @@ function assertTestEnv() {
   }
 }
 
-// packages/frame/src/helpers/function-manager.ts
+// ../frame/packages/frame/src/helpers/function-manager.ts
 class FunctionManager {
   #functionRegistry = new Map;
   #pendingFunctionCalls = new Map;
@@ -270,7 +270,7 @@ class FunctionManager {
   }
 }
 
-// packages/frame/src/helpers/logger.ts
+// ../frame/packages/frame/src/helpers/logger.ts
 function createLogger(prefix) {
   const formattedPrefix = `[${prefix}]`;
   return {
@@ -286,7 +286,7 @@ function createLogger(prefix) {
   };
 }
 
-// packages/frame/src/helpers/message-validators.ts
+// ../frame/packages/frame/src/helpers/message-validators.ts
 function isValidMessageStructure(message) {
   return message !== null && message !== undefined && typeof message === "object" && "type" in message;
 }
@@ -312,18 +312,16 @@ function validateMessage(data, logPrefix) {
   return data;
 }
 
-// packages/frame/src/frame.ts
+// ../frame/packages/frame/src/frame.ts
 var logger = createLogger("z-frame");
 
 class Frame extends HTMLElement {
   static get observedAttributes() {
-    return ["base", "name", "pathname", "sandbox", "src"];
+    return ["pathname", "sandbox", "src"];
   }
   static ATTR_GETTERS = {
     pathname: (instance) => instance.pathname,
-    base: (instance) => instance.base,
     sandbox: (instance) => instance.sandbox,
-    name: (_, val) => val,
     src: (_, val) => val
   };
   static RECREATE_ATTRS = new Set(["src", "sandbox"]);
@@ -344,32 +342,6 @@ class Frame extends HTMLElement {
       this._sendToIframe(message, transferables);
     });
   }
-  get name() {
-    return this.getAttribute("name");
-  }
-  get src() {
-    return this.getAttribute("src");
-  }
-  get base() {
-    let base = this.getAttribute("base") || `/${this.name}`;
-    if (!base.startsWith("/")) {
-      base = `/${base}`;
-    }
-    if (base.length > 1 && base.endsWith("/")) {
-      base = base.slice(0, -1);
-    }
-    return base;
-  }
-  set base(value) {
-    if (value === null) {
-      this.removeAttribute("base");
-    } else {
-      this.setAttribute("base", value);
-    }
-  }
-  get sandbox() {
-    return this.getAttribute("sandbox") || "allow-scripts allow-same-origin allow-forms allow-popups allow-modals";
-  }
   get pathname() {
     const value = this.getAttribute("pathname");
     if (!value || value.trim() === "") {
@@ -382,6 +354,26 @@ class Frame extends HTMLElement {
       this.removeAttribute("pathname");
     } else {
       this.setAttribute("pathname", value);
+    }
+  }
+  get sandbox() {
+    return this.getAttribute("sandbox") || "allow-scripts allow-same-origin allow-forms allow-popups allow-modals";
+  }
+  set sandbox(value) {
+    if (value === null) {
+      this.removeAttribute("sandbox");
+    } else {
+      this.setAttribute("sandbox", value);
+    }
+  }
+  get src() {
+    return this.getAttribute("src");
+  }
+  set src(value) {
+    if (value === null) {
+      this.removeAttribute("src");
+    } else {
+      this.setAttribute("src", value);
     }
   }
   get isReady() {
@@ -418,7 +410,7 @@ class Frame extends HTMLElement {
   attributeChangedCallback(name, oldValue, newValue) {
     if (oldValue === newValue)
       return;
-    if (this.isConnected && this.name && this.src && !this.#iframe) {
+    if (this.isConnected && this.src && !this.#iframe) {
       try {
         this.#origin = new URL(this.src).origin;
         this._initialize();
@@ -448,7 +440,7 @@ class Frame extends HTMLElement {
   }
   connectedCallback() {
     queueMicrotask(() => {
-      if (this.name && this.src && !this.#iframe) {
+      if (this.src && !this.#iframe) {
         try {
           this.#origin = new URL(this.src).origin;
           this._initialize();
@@ -520,11 +512,9 @@ class Frame extends HTMLElement {
   }
   _collectAllProps() {
     const props = {
-      base: this.base,
-      name: this.name,
       pathname: this.pathname,
-      src: this.src,
-      sandbox: this.sandbox
+      sandbox: this.sandbox,
+      src: this.src
     };
     const observedAttrs = Frame.observedAttributes;
     for (let i = 0;i < this.attributes.length; i++) {
@@ -586,7 +576,7 @@ class Frame extends HTMLElement {
     switch (type) {
       case MessageEvent.READY:
         this.#ready = true;
-        this._dispatchLocalEvent("ready", { name: this.name });
+        this._dispatchLocalEvent("ready");
         break;
       case MessageEvent.CUSTOM_EVENT: {
         const customMsg = message;
@@ -742,6 +732,20 @@ class Frame extends HTMLElement {
     this._cleanup();
   }
 }
+var RESERVED_DYNAMIC_PROPS = new Set([
+  "then",
+  "catch",
+  "finally",
+  "connectedCallback",
+  "disconnectedCallback",
+  "adoptedCallback",
+  "attributeChangedCallback",
+  "connectedMoveCallback",
+  "formAssociatedCallback",
+  "formDisabledCallback",
+  "formResetCallback",
+  "formStateRestoreCallback"
+]);
 var setupPrototypeProxy = () => {
   const proto = Frame.prototype;
   const protoOfProto = Object.getPrototypeOf(proto);
@@ -750,7 +754,7 @@ var setupPrototypeProxy = () => {
       const value = Reflect.get(target, prop, receiver);
       if (value !== undefined)
         return value;
-      if (typeof prop === "string" && /^[a-z][a-zA-Z0-9]*$/.test(prop)) {
+      if (typeof prop === "string" && /^[a-z][a-zA-Z0-9]*$/.test(prop) && !RESERVED_DYNAMIC_PROPS.has(prop)) {
         const instance = receiver;
         if (instance._dynamicMethods?.has(prop)) {
           return instance._dynamicMethods.get(prop);
@@ -760,7 +764,7 @@ var setupPrototypeProxy = () => {
           if (fn) {
             return Promise.resolve(fn(...args));
           }
-          return Promise.reject(new Error(`Function '${prop}' not registered by child frame '${instance.name}'`));
+          return Promise.reject(new Error(`Function '${prop}' not registered by child frame '${instance.src}'`));
         };
         instance._dynamicMethods?.set(prop, method);
         return method;
@@ -774,9 +778,12 @@ var setupPrototypeProxy = () => {
       if (prop.startsWith("_")) {
         return Reflect.set(target, prop, value, receiver);
       }
+      if (RESERVED_DYNAMIC_PROPS.has(prop)) {
+        return Reflect.set(target, prop, value, receiver);
+      }
       const instance = receiver;
       if (Frame.observedAttributes.includes(prop) || prop in HTMLElement.prototype || prop in Frame.prototype) {
-        return Reflect.set(target, prop, value, receiver);
+        return Reflect.set(receiver, prop, value, receiver);
       }
       if (!instance._definedProps.has(prop)) {
         instance._definedProps.add(prop);

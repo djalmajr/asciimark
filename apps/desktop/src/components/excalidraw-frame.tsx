@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
-// Vendored @zomme/frame core (registers the <z-frame> custom element). Bundled
-// from the sibling `frame` repo until it is published / linked properly.
+// @zomme/frame core (vendored): registers the <z-frame> custom element. Vendored
+// instead of the npm dep because the published @zomme/frame ships an empty dist,
+// and a file: dep stalls vite's dep scanner. Re-bundle from the frame repo with:
+//   bun build ../../frame/packages/frame/src/frame.ts --outfile src/vendor/zomme-frame.js --target browser --format esm
 import "../vendor/zomme-frame.js";
 
 interface Scene {
@@ -12,62 +14,6 @@ interface Scene {
 interface ExcalidrawFrameProps {
   /** Absolute path of the `.excalidraw` file on disk. */
   filePath: string;
-}
-
-const RESERVED = new Set([
-  "name",
-  "src",
-  "sandbox",
-  "base",
-  "pathname",
-  "class",
-  "id",
-  "style",
-  "ref",
-  "children",
-]);
-const isEventKey = (key: string) => /^on[A-Z]/.test(key);
-
-// Inline port of @zomme/frame-solid's <Frame> host wrapper: reactive attributes,
-// `on<Event>` → addEventListener, everything else → DOM property forwarded to
-// the guest through the z-frame.
-function Frame(props: Record<string, unknown> & { name: string; src: string }): HTMLElement {
-  const el = document.createElement("z-frame");
-  const attached: [string, EventListener][] = [];
-  const setAttr = (name: string, value: unknown) => {
-    if (value == null) el.removeAttribute(name);
-    else el.setAttribute(name, String(value));
-  };
-
-  createEffect(() => setAttr("name", props.name));
-  createEffect(() => setAttr("src", props.src));
-  createEffect(() => setAttr("sandbox", (props.sandbox as string) ?? "allow-scripts allow-same-origin"));
-  createEffect(() => setAttr("style", props.style));
-
-  onMount(() => {
-    for (const key of Object.keys(props)) {
-      if (!isEventKey(key) || typeof props[key] !== "function") continue;
-      const eventName = key.slice(2).toLowerCase();
-      const handler: EventListener = (event) => {
-        const fn = props[key];
-        if (typeof fn === "function") (fn as (e: Event) => void)(event);
-      };
-      el.addEventListener(eventName, handler);
-      attached.push([eventName, handler]);
-    }
-  });
-  onCleanup(() => {
-    for (const [eventName, handler] of attached) el.removeEventListener(eventName, handler);
-  });
-
-  createEffect(() => {
-    for (const key of Object.keys(props)) {
-      if (RESERVED.has(key) || isEventKey(key)) continue;
-      (el as unknown as Record<string, unknown>)[key] = props[key];
-    }
-  });
-
-  return el;
 }
 
 function sceneToFile(scene: Scene): string {
@@ -81,26 +27,71 @@ function sceneToFile(scene: Scene): string {
 }
 
 /**
- * Embedded Excalidraw editor for a `.excalidraw` file, shown in the pane in
- * place of the markdown/asciidoc preview (caminho B). Desktop-only: the guest
- * (the real Excalidraw editor) runs in the z-frame's iframe; this host loads
- * the file (`read_file`) into it and persists edits (`write_file`) back to disk.
+ * Embedded Excalidraw editor for a `.excalidraw` file, shown in the pane in place
+ * of the markdown/asciidoc preview (caminho B). Desktop-only: the guest (the real
+ * Excalidraw editor, apps/excalidraw-guest) runs in the <z-frame>'s iframe; this
+ * host loads the file (`read_file`) into it and persists edits (`write_file`).
  *
- * Persistence lives HERE, not in the iframe: the guest pushes its current scene
- * on every (coalesced) change; we keep the latest, debounce the disk write, and
- * **flush on cleanup** — which runs while the iframe is still alive, before a
- * tab switch (file change) or unmount. That's why the last edit isn't lost when
- * you switch files (the previous bug: the debounce lived in the iframe and died
- * with it).
+ * The <z-frame> is created and driven IMPERATIVELY inside a host <div>, NOT as
+ * JSX. If it lives in Solid's render tree, Solid reconciles the custom element's
+ * own getters (e.g. `get src`) during insertion — which throws "Illegal
+ * invocation" and leaves the iframe stuck (timeout). Keeping it out of the render
+ * tree avoids that. All <z-frame> wiring (attributes, the `save` RPC method, the
+ * `drawingData` push) is done by hand here.
+ *
+ * Persistence lives in the HOST, not the iframe: the guest pushes its scene on
+ * every coalesced change via `save`; we debounce the disk write and FLUSH on
+ * cleanup (which runs while the iframe is alive, before a tab switch/unmount), so
+ * the last edit isn't lost.
  */
 export function ExcalidrawFrame(props: ExcalidrawFrameProps) {
+  let host: HTMLDivElement | undefined;
+  // The <z-frame> element; `any` because it's a custom element with dynamic props.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let zframe: any;
   const [scene, setScene] = createSignal<Scene | undefined>(undefined);
+  const [frameReady, setFrameReady] = createSignal(false);
   let latest: Scene | undefined;
   let writeTimer: ReturnType<typeof setTimeout> | undefined;
 
   const writeNow = (path: string, s: Scene) => {
     void invoke("write_file", { path, content: sceneToFile(s) });
   };
+
+  // Called by the guest (RPC) on every coalesced change. Keep the latest scene
+  // and debounce the disk write; onCleanup flushes whatever is pending.
+  const save = async (s: Scene) => {
+    latest = s;
+    const path = props.filePath;
+    clearTimeout(writeTimer);
+    writeTimer = setTimeout(() => {
+      writeTimer = undefined;
+      writeNow(path, s);
+    }, 400);
+    return { ok: true };
+  };
+
+  onMount(() => {
+    zframe = document.createElement("z-frame");
+    // Set everything BEFORE appendChild so the iframe is created once, with the
+    // right attributes/props — no "sandbox changed - recreate" churn.
+    zframe.setAttribute("name", "excalidraw");
+    zframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+    // @zomme/frame builds the iframe URL as `src + pathname`: `src` is the
+    // ORIGIN only and `pathname` is the route within it. `src` must be absolute
+    // (it runs `new URL(src).origin` for the postMessage handshake, which throws
+    // on a relative URL). Putting the whole path in `src` makes it append the
+    // default pathname "/" → ".../editor.html/", which vite's SPA fallback
+    // serves as the host app's index.html (the "home screen" bug) instead of the
+    // guest. editor.html (not index.html) keeps it out of vite's HTML-entry scan
+    // (the 1.3 MB bundle would exhaust file handles — EMFILE).
+    zframe.setAttribute("src", window.location.origin);
+    zframe.setAttribute("pathname", "/excalidraw/editor.html");
+    zframe.style.cssText = "width:100%;height:100%;border:0;display:block";
+    zframe.save = save; // forwarded to the guest as an RPC method
+    host?.appendChild(zframe);
+    setFrameReady(true);
+  });
 
   // (Re)load when the target file changes; flush the previous file's latest edit
   // before switching (and on unmount) via the effect's onCleanup.
@@ -124,28 +115,17 @@ export function ExcalidrawFrame(props: ExcalidrawFrameProps) {
     });
   });
 
-  // Called by the guest (RPC) on every coalesced change. Keep the latest scene
-  // and debounce the disk write; onCleanup flushes whatever is pending.
-  const save = async (s: Scene) => {
-    latest = s;
-    const path = props.filePath;
-    clearTimeout(writeTimer);
-    writeTimer = setTimeout(() => {
-      writeTimer = undefined;
-      writeNow(path, s);
-    }, 400);
-    return { ok: true };
-  };
+  // Push the loaded scene to the guest once both the frame and the scene exist.
+  createEffect(() => {
+    const s = scene();
+    if (frameReady() && zframe && s) {
+      zframe.drawingData = { appState: s.appState ?? {}, elements: s.elements ?? [] };
+    }
+  });
 
-  return (
-    <Frame
-      name="excalidraw"
-      // TODO(prod): serve the guest as a bundled static asset instead of the
-      // app-excalidraw vite dev server.
-      src="http://localhost:4204/"
-      style="width:100%;height:100%;border:0;display:block"
-      drawingData={scene()}
-      save={save}
-    />
-  );
+  onCleanup(() => {
+    zframe?.remove();
+  });
+
+  return <div ref={host} style="width:100%;height:100%" />;
 }

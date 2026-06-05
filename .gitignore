@@ -54,6 +54,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # IntelliJ based IDEs
 .idea
 
+# Excalidraw guest build output (apps/excalidraw-guest, served by Tauri at /excalidraw/)
+apps/desktop/public/excalidraw/
+
 # Tauri
 apps/desktop/src-tauri/target
 apps/desktop/src-tauri/llvm-cov-target

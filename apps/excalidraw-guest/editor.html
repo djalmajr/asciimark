@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Excalidraw editor</title>
+    <style>
+      html,
+      body,
+      #root {
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // Excalidraw loads its fonts/assets from the unpkg CDN by default, which
+      // fails offline (ERR_CONNECTION_CLOSED). Point it at the packaged guest
+      // dir instead: the assets are copied to `<guest>/excalidraw-assets/` at
+      // build time (see vite.config.ts). Derived from baseURI so it tracks
+      // wherever the guest is served (always `/excalidraw/`), in dev and prod.
+      window.EXCALIDRAW_ASSET_PATH = new URL("./", document.baseURI).href;
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
