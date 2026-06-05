@@ -1,8 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
-// Vendored @zomme/frame core (registers the <z-frame> custom element). Bundled
-// from the sibling `frame` repo until it is published / linked properly.
-import "../vendor/zomme-frame.js";
+// Registers the <z-frame> custom element (from the published @zomme/frame core).
+import "@zomme/frame";
 
 interface Scene {
   appState?: Record<string, unknown>;
@@ -39,9 +38,11 @@ function Frame(props: Record<string, unknown> & { name: string; src: string }): 
     else el.setAttribute(name, String(value));
   };
 
+  // Set `sandbox` BEFORE `src`: the z-frame builds the iframe when `src` lands,
+  // so setting sandbox afterwards forces a wasteful iframe recreation on mount.
   createEffect(() => setAttr("name", props.name));
-  createEffect(() => setAttr("src", props.src));
   createEffect(() => setAttr("sandbox", (props.sandbox as string) ?? "allow-scripts allow-same-origin"));
+  createEffect(() => setAttr("src", props.src));
   createEffect(() => setAttr("style", props.style));
 
   onMount(() => {
