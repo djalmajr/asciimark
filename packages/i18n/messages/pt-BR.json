@@ -116,6 +116,8 @@
   "tree_remove_from_workspace": "Remover do workspace",
   "tree_cut": "Recortar",
   "tree_paste": "Colar",
+  "tree_create_file_placeholder": "nome.md",
+  "tree_create_folder_placeholder": "pasta",
   "tree_workspace_actions": "Ações do workspace",
   "tree_move_to_other_pane": "Mover para o outro painel",
   "tree_open_in_split_pane": "Abrir em painel dividido",

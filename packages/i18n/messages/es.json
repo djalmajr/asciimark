@@ -116,6 +116,8 @@
   "tree_remove_from_workspace": "Quitar del espacio de trabajo",
   "tree_cut": "Cortar",
   "tree_paste": "Pegar",
+  "tree_create_file_placeholder": "nombre.md",
+  "tree_create_folder_placeholder": "carpeta",
   "tree_workspace_actions": "Acciones del espacio de trabajo",
   "tree_move_to_other_pane": "Mover al otro panel",
   "tree_open_in_split_pane": "Abrir en panel dividido",

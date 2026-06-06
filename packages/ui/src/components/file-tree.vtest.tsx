@@ -227,6 +227,64 @@ describe("FileTree", () => {
     });
   });
 
+  it("marks the cut entry with .cut-pending when it is on the move clipboard", () => {
+    const [editingPath] = createSignal<string | null>(null);
+    const [creatingAt] = createSignal<null>(null);
+    const [selectedFile] = createSignal<FSEntry | null>(null);
+    const [moveClipboard] = createSignal({ entry: file("README.md"), rootId: "r1" });
+    const stub = {
+      editingPath,
+      setEditingPath: () => {},
+      creatingAt,
+      setCreatingAt: () => {},
+      moveClipboard,
+      setMoveClipboard: () => {},
+      selectedFile,
+      setSelectedFile: () => {},
+      isDirty: () => false,
+    } as unknown as AppState;
+    const { container } = render(() => (
+      <AppProvider state={stub}>
+        <FileTree roots={SINGLE_ROOT} selectedPath={null} selectedRootId={null} onSelect={() => {}} onMove={() => {}} />
+      </AppProvider>
+    ));
+    const cut = container.querySelector<HTMLElement>('.tree-item[data-path="README.md"]');
+    expect(cut?.classList.contains("cut-pending")).toBe(true);
+    // a sibling that is NOT on the clipboard must not be marked.
+    const other = container.querySelector<HTMLElement>('.tree-item[data-path="notes"]');
+    expect(other?.classList.contains("cut-pending")).toBe(false);
+  });
+
+  it("Escape clears a pending Cut (move clipboard)", () => {
+    const [editingPath] = createSignal<string | null>(null);
+    const [creatingAt] = createSignal<null>(null);
+    const [selectedFile] = createSignal<FSEntry | null>(null);
+    const [moveClipboard, setMoveClipboard] = createSignal<{ entry: FSEntry; rootId: string } | null>({
+      entry: file("README.md"),
+      rootId: "r1",
+    });
+    const stub = {
+      editingPath,
+      setEditingPath: () => {},
+      creatingAt,
+      setCreatingAt: () => {},
+      moveClipboard,
+      setMoveClipboard,
+      selectedFile,
+      setSelectedFile: () => {},
+      isDirty: () => false,
+    } as unknown as AppState;
+    const { container } = render(() => (
+      <AppProvider state={stub}>
+        <FileTree roots={SINGLE_ROOT} selectedPath={null} selectedRootId={null} onSelect={() => {}} onMove={() => {}} />
+      </AppProvider>
+    ));
+    expect(moveClipboard()).not.toBeNull();
+    const nav = container.querySelector(".file-tree") as HTMLElement;
+    fireEvent.keyDown(nav, { key: "Escape" });
+    expect(moveClipboard()).toBeNull();
+  });
+
   describe("move (onMove) — drag affordance", () => {
     it("rows are draggable when onMove is provided", () => {
       const { container } = render(() => (

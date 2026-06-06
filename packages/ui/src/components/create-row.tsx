@@ -1,4 +1,5 @@
 import { onMount, type JSX } from "solid-js";
+import * as m from "@asciimark/i18n";
 
 interface CreateRowProps {
   kind: "file" | "folder";
@@ -21,8 +22,27 @@ interface CreateRowProps {
 export function CreateRow(props: CreateRowProps) {
   let inputRef: HTMLInputElement | undefined;
   let done = false;
+  // The row is usually opened from a Kobalte menu item. When that menu
+  // closes it restores focus to its trigger, which blurs (and would cancel)
+  // a naively-focused input. We focus across a couple of frames to win that
+  // race, and ignore any blur until `armed` — the menu's focus-restoration
+  // happens before the user could plausibly click away.
+  let armed = false;
 
-  onMount(() => queueMicrotask(() => inputRef?.focus()));
+  onMount(() => {
+    const focusInput = () => {
+      if (!inputRef) return;
+      inputRef.focus();
+      inputRef.select();
+    };
+    requestAnimationFrame(() => {
+      focusInput();
+      requestAnimationFrame(() => {
+        focusInput();
+        armed = true;
+      });
+    });
+  });
 
   function commit() {
     if (done) return;
@@ -34,6 +54,16 @@ export function CreateRow(props: CreateRowProps) {
     }
     done = true;
     props.onCommit(name);
+  }
+
+  function onBlur() {
+    // Reclaim focus from the menu's close-time focus restoration instead of
+    // committing/cancelling on this spurious blur.
+    if (!armed) {
+      queueMicrotask(() => inputRef?.focus());
+      return;
+    }
+    commit();
   }
 
   function onKeyDown(e: KeyboardEvent) {
@@ -58,9 +88,9 @@ export function CreateRow(props: CreateRowProps) {
         type="text"
         spellcheck={false}
         autocomplete="off"
-        placeholder={props.kind === "file" ? "nome.md" : "pasta"}
+        placeholder={props.kind === "file" ? m.tree_create_file_placeholder() : m.tree_create_folder_placeholder()}
         onKeyDown={onKeyDown}
-        onBlur={commit}
+        onBlur={onBlur}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       />

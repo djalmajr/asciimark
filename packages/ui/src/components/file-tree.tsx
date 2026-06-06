@@ -558,6 +558,14 @@ export function FileTree(props: FileTreeProps) {
   }
 
   function handleKeyDown(e: KeyboardEvent) {
+    // Escape clears a pending Cut (move clipboard) — mirrors the file
+    // manager convention where Esc abandons a queued cut/copy.
+    if (e.key === "Escape" && app.moveClipboard()) {
+      e.preventDefault();
+      app.setMoveClipboard(null);
+      return;
+    }
+
     const items = getVisibleItems();
     if (items.length === 0) return;
 

@@ -220,6 +220,11 @@ export function FileTreeItem(props: FileTreeItemProps) {
   const isFocused = () => props.focusedPath === props.entry.path;
   const isSelected = () => props.selectedPath === props.entry.path;
   const isDirectory = () => props.entry.kind === "directory";
+  /** This entry is on the move clipboard (Cut) — shown italic/dimmed. */
+  const isCut = () => {
+    const c = app.moveClipboard();
+    return !!c && c.rootId === props.rootId && c.entry.path === props.entry.path;
+  };
   const isEditing = () => app.editingPath() === props.entry.path;
   const indent = () => props.depth * INDENT_PER_DEPTH + BASE_PADDING;
 
@@ -566,7 +571,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
       <ContextMenu>
         <ContextMenuTrigger
           as="div"
-          class={`tree-item ${isSelected() ? "selected" : ""} ${isDirectory() ? "directory" : "file"} ${isFocused() ? "focused" : ""} ${isDropTarget() ? "drop-target" : ""}`}
+          class={`tree-item ${isSelected() ? "selected" : ""} ${isDirectory() ? "directory" : "file"} ${isFocused() ? "focused" : ""} ${isDropTarget() ? "drop-target" : ""} ${isCut() ? "cut-pending" : ""}`}
           data-expanded={isDirectory() ? String(expanded()) : undefined}
           data-kind={props.entry.kind}
           data-path={props.entry.path}
