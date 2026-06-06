@@ -9,6 +9,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
 import { Switch, SwitchControl, SwitchThumb } from "./ui/switch.tsx";
@@ -20,6 +21,11 @@ import IconX from "~icons/lucide/x";
 import IconFolderOpen from "~icons/lucide/folder-open";
 import IconFolder from "~icons/lucide/folder";
 import IconFile from "~icons/lucide/file";
+import IconEllipsisVertical from "~icons/lucide/ellipsis-vertical";
+import IconFilePlus from "~icons/lucide/file-plus";
+import IconFolderPlus from "~icons/lucide/folder-plus";
+import IconClipboard from "~icons/lucide/clipboard-copy";
+import IconTrash from "~icons/lucide/trash-2";
 import { fileKind, isSupportedFile } from "@asciimark/core/utils.ts";
 import type { FSEntry, WorkspaceRoot } from "@asciimark/core/types.ts";
 
@@ -358,42 +364,83 @@ export function FileTree(props: FileTreeProps) {
             <span class="workspace-root-name">{propsRoot.root().name}</span>
           </div>
           <div class="workspace-root-actions">
-            <button
-              class="workspace-root-btn"
-              aria-label={nextRootBulkAction() === "expand" ? "Expand all" : "Collapse all"}
-              title={nextRootBulkAction() === "expand" ? "Expand all" : "Collapse all"}
-              onClick={(e: MouseEvent) => {
-                e.stopPropagation();
-                const action = nextRootBulkAction();
-
-                if (action === "expand" && isRootCollapsed()) {
-                  props.onToggleRootCollapsed?.(rootId);
-                }
-
-                if (action === "expand") {
-                  triggerRootExpandAll();
-                } else {
-                  triggerRootCollapseAll();
-                }
-              }}
-            >
-              <Show when={nextRootBulkAction() === "expand"} fallback={<CollapseIcon width={14} height={14} />}>
-                <ExpandIcon width={14} height={14} />
-              </Show>
-            </button>
-            <Show when={props.onCloseRoot}>
-              <button
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                as="button"
                 class="workspace-root-btn"
-                aria-label="Close"
-                title="Close"
-                onClick={(e: MouseEvent) => {
-                  e.stopPropagation();
-                  props.onCloseRoot!(rootId);
-                }}
+                aria-label={m.tree_workspace_actions()}
+                title={m.tree_workspace_actions()}
+                onClick={(e: MouseEvent) => e.stopPropagation()}
               >
-                <IconX width={14} height={14} />
-              </button>
-            </Show>
+                <IconEllipsisVertical width={14} height={14} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent class="min-w-48">
+                <Show when={props.onCreate}>
+                  <DropdownMenuItem
+                    class="gap-2"
+                    onSelect={() => {
+                      if (propsRoot.root().collapsed) props.onToggleRootCollapsed?.(rootId);
+                      app.setCreatingAt({ parentPath: "", rootId, kind: "file" });
+                    }}
+                  >
+                    <span class="flex items-center gap-2"><IconFilePlus width={14} height={14} /> {m.tree_new_file()}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    class="gap-2"
+                    onSelect={() => {
+                      if (propsRoot.root().collapsed) props.onToggleRootCollapsed?.(rootId);
+                      app.setCreatingAt({ parentPath: "", rootId, kind: "folder" });
+                    }}
+                  >
+                    <span class="flex items-center gap-2"><IconFolderPlus width={14} height={14} /> {m.tree_new_folder()}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </Show>
+                <DropdownMenuItem
+                  class="gap-2"
+                  onSelect={() => {
+                    if (nextRootBulkAction() === "expand") {
+                      if (isRootCollapsed()) props.onToggleRootCollapsed?.(rootId);
+                      triggerRootExpandAll();
+                    } else {
+                      triggerRootCollapseAll();
+                    }
+                  }}
+                >
+                  <span class="flex items-center gap-2">
+                    <Show when={nextRootBulkAction() === "expand"} fallback={<CollapseIcon width={14} height={14} />}>
+                      <ExpandIcon width={14} height={14} />
+                    </Show>
+                    {nextRootBulkAction() === "expand" ? m.tree_expand_all() : m.tree_collapse_all()}
+                  </span>
+                </DropdownMenuItem>
+                <Show when={props.onRevealInFileManager}>
+                  <DropdownMenuItem
+                    class="gap-2"
+                    onSelect={() => props.onRevealInFileManager!({ name: propsRoot.root().name, kind: "directory", path: "" }, rootId)}
+                  >
+                    <span class="flex items-center gap-2"><IconFolderOpen width={14} height={14} /> {m.tree_reveal_file_manager()}</span>
+                  </DropdownMenuItem>
+                </Show>
+                <Show when={props.onCopyPath}>
+                  <DropdownMenuItem
+                    class="gap-2"
+                    onSelect={() => props.onCopyPath!({ name: propsRoot.root().name, kind: "directory", path: "" }, rootId)}
+                  >
+                    <span class="flex items-center gap-2"><IconClipboard width={14} height={14} /> {m.tree_copy_path()}</span>
+                  </DropdownMenuItem>
+                </Show>
+                <Show when={props.onCloseRoot}>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    class="gap-2"
+                    onSelect={() => props.onCloseRoot!(rootId)}
+                  >
+                    <span class="flex items-center gap-2"><IconTrash width={14} height={14} /> {m.tree_remove_from_workspace()}</span>
+                  </DropdownMenuItem>
+                </Show>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
         <Show when={!propsRoot.root().collapsed}>

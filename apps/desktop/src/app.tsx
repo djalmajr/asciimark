@@ -866,7 +866,7 @@ export function App() {
       {
         id: "file.newFile",
         group: "File",
-        title: "New File",
+        title: m.command_new_file(),
         shortcut: { mac: ["⌘", "N"], other: ["Ctrl", "N"] },
         when: () => hasRoot,
         run: () => startInlineCreate("file"),
@@ -874,7 +874,7 @@ export function App() {
       {
         id: "file.newFolder",
         group: "File",
-        title: "New Folder",
+        title: m.command_new_folder(),
         shortcut: { mac: ["⌘", "⇧", "N"], other: ["Ctrl", "Shift", "N"] },
         when: () => hasRoot,
         run: () => startInlineCreate("folder"),

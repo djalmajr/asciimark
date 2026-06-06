@@ -315,14 +315,14 @@ export function FileTreeItem(props: FileTreeItemProps) {
         {
           id: "new-file",
           icon: <IconFilePlus width={14} height={14} />,
-          label: () => "New File",
+          label: m.tree_new_file,
           onSelect: () => startCreate("file"),
           itemClass: "gap-2",
         },
         {
           id: "new-folder",
           icon: <IconFolderPlus width={14} height={14} />,
-          label: () => "New Folder",
+          label: m.tree_new_folder,
           onSelect: () => startCreate("folder"),
           itemClass: "gap-2",
         },
