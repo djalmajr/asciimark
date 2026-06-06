@@ -11,6 +11,8 @@ import IconFileImage from "~icons/lucide/file-image";
 import IconFilePlain from "~icons/lucide/file";
 import IconEllipsisVertical from "~icons/lucide/ellipsis-vertical";
 import IconClipboard from "~icons/lucide/clipboard-copy";
+import IconClipboardPaste from "~icons/lucide/clipboard-paste";
+import IconScissors from "~icons/lucide/scissors";
 import IconPencil from "~icons/lucide/pencil";
 import IconTrash from "~icons/lucide/trash-2";
 import IconFolderOpen from "~icons/lucide/folder-open";
@@ -45,6 +47,25 @@ const BASE_PADDING = 4;
 
 const IS_MAC = typeof navigator !== "undefined"
   && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+
+/** Custom drag MIME carrying the moved entry (+ its rootId) as JSON. */
+const DND_MIME = "application/x-asciimark-entry";
+
+/** The entry currently being dragged. Module-level so any FileTreeItem
+ *  (they all live in this module) can validate a drop target during
+ *  `dragover`, when the DataTransfer payload is not yet readable. */
+let draggedEntry: { path: string; rootId: string; kind: string } | null = null;
+
+/** Whether `src` can be moved into the directory `dstDir` (workspace-
+ *  relative, "" = root): not a no-op (already its parent), not onto
+ *  itself, and not a folder into its own subtree. */
+function canMoveInto(src: FSEntry, dstDir: string): boolean {
+  if (src.path === dstDir) return false;
+  const srcParent = src.path.includes("/") ? src.path.slice(0, src.path.lastIndexOf("/")) : "";
+  if (srcParent === dstDir) return false;
+  if (src.kind === "directory" && (dstDir === src.path || dstDir.startsWith(src.path + "/"))) return false;
+  return true;
+}
 
 /** Platform-conventional rename shortcut, formatted for display in menus. */
 const RENAME_SHORTCUT_LABEL = IS_MAC ? "⌘↵" : "F2";
@@ -114,6 +135,10 @@ interface FileTreeItemProps {
    *  `parentPath` (workspace-relative, "" = root). When omitted (web/
    *  extension), the New File / New Folder entries are hidden. */
   onCreate?: (parentPath: string, name: string, kind: "file" | "folder", rootId: string) => void;
+  /** Desktop-only: move `entry` into `targetDirRel` ("" = workspace root).
+   *  Powers drag & drop and the Cut/Paste menu entries. When omitted
+   *  (web/extension), dragging and Cut/Paste are disabled. */
+  onMove?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
   /**
    * Render the per-item context menu and the three-dot dropdown
    * (Copy path / Rename / Delete / Open in New Tab). When false, the
@@ -259,6 +284,64 @@ export function FileTreeItem(props: FileTreeItemProps) {
     }
   }
 
+  // ── Drag & drop (move) ────────────────────────────────────────────
+  const [isDropTarget, setIsDropTarget] = createSignal(false);
+
+  /** This directory accepts the in-flight drag (same root, valid move). */
+  function acceptsDrop(): boolean {
+    return !!props.onMove
+      && isDirectory()
+      && !!draggedEntry
+      && draggedEntry.rootId === props.rootId
+      && canMoveInto(draggedEntry as unknown as FSEntry, props.entry.path);
+  }
+
+  function handleDragStart(e: DragEvent) {
+    if (!props.onMove || isEditing()) {
+      e.preventDefault();
+      return;
+    }
+    draggedEntry = { path: props.entry.path, rootId: props.rootId, kind: props.entry.kind };
+    e.dataTransfer?.setData(DND_MIME, JSON.stringify({ ...props.entry, rootId: props.rootId }));
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleDragEnd() {
+    draggedEntry = null;
+    setIsDropTarget(false);
+  }
+
+  function handleDragOver(e: DragEvent) {
+    if (!acceptsDrop()) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    if (!isDropTarget()) setIsDropTarget(true);
+  }
+
+  function handleDragLeave() {
+    if (isDropTarget()) setIsDropTarget(false);
+  }
+
+  function handleDrop(e: DragEvent) {
+    setIsDropTarget(false);
+    if (!acceptsDrop()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const raw = e.dataTransfer?.getData(DND_MIME);
+    draggedEntry = null;
+    if (!raw) return;
+    let moved: FSEntry;
+    try {
+      moved = JSON.parse(raw) as FSEntry;
+    } catch {
+      return;
+    }
+    setExpanded(true);
+    void Promise.resolve(props.onMove!(moved, props.entry.path, props.rootId)).catch(() => {
+      // folder.handleMove reports its own errors; ignore here.
+    });
+  }
+
   function copyPath() {
     if (props.onCopyPath) {
       void Promise.resolve(props.onCopyPath(props.entry, props.rootId)).catch(() => {
@@ -365,6 +448,32 @@ export function FileTreeItem(props: FileTreeItemProps) {
         itemClass: "gap-2",
       });
     }
+    if (props.onMove) {
+      list.push({
+        id: "cut",
+        icon: <IconScissors width={14} height={14} />,
+        label: m.tree_cut,
+        onSelect: () => app.setMoveClipboard({ entry: props.entry, rootId: props.rootId }),
+        separatorBefore: true,
+        itemClass: "gap-2",
+      });
+      const clip = app.moveClipboard();
+      if (isDirectory() && clip && clip.rootId === props.rootId && canMoveInto(clip.entry, props.entry.path)) {
+        list.push({
+          id: "paste",
+          icon: <IconClipboardPaste width={14} height={14} />,
+          label: m.tree_paste,
+          onSelect: () => {
+            const c = app.moveClipboard();
+            if (!c) return;
+            app.setMoveClipboard(null);
+            setExpanded(true);
+            void Promise.resolve(props.onMove!(c.entry, props.entry.path, props.rootId)).catch(() => {});
+          },
+          itemClass: "gap-2",
+        });
+      }
+    }
     if (props.onDelete) {
       list.push({
         id: "trash",
@@ -457,16 +566,22 @@ export function FileTreeItem(props: FileTreeItemProps) {
       <ContextMenu>
         <ContextMenuTrigger
           as="div"
-          class={`tree-item ${isSelected() ? "selected" : ""} ${isDirectory() ? "directory" : "file"} ${isFocused() ? "focused" : ""}`}
+          class={`tree-item ${isSelected() ? "selected" : ""} ${isDirectory() ? "directory" : "file"} ${isFocused() ? "focused" : ""} ${isDropTarget() ? "drop-target" : ""}`}
           data-expanded={isDirectory() ? String(expanded()) : undefined}
           data-kind={props.entry.kind}
           data-path={props.entry.path}
           ref={itemRef}
           style={{ "padding-left": `${indent()}px` }}
           title={props.entry.path}
+          draggable={props.onMove ? !isEditing() : undefined}
           onClick={handleClick}
           onDblClick={handleDoubleClick}
           onMouseDown={handleMouseDown}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
         >
           <span class="tree-icon">
             <Show when={isDirectory()}>
@@ -604,6 +719,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
               onOpenInNewTab={props.onOpenInNewTab}
               onDoubleClickFile={props.onDoubleClickFile}
               onCreate={props.onCreate}
+              onMove={props.onMove}
               showItemMenu={props.showItemMenu}
             />
           )}

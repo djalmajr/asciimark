@@ -986,6 +986,13 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   font-weight: 500;
 }
 
+/* Drop target highlight while dragging an entry over a folder. */
+.tree-item.drop-target {
+  background: hsl(var(--bg-selected));
+  box-shadow: inset 0 0 0 1px hsl(var(--primary));
+  border-radius: 4px;
+}
+
 .tree-icon {
   display: flex;
   align-items: center;

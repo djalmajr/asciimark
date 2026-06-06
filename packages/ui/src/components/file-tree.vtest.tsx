@@ -10,12 +10,15 @@ import { FileTree } from "./file-tree.tsx";
 function makeAppStub(): AppState {
   const [editingPath, setEditingPath] = createSignal<string | null>(null);
   const [creatingAt, setCreatingAt] = createSignal<null>(null);
+  const [moveClipboard, setMoveClipboard] = createSignal<null>(null);
   const [selectedFile, setSelectedFile] = createSignal<FSEntry | null>(null);
   return {
     editingPath,
     setEditingPath,
     creatingAt,
     setCreatingAt,
+    moveClipboard,
+    setMoveClipboard,
     selectedFile,
     setSelectedFile,
     isDirty: () => false,
@@ -221,6 +224,39 @@ describe("FileTree", () => {
         .map((el) => el.querySelector(".tree-name")?.textContent?.trim());
       expect(visibleNames).toContain("a.md");
       expect(visibleNames).toContain("b.md");
+    });
+  });
+
+  describe("move (onMove) — drag affordance", () => {
+    it("rows are draggable when onMove is provided", () => {
+      const { container } = render(() => (
+        <AppProvider state={makeAppStub()}>
+          <FileTree
+            roots={SINGLE_ROOT}
+            selectedPath={null}
+            selectedRootId={null}
+            onSelect={() => {}}
+            onMove={() => {}}
+          />
+        </AppProvider>
+      ));
+      const draggable = container.querySelectorAll<HTMLElement>('.tree-item[draggable="true"]');
+      // notes/ (directory) + README.md at root — both draggable.
+      expect(draggable.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("rows are NOT draggable when onMove is omitted", () => {
+      const { container } = render(() => (
+        <AppProvider state={makeAppStub()}>
+          <FileTree
+            roots={SINGLE_ROOT}
+            selectedPath={null}
+            selectedRootId={null}
+            onSelect={() => {}}
+          />
+        </AppProvider>
+      ));
+      expect(container.querySelector('.tree-item[draggable="true"]')).toBeNull();
     });
   });
 

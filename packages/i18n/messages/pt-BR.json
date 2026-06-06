@@ -114,6 +114,8 @@
   "tree_expand_all": "Expandir tudo",
   "tree_collapse_all": "Recolher tudo",
   "tree_remove_from_workspace": "Remover do workspace",
+  "tree_cut": "Recortar",
+  "tree_paste": "Colar",
   "tree_workspace_actions": "Ações do workspace",
   "tree_move_to_other_pane": "Mover para o outro painel",
   "tree_open_in_split_pane": "Abrir em painel dividido",

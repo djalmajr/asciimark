@@ -91,6 +91,14 @@ export type CreatingAt = {
   kind: "file" | "folder";
 };
 
+/** An entry placed on the move clipboard via "Cut", waiting for a "Paste"
+ *  into a target directory. Scoped to a single root — pasting is only
+ *  offered on directories of the same `rootId`. */
+export type MoveClipboard = {
+  entry: FSEntry;
+  rootId: string;
+};
+
 interface AppStateConfig {
   applyTheme: (mode: ThemeMode) => void;
   convertAdoc: (opts: ConvertOptions) => Promise<ConvertResult>;
@@ -128,6 +136,7 @@ export function createAppState(config: AppStateConfig) {
     (paneManager.activePane().setFrontmatter as (v: unknown) => unknown)(value)) as Setter<Frontmatter | null>;
   const [editingPath, setEditingPath] = createSignal<string | null>(null);
   const [creatingAt, setCreatingAt] = createSignal<CreatingAt | null>(null);
+  const [moveClipboard, setMoveClipboard] = createSignal<MoveClipboard | null>(null);
   const loading = (): boolean => paneManager.activePane().loading();
   const setLoading = ((value: unknown) =>
     (paneManager.activePane().setLoading as (v: unknown) => unknown)(value)) as Setter<boolean>;
@@ -833,6 +842,7 @@ export function createAppState(config: AppStateConfig) {
     frontmatter,
     editingPath,
     creatingAt,
+    moveClipboard,
     loading,
     navIndex,
     navStack,
@@ -883,6 +893,7 @@ export function createAppState(config: AppStateConfig) {
     setFrontmatter,
     setEditingPath,
     setCreatingAt,
+    setMoveClipboard,
     setLoading,
     setNavIndex,
     setNavStack,

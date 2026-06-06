@@ -1442,6 +1442,7 @@ export function App() {
       onOpenRecentFolder={handleOpenRecentFolder}
       onRename={folder.handleRename}
       onCreate={handleCreate}
+      onMove={(entry, targetDirRel, rootId) => folder.handleMove(entry, targetDirRel, rootId)}
       onDelete={async (entry, rootId) => {
         const label = entry.kind === "directory" ? "folder" : "file";
         const confirmed = await confirm({

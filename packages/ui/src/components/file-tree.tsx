@@ -25,6 +25,7 @@ import IconEllipsisVertical from "~icons/lucide/ellipsis-vertical";
 import IconFilePlus from "~icons/lucide/file-plus";
 import IconFolderPlus from "~icons/lucide/folder-plus";
 import IconClipboard from "~icons/lucide/clipboard-copy";
+import IconClipboardPaste from "~icons/lucide/clipboard-paste";
 import IconTrash from "~icons/lucide/trash-2";
 import { fileKind, isSupportedFile } from "@asciimark/core/utils.ts";
 import type { FSEntry, WorkspaceRoot } from "@asciimark/core/types.ts";
@@ -53,6 +54,9 @@ interface FileTreeProps {
   /** Desktop-only: commit an inline-created file/folder under `parentPath`
    *  ("" = workspace root). When omitted, New File/Folder entries are hidden. */
   onCreate?: (parentPath: string, name: string, kind: "file" | "folder", rootId: string) => void;
+  /** Desktop-only: move an entry into a directory ("" = workspace root).
+   *  Powers tree drag & drop and the Cut/Paste menu entries. */
+  onMove?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
   onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   onReorderRoots?: (newOrder: string[]) => void;
   onSelect: (entry: FSEntry, rootId: string) => void;
@@ -396,6 +400,20 @@ export function FileTree(props: FileTreeProps) {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </Show>
+                <Show when={(() => { const c = app.moveClipboard(); return props.onMove && c && c.rootId === rootId && c.entry.path.includes("/"); })()}>
+                  <DropdownMenuItem
+                    class="gap-2"
+                    onSelect={() => {
+                      const c = app.moveClipboard();
+                      if (!c) return;
+                      app.setMoveClipboard(null);
+                      void Promise.resolve(props.onMove!(c.entry, "", rootId)).catch(() => {});
+                    }}
+                  >
+                    <span class="flex items-center gap-2"><IconClipboardPaste width={14} height={14} /> {m.tree_paste()}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </Show>
                 <DropdownMenuItem
                   class="gap-2"
                   onSelect={() => {
@@ -482,6 +500,7 @@ export function FileTree(props: FileTreeProps) {
                 onOpenInNewTab={props.onOpenInNewTab ? (e) => props.onOpenInNewTab!(e, rootId) : undefined}
                 onDoubleClickFile={props.onDoubleClickFile ? (e) => props.onDoubleClickFile!(e, rootId) : undefined}
                 onCreate={props.onCreate}
+                onMove={props.onMove}
                 showItemMenu={props.showItemMenu}
               />
             )}

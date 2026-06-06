@@ -238,6 +238,92 @@ describe("createFolder.refreshRoot — pin per-doc target before await (DJA-41)"
   });
 });
 
+describe("createFolder.handleMove", () => {
+  it("moves an entry by renaming it into the target directory, then refreshes", async () => {
+    const paneManager = createPaneManager();
+    const state = makeState(paneManager);
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+
+    const movePromise = folder.handleMove(
+      { name: "a.md", path: "a.md", kind: "file" },
+      "sub",
+      "root1",
+    );
+    resolveRename!();
+    await Promise.resolve();
+    resolveReadTree!([]);
+    await movePromise;
+
+    expect(renameFileCalls).toEqual([{ root: "/work/root1", from: "a.md", to: "sub/a.md" }]);
+  });
+
+  it("rewrites the open file's path when the moved file is the selection", async () => {
+    const paneManager = createPaneManager();
+    const pane = paneManager.activePane();
+    pane.setSelectedRootId("root1");
+    pane.setSelectedFile({ name: "a.md", path: "a.md", kind: "file" });
+    const state = makeState(paneManager);
+    // After the move, refreshRoot looks the open file up by its NEW path;
+    // make it resolve so the selection isn't cleared as a vanished entry.
+    (state as unknown as { findEntryByPath: (p: string) => unknown }).findEntryByPath = (path: string) =>
+      path === "sub/a.md" ? { name: "a.md", path: "sub/a.md", kind: "file" } : null;
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+
+    const movePromise = folder.handleMove(
+      { name: "a.md", path: "a.md", kind: "file" },
+      "sub",
+      "root1",
+    );
+    resolveRename!();
+    await Promise.resolve();
+    resolveReadTree!([]);
+    await movePromise;
+
+    expect(pane.selectedFile()?.path).toBe("sub/a.md");
+  });
+
+  it("is a no-op when the target dir already holds the entry (no rename)", async () => {
+    const paneManager = createPaneManager();
+    const state = makeState(paneManager);
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+
+    // a.md already lives at root → moving into "" yields the same path.
+    await folder.handleMove({ name: "a.md", path: "a.md", kind: "file" }, "", "root1");
+    expect(renameFileCalls).toEqual([]);
+  });
+
+  it("refuses to move a folder into its own subtree", async () => {
+    const paneManager = createPaneManager();
+    const state = makeState(paneManager);
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+
+    await expect(
+      folder.handleMove({ name: "docs", path: "docs", kind: "directory" }, "docs/inner", "root1"),
+    ).rejects.toThrow(/into itself/);
+    expect(renameFileCalls).toEqual([]);
+  });
+});
+
 describe("handleRevealInFileManager", () => {
   beforeEach(() => {
     revealCalls = [];

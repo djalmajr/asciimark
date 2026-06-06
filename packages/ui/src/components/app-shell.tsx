@@ -99,6 +99,8 @@ interface AppShellProps {
   onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   /** Desktop-only: commit an inline-created file/folder under `parentPath`. */
   onCreate?: (parentPath: string, name: string, kind: "file" | "folder", rootId: string) => void;
+  /** Desktop-only: move an entry into a directory ("" = workspace root). */
+  onMove?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
   /**
    * Resolve an `<img>` src in the rendered document. Desktop maps relative
    * paths to Tauri asset URLs so the webview can load files from disk.
@@ -556,6 +558,7 @@ export function AppShell(props: AppShellProps) {
                 onRename={props.onRename}
                 onDelete={props.onDelete}
                 onCreate={props.onCreate}
+                onMove={props.onMove}
                 onReorderRoots={props.onReorderRoots}
                 onSelect={(entry, rootId) => props.onLoadFile(entry, rootId)}
                 onOpenInNewTab={props.onOpenInNewTab}
