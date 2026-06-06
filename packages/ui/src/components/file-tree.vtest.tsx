@@ -309,8 +309,12 @@ describe("FileTree", () => {
   });
 
   describe("move (onMove) — drag affordance", () => {
-    it("rows are draggable when onMove is provided", () => {
-      const { container } = render(() => (
+    // Drag & drop is powered by @dnd-kit (same provider as workspace-root
+    // reordering); the move dispatch + numbering live in folder.handleMove /
+    // handleCopy, covered by the desktop bun suite. Here we only smoke-test
+    // that the tree still renders with onMove wired (the dnd hooks mount).
+    it("renders with onMove wired without crashing", () => {
+      const { getByText } = render(() => (
         <AppProvider state={makeAppStub()}>
           <FileTree
             roots={SINGLE_ROOT}
@@ -318,26 +322,11 @@ describe("FileTree", () => {
             selectedRootId={null}
             onSelect={() => {}}
             onMove={() => {}}
+            onCopy={() => {}}
           />
         </AppProvider>
       ));
-      const draggable = container.querySelectorAll<HTMLElement>('.tree-item[draggable="true"]');
-      // notes/ (directory) + README.md at root — both draggable.
-      expect(draggable.length).toBeGreaterThanOrEqual(2);
-    });
-
-    it("rows are NOT draggable when onMove is omitted", () => {
-      const { container } = render(() => (
-        <AppProvider state={makeAppStub()}>
-          <FileTree
-            roots={SINGLE_ROOT}
-            selectedPath={null}
-            selectedRootId={null}
-            onSelect={() => {}}
-          />
-        </AppProvider>
-      ));
-      expect(container.querySelector('.tree-item[draggable="true"]')).toBeNull();
+      expect(getByText("README.md")).not.toBeNull();
     });
   });
 

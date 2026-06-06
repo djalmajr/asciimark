@@ -140,6 +140,26 @@ function fromRootDndId(dndId: unknown): string | null {
   return dndId.slice(ROOT_DND_PREFIX.length);
 }
 
+// File-tree entries are draggable/droppable via the same @dnd-kit provider as
+// the workspace roots. Their drag id namespaces by root + path; the entry's
+// details ride along in the draggable/droppable `data`.
+const ITEM_DND_PREFIX = "item::";
+
+export function toItemDndId(rootId: string, path: string): string {
+  return `${ITEM_DND_PREFIX}${rootId}::${path}`;
+}
+
+function isItemDndId(dndId: unknown): boolean {
+  return typeof dndId === "string" && dndId.startsWith(ITEM_DND_PREFIX);
+}
+
+export interface ItemDndData {
+  rootId: string;
+  path: string;
+  name: string;
+  kind: FSEntry["kind"];
+}
+
 export function FileTree(props: FileTreeProps) {
   const app = useApp();
   const [filterText, setFilterText] = createSignal("");
@@ -241,6 +261,23 @@ export function FileTree(props: FileTreeProps) {
   }
 
   function handleProviderDragEnd(event: any) {
+    // Entry move (drag a file/folder onto a folder). Distinct from root
+    // reordering by the source id namespace; the backend `handleMove` guards
+    // no-ops and folder-into-itself, so we just forward valid same-root drops.
+    if (isItemDndId(event?.operation?.source?.id)) {
+      const src = event?.operation?.source?.data as ItemDndData | undefined;
+      const tgt = event?.operation?.target?.data as ItemDndData | undefined;
+      if (
+        !event?.canceled && src && tgt && props.onMove
+        && tgt.kind === "directory" && src.rootId === tgt.rootId
+      ) {
+        void Promise.resolve(
+          props.onMove({ name: src.name, path: src.path, kind: src.kind }, tgt.path, src.rootId),
+        ).catch(() => {});
+      }
+      return;
+    }
+
     const sourceRootId =
       fromRootDndId(event?.operation?.source?.id) ??
       activeDragRootId();
@@ -868,7 +905,11 @@ export function FileTree(props: FileTreeProps) {
             </For>
             <DragOverlay>
               {(source: any) => (
-                <div class="workspace-root-overlay">{getRootNameByDndId(source?.id)}</div>
+                <div class="workspace-root-overlay">
+                  {isItemDndId(source?.id)
+                    ? (source?.data?.name ?? "")
+                    : getRootNameByDndId(source?.id)}
+                </div>
               )}
             </DragOverlay>
           </DragDropProvider>

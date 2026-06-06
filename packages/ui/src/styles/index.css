@@ -992,13 +992,6 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   cursor: pointer;
 }
 
-/* WKWebView (macOS) will not initiate a native HTML5 drag for an arbitrary
-   <div> unless the element opts in explicitly. Without this the file-tree
-   rows are marked draggable but never start a drag. */
-.tree-item[draggable="true"] {
-  -webkit-user-drag: element;
-}
-
 /* Drop target highlight while dragging an entry over a folder. */
 .tree-item.drop-target {
   background: hsl(var(--bg-selected));

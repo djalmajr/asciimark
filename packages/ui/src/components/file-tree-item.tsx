@@ -20,7 +20,9 @@ import IconFolderOpen from "~icons/lucide/folder-open";
 import IconExternalLink from "~icons/lucide/external-link";
 import IconFilePlus from "~icons/lucide/file-plus";
 import IconFolderPlus from "~icons/lucide/folder-plus";
+import { useDraggable, useDroppable } from "@dnd-kit/solid";
 import { CreateRow } from "./create-row.tsx";
+import { type ItemDndData, toItemDndId } from "./file-tree.tsx";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -48,14 +50,6 @@ const BASE_PADDING = 4;
 
 const IS_MAC = typeof navigator !== "undefined"
   && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-
-/** Custom drag MIME carrying the moved entry (+ its rootId) as JSON. */
-const DND_MIME = "application/x-asciimark-entry";
-
-/** The entry currently being dragged. Module-level so any FileTreeItem
- *  (they all live in this module) can validate a drop target during
- *  `dragover`, when the DataTransfer payload is not yet readable. */
-let draggedEntry: { path: string; rootId: string; kind: string } | null = null;
 
 /** Whether `src` can be moved into the directory `dstDir` (workspace-
  *  relative, "" = root): not a no-op (already its parent), not onto
@@ -364,62 +358,42 @@ export function FileTreeItem(props: FileTreeItemProps) {
   }
 
   // ── Drag & drop (move) ────────────────────────────────────────────
-  const [isDropTarget, setIsDropTarget] = createSignal(false);
-
-  /** This directory accepts the in-flight drag (same root, valid move). */
-  function acceptsDrop(): boolean {
-    return !!props.onMove
-      && isDirectory()
-      && !!draggedEntry
-      && draggedEntry.rootId === props.rootId
-      && canMoveInto(draggedEntry as unknown as FSEntry, props.entry.path);
-  }
-
-  function handleDragStart(e: DragEvent) {
-    if (!props.onMove || isEditing()) {
-      e.preventDefault();
-      return;
-    }
-    draggedEntry = { path: props.entry.path, rootId: props.rootId, kind: props.entry.kind };
-    e.dataTransfer?.setData(DND_MIME, JSON.stringify({ ...props.entry, rootId: props.rootId }));
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-  }
-
-  function handleDragEnd() {
-    draggedEntry = null;
-    setIsDropTarget(false);
-  }
-
-  function handleDragOver(e: DragEvent) {
-    if (!acceptsDrop()) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    if (!isDropTarget()) setIsDropTarget(true);
-  }
-
-  function handleDragLeave() {
-    if (isDropTarget()) setIsDropTarget(false);
-  }
-
-  function handleDrop(e: DragEvent) {
-    setIsDropTarget(false);
-    if (!acceptsDrop()) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const raw = e.dataTransfer?.getData(DND_MIME);
-    draggedEntry = null;
-    if (!raw) return;
-    let moved: FSEntry;
-    try {
-      moved = JSON.parse(raw) as FSEntry;
-    } catch {
-      return;
-    }
-    setExpanded(true);
-    void Promise.resolve(props.onMove!(moved, props.entry.path, props.rootId)).catch(() => {
-      // folder.handleMove reports its own errors; ignore here.
-    });
-  }
+  // Reuse the same @dnd-kit provider that powers workspace-root reordering —
+  // native HTML5 drag never initiates reliably for these rows under WKWebView
+  // (the Kobalte trigger swallows the gesture). Every row is draggable; only
+  // folders are drop targets. The actual move is dispatched from FileTree's
+  // onDragEnd, which carries the source/target `data` we set here.
+  const dndId = toItemDndId(props.rootId, props.entry.path);
+  const dndData = (): ItemDndData => ({
+    rootId: props.rootId,
+    path: props.entry.path,
+    name: props.entry.name,
+    kind: props.entry.kind,
+  });
+  const draggable = useDraggable({
+    id: dndId,
+    get data() {
+      return dndData();
+    },
+    get disabled() {
+      return !props.onMove || isEditing();
+    },
+  });
+  const droppable = useDroppable({
+    id: dndId,
+    get data() {
+      return dndData();
+    },
+    get disabled() {
+      return !props.onMove || !isDirectory();
+    },
+  });
+  const isDropTarget = () => droppable.isDropTarget();
+  const setItemRef = (el: HTMLDivElement) => {
+    itemRef = el;
+    draggable.ref(el);
+    droppable.ref(el);
+  };
 
   function copyPath() {
     if (props.onCopyPath) {
@@ -662,18 +636,12 @@ export function FileTreeItem(props: FileTreeItemProps) {
           data-kind={props.entry.kind}
           data-path={props.entry.path}
           data-root-id={props.rootId}
-          ref={itemRef}
+          ref={setItemRef}
           style={{ "padding-left": `${indent()}px` }}
           title={props.entry.path}
-          draggable={props.onMove ? !isEditing() : undefined}
           onClick={handleClick}
           onDblClick={handleDoubleClick}
           onMouseDown={handleMouseDown}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
         >
           <span
             class={`tree-icon ${isDirectory() ? "tree-chevron" : ""}`}
