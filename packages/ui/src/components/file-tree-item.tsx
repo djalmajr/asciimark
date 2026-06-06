@@ -634,7 +634,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
       <ContextMenu>
         <ContextMenuTrigger
           as="div"
-          class={`tree-item ${isSelected() ? "selected" : ""} ${isDirectory() ? "directory" : "file"} ${isFocused() ? "focused" : ""} ${isDropTarget() ? "drop-target" : ""} ${isCut() ? "cut-pending" : ""}`}
+          class={`tree-item ${isSelected() ? "selected" : ""} ${isDirectory() ? "directory" : "file"} ${isFocused() ? "focused" : ""} ${isDropTarget() ? (isDirectory() ? "drop-target" : "drop-sibling") : ""} ${isCut() ? "cut-pending" : ""}`}
           data-expanded={isDirectory() ? String(expanded()) : undefined}
           data-kind={props.entry.kind}
           data-path={props.entry.path}

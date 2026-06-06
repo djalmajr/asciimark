@@ -992,11 +992,21 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   cursor: pointer;
 }
 
-/* Drop target highlight while dragging an entry over a folder. */
+/* Drop straight onto a folder → solid highlight (the entry goes inside it). */
 .tree-item.drop-target {
   background: hsl(var(--bg-selected));
   box-shadow: inset 0 0 0 1px hsl(var(--primary));
   border-radius: 4px;
+}
+
+/* Drop next to a file (the entry goes into that file's parent) → show the
+   same dashed drop-zone affordance as the workspace root, rather than
+   selecting the sibling. `outline` avoids shifting the row's layout. */
+.tree-item.drop-sibling {
+  outline: 1px dashed hsl(var(--primary));
+  outline-offset: -2px;
+  border-radius: 4px;
+  background: hsl(var(--primary) / 0.06);
 }
 
 /* An entry placed on the move clipboard via Cut — dimmed + italic until it
