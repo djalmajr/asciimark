@@ -26,19 +26,54 @@ tauri-plugin-updater = "2.10.1"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-single-instance = "2.4.1"
 tauri-plugin-opener = "2"
+# Routes AI provider HTTP calls through Rust so the webview avoids CORS
+# (WKWebView blocks direct cross-origin fetches to provider APIs). DJA-11F.
+tauri-plugin-http = "2"
 trash = "5"
 # `ignore` is the same gitignore crate that powers ripgrep — handles
 # nested .gitignore files, negation, globs. Used by `read_dir` when
 # the user toggles "Respect .gitignore" in the file tree.
 ignore = "0.4"
 
+# MCP (Model Context Protocol) client — connects to any number of MCP servers
+# over stdio (spawned child process) or Streamable HTTP. Lives in Rust because
+# the webview can't spawn processes and MCP-over-HTTP from the webview hits the
+# same SSE-delivery wall that forced generateText over streamText. See ai_mcp.rs.
+rmcp = { version = "1", default-features = false, features = [
+    "client",
+    "transport-child-process",
+    "transport-streamable-http-client-reqwest",
+] }
+# For typed HTTP header names/values when passing custom MCP auth headers.
+http = "1"
+# Async runtime for the MCP manager: the child-process transport and holding an
+# async Mutex across .await on tool calls need process + multi-thread + time.
+# Promoted from dev-dependency (was rt+macros, test-only) to a runtime dep.
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "process",
+    "sync",
+    "time",
+    "io-util",
+] }
+
 # Dev-only: registered with #[cfg(debug_assertions)] in lib.rs so release
 # builds get stripped by LTO. Lets AI agents drive the running app via the
 # tauri-mcp-server tools (screenshots, JS exec, IPC monitoring).
 tauri-plugin-mcp-bridge = "0.11"
 
+# `keyring` stores AI provider API keys in the OS secure store (DJA-11E).
+# v3 requires picking a native backend per platform via features.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }
 
 [profile.release]
 strip = true
@@ -49,7 +84,6 @@ panic = "abort"
 [dev-dependencies]
 tempfile = "3"
 criterion = { version = "0.8", default-features = false }
-tokio = { version = "1", features = ["rt", "macros"] }
 # proptest mirrors fast-check on the JS side: randomized inputs + shrinking
 # for property-based tests on the pure helpers.
 proptest = { version = "1", default-features = false, features = ["std"] }

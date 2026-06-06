@@ -35,6 +35,38 @@ const BASE_PROPS = {
  *   - moving the placeholder INSIDE `.toc-panel-tree` (would survive
  *     the first render but get wiped by Preview)
  */
+describe("TocPanel — AI segment (DJA-12)", () => {
+  it("shows only two segments when no aiSlot is provided", () => {
+    const { baseElement } = render(() => <TocPanel {...BASE_PROPS} />);
+    expect(baseElement.querySelectorAll('[role="tab"]').length).toBe(2);
+    expect(baseElement.querySelector('[data-pane="ai"]')).toBeNull();
+  });
+
+  it("renders the third AI segment + pane when aiSlot is provided", () => {
+    const { baseElement } = render(() => (
+      <TocPanel {...BASE_PROPS} aiSlot={<div class="ai-test-slot">AI</div>} />
+    ));
+    expect(baseElement.querySelectorAll('[role="tab"]').length).toBe(3);
+    expect(baseElement.querySelector('[data-pane="ai"]')).not.toBeNull();
+    expect(baseElement.querySelector(".ai-test-slot")).not.toBeNull();
+  });
+
+  it("respects a controlled activeTab (host can front the AI segment)", () => {
+    const { baseElement } = render(() => (
+      <TocPanel
+        {...BASE_PROPS}
+        activeTab="ai"
+        onActiveTabChange={() => {}}
+        aiSlot={<div class="ai-test-slot">AI</div>}
+      />
+    ));
+    const aiPane = baseElement.querySelector('[data-pane="ai"]')!;
+    expect(aiPane.hasAttribute("hidden")).toBe(false);
+    const tocPane = baseElement.querySelector('[data-pane="toc"]')!;
+    expect(tocPane.hasAttribute("hidden")).toBe(true);
+  });
+});
+
 describe("TocPanel — visibility", () => {
   it("renders the panel in a workspace with toggle on", () => {
     const { baseElement } = render(() => <TocPanel {...BASE_PROPS} />);

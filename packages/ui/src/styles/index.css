@@ -1524,6 +1524,494 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   display: none;
 }
 
+/* ── AI assistant panel (DJA-12) ──────────────────────────────────────────
+   Self-contained flex column inside the AI pane: header + scrollable messages
+   + composer pinned at the bottom. All colors come from existing tokens. */
+.toc-panel-tab-icon {
+  margin-right: 4px;
+  color: hsl(var(--primary));
+}
+
+.ai-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 2px 8px;
+}
+
+.ai-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.ai-provider-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: hsl(var(--secondary));
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ai-provider-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(var(--muted-foreground) / 0.6);
+}
+
+.ai-provider-chip-active {
+  color: hsl(var(--accent-foreground));
+  background: hsl(var(--accent));
+}
+
+.ai-provider-chip-active .ai-provider-dot {
+  background: hsl(142 71% 45%);
+}
+
+.ai-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px 12px;
+}
+
+.ai-message {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ai-message-role {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.ai-message-text {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.ai-message-user .ai-message-text {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.ai-message-assistant .ai-message-text {
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+.ai-message-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: hsl(var(--primary));
+  animation: ai-blink 1s steps(2, start) infinite;
+}
+
+@keyframes ai-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.ai-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 12px;
+  text-align: center;
+}
+
+.ai-empty-icon {
+  color: hsl(var(--primary));
+}
+
+.ai-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.ai-empty-body {
+  font-size: 12px;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+  max-width: 260px;
+}
+
+.ai-error {
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: hsl(var(--destructive) / 0.12);
+  color: hsl(var(--destructive));
+}
+
+.ai-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 2px 4px;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.ai-composer-input {
+  width: 100%;
+  resize: none;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--input));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  font-family: inherit;
+}
+
+.ai-composer-input:focus-visible {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.3);
+}
+
+.ai-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── AI inline overlay (DJA-13) — floating ⌘I widget on the selection ─────── */
+.ai-inline-overlay {
+  position: fixed;
+  z-index: 50;
+  width: 360px;
+  max-width: calc(100vw - 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  box-shadow: 0 12px 32px hsl(0 0% 0% / 0.18);
+}
+
+.ai-inline-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: hsl(var(--primary));
+}
+
+.ai-inline-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-inline-action {
+  text-align: left;
+  font-size: 13px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  color: hsl(var(--foreground));
+  background: transparent;
+  cursor: pointer;
+}
+
+.ai-inline-action:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.ai-inline-translate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+}
+
+.ai-inline-translate-label {
+  font-size: 13px;
+  color: hsl(var(--foreground));
+  flex: 1;
+}
+
+.ai-inline-lang {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: hsl(var(--secondary));
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+
+.ai-inline-lang:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.ai-inline-result {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+.ai-inline-row {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ── Settings modal (DJA-15) ─────────────────────────────────────────────── */
+.settings-nav {
+  width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid hsl(var(--border));
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: left;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+}
+
+.settings-nav-item:hover {
+  background: hsl(var(--secondary));
+}
+
+.settings-nav-item-active {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.settings-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  margin-top: 8px;
+}
+
+.settings-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-row-end {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.settings-input {
+  font-size: 13px;
+}
+
+.settings-input.ai-composer-input {
+  flex: 1;
+}
+
+.settings-select {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--input));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  padding: 8px 10px;
+}
+
+.settings-provider-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-provider {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  font-size: 13px;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+}
+
+.settings-provider-active {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.settings-saved {
+  font-size: 12px;
+  color: hsl(142 71% 40%);
+  align-self: center;
+}
+
+.settings-tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-tier-card {
+  text-align: left;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 12px;
+  background: hsl(var(--background));
+  cursor: pointer;
+}
+
+.settings-tier-card-selected {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--accent) / 0.4);
+}
+
+.settings-tier-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-tier-title {
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.settings-tier-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.settings-tier-check {
+  color: hsl(var(--primary));
+}
+
+.settings-tier-desc {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.settings-prose {
+  font-size: 13px;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-kb-group {
+  margin-bottom: 14px;
+}
+
+.settings-kb-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 4px;
+}
+
+.settings-kb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.settings-kb-keys {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
 /* Inner scroll container — only this scrolls. Header above stays
    put while the tree slides; the gutter is opaque so nothing peeks
    through. */

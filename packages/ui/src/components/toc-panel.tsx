@@ -1,6 +1,7 @@
 import { Show, createSignal, type JSX } from "solid-js";
 import IconCheck from "~icons/lucide/check";
 import IconSlidersHorizontal from "~icons/lucide/sliders-horizontal";
+import IconSparkles from "~icons/lucide/sparkles";
 import * as m from "@asciimark/i18n";
 import { useLocale } from "@asciimark/i18n/solid";
 import {
@@ -12,7 +13,7 @@ import {
 } from "./ui/dropdown-menu.tsx";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 
-export type TocPanelTab = "toc" | "backlinks";
+export type TocPanelTab = "toc" | "backlinks" | "ai";
 
 export interface TocPanelProps {
   /** Toolbar toggle. Drives panel visibility — only `false` should
@@ -47,6 +48,14 @@ export interface TocPanelProps {
    *  Always mounted (just visually hidden when on the TOC tab) so
    *  the empty-state stays stable across switches. */
   backlinksSlot?: JSX.Element;
+  /** AI panel content rendered in the third segment (DJA-12). When omitted the
+   *  AI segment is not shown — keeps the panel two-up for hosts without AI. */
+  aiSlot?: JSX.Element;
+  /** Controlled active tab. When provided (with `onActiveTabChange`) the host
+   *  owns which segment is fronted — needed so ⌘L can front the AI segment.
+   *  Falls back to internal state when omitted. */
+  activeTab?: TocPanelTab;
+  onActiveTabChange?: (tab: TocPanelTab) => void;
 }
 
 /**
@@ -61,7 +70,14 @@ export interface TocPanelProps {
  * and a re-mount would lose that wiring.
  */
 export function TocPanel(props: TocPanelProps) {
-  const [activeTab, setActiveTab] = createSignal<TocPanelTab>("toc");
+  // Controlled-with-fallback: the host may drive the active tab (so ⌘L can
+  // front the AI segment); otherwise the panel keeps its own state.
+  const [localTab, setLocalTab] = createSignal<TocPanelTab>("toc");
+  const activeTab = (): TocPanelTab => props.activeTab ?? localTab();
+  const changeTab = (tab: TocPanelTab): void => {
+    setLocalTab(tab);
+    props.onActiveTabChange?.(tab);
+  };
 
   return (
     <aside
@@ -76,7 +92,7 @@ export function TocPanel(props: TocPanelProps) {
       <div class="toc-panel-tabs">
         <Tabs
           value={activeTab()}
-          onChange={(v) => setActiveTab(v as TocPanelTab)}
+          onChange={(v) => changeTab(v as TocPanelTab)}
         >
           <TabsList>
             <TabsTrigger value="toc">
@@ -88,6 +104,12 @@ export function TocPanel(props: TocPanelProps) {
                 <span class="toc-panel-tab-count">{props.backlinksCount}</span>
               </Show>
             </TabsTrigger>
+            <Show when={props.aiSlot}>
+              <TabsTrigger value="ai">
+                <IconSparkles width={12} height={12} class="toc-panel-tab-icon" />
+                <span>{(useLocale(), m.toc_tab_ai())}</span>
+              </TabsTrigger>
+            </Show>
           </TabsList>
         </Tabs>
       </div>
@@ -176,6 +198,19 @@ export function TocPanel(props: TocPanelProps) {
           </div>
           <div class="toc-panel-scroll">{props.backlinksSlot}</div>
         </div>
+        {/* AI pane is self-contained: AiPanel owns its header + scroll +
+            composer layout, so it fills the pane directly (no shared
+            section-header / single-scroll wrapper). */}
+        <Show when={props.aiSlot}>
+          <div
+            class="toc-panel-pane toc-panel-pane-ai"
+            data-pane="ai"
+            role="tabpanel"
+            hidden={activeTab() !== "ai"}
+          >
+            {props.aiSlot}
+          </div>
+        </Show>
       </div>
     </aside>
   );

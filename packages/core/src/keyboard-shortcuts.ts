@@ -8,7 +8,7 @@
 
 export type Platform = "mac" | "other";
 
-export type ShortcutGroup = "File" | "Tabs" | "Navigation" | "Help";
+export type ShortcutGroup = "File" | "Tabs" | "Navigation" | "AI" | "Help";
 
 export interface ShortcutDescriptor {
   /** Stable identifier used by tests and analytics. */
@@ -124,6 +124,19 @@ export const SHORTCUTS: readonly ShortcutDescriptor[] = [
     descriptionKey: "shortcut_view_focus_second_pane",
     keys: { mac: ["⌘", "2"], other: ["Ctrl", "2"] },
   },
+  // ── AI ────────────────────────────────────────────────────────────────────
+  {
+    id: "ai.inlineAction",
+    group: "AI",
+    descriptionKey: "shortcut_ai_inline_action",
+    keys: { mac: ["⌘", "I"], other: ["Ctrl", "I"] },
+  },
+  {
+    id: "ai.openChat",
+    group: "AI",
+    descriptionKey: "shortcut_ai_open_chat",
+    keys: { mac: ["⌘", "L"], other: ["Ctrl", "L"] },
+  },
   // ── View ────────────────────────────────────────────────────────────────
   {
     id: "view.toggleReaderMode",
@@ -132,6 +145,12 @@ export const SHORTCUTS: readonly ShortcutDescriptor[] = [
     keys: { mac: ["⌘", "."], other: ["Ctrl", "."] },
   },
   // ── Help ────────────────────────────────────────────────────────────────
+  {
+    id: "app.settings",
+    group: "Help",
+    descriptionKey: "shortcut_app_settings",
+    keys: { mac: ["⌘", ","], other: ["Ctrl", ","] },
+  },
   {
     id: "help.shortcuts",
     group: "Help",

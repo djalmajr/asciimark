@@ -65,9 +65,16 @@ describe("keyboard-shortcuts", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("contains the four canonical groups", () => {
+  it("contains the canonical groups", () => {
     const groups = new Set(SHORTCUTS.map((s) => s.group));
-    expect(groups).toEqual(new Set(["File", "Tabs", "Navigation", "Help"]));
+    expect(groups).toEqual(new Set(["File", "Tabs", "Navigation", "AI", "Help"]));
+  });
+
+  it("registers the AI chat shortcut (⌘L / Ctrl+L)", () => {
+    const openChat = SHORTCUTS.find((s) => s.id === "ai.openChat")!;
+    expect(openChat.group).toBe("AI");
+    expect(shortcutKeys(openChat, "mac")).toEqual(["⌘", "L"]);
+    expect(shortcutKeys(openChat, "other")).toEqual(["Ctrl", "L"]);
   });
 
   it("every shortcut exposes a non-empty descriptionKey for the i18n consumer", () => {

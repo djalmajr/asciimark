@@ -1,0 +1,214 @@
+// Shared chat session store for every AI surface. Built ONCE inside
+// createAppState (DJA-11D) and consumed by the sidebar chat (DJA-12), inline
+// actions (DJA-13) and diagram-from-text (DJA-14) so streaming, cancellation
+// and history live in a single place.
+//
+// Engine-agnostic: it only talks to the injected `AIProvider` (the MockProvider
+// in M1; a real engine in DJA-11F). It owns the AbortController, the partial
+// streaming buffer, and the message list.
+
+import { createSignal } from "solid-js";
+import type { AIErrorCode, AIMessage, AIProvider, AITool } from "@asciimark/ai/types.ts";
+
+/** One tool invocation surfaced during a turn (MCP server or in-process app
+ *  tool). With the non-streaming engine these arrive after the loop resolves,
+ *  so `status` is usually terminal by the time the UI renders it. */
+export interface ToolActivity {
+  toolCallId: string;
+  toolName: string;
+  /** Origin server id, or "app" for in-process tools. */
+  source?: string;
+  args?: unknown;
+  status: "running" | "done" | "error";
+  result?: unknown;
+}
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+  /** Tool calls the assistant made on this turn (assistant turns only). */
+  tools?: ToolActivity[];
+}
+
+export interface AiChatError {
+  code: AIErrorCode;
+  message: string;
+}
+
+export interface AiChatStore {
+  /** Completed turns (user + assistant). */
+  messages: () => ChatTurn[];
+  /** The assistant text accumulated for the in-flight turn (empty when idle). */
+  streamingText: () => string;
+  /** Tool activity for the in-flight turn (cleared when it finalizes). */
+  toolActivity: () => ToolActivity[];
+  /** True while a turn is streaming. */
+  streaming: () => boolean;
+  /** Last non-aborted error, or null. */
+  error: () => AiChatError | null;
+  /** Whether a provider is configured (drives the empty-state vs ready UI). */
+  providerReady: () => boolean;
+  /** Send a user message and stream the reply. No-op while already streaming or
+   *  when the text is blank. */
+  sendMessage(text: string, opts?: { system?: string }): Promise<void>;
+  /** Abort the in-flight turn. The partial reply (if any) is kept as history. */
+  cancel(): void;
+  /** Clear history, error and any in-flight turn. */
+  clear(): void;
+}
+
+export interface AiChatStoreConfig {
+  /** Returns the active provider, or null when none is configured. */
+  getProvider: () => AIProvider | null;
+  /** Optional default system prompt applied to every turn. */
+  system?: () => string | undefined;
+  /** Tools the assistant may call this turn (MCP servers + in-process app
+   *  tools). Resolved lazily per send so newly-connected MCP servers are
+   *  picked up. Errors here are swallowed — the turn proceeds tool-less. */
+  getTools?: () => AITool[] | Promise<AITool[]>;
+  /** Max tool-calling steps, forwarded to the engine (default 8). */
+  maxSteps?: number;
+}
+
+export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
+  const [messages, setMessages] = createSignal<ChatTurn[]>([]);
+  const [streamingText, setStreamingText] = createSignal("");
+  const [toolActivity, setToolActivity] = createSignal<ToolActivity[]>([]);
+  const [streaming, setStreaming] = createSignal(false);
+  const [error, setError] = createSignal<AiChatError | null>(null);
+  let controller: AbortController | null = null;
+
+  function providerReady(): boolean {
+    return config.getProvider() !== null;
+  }
+
+  async function sendMessage(
+    text: string,
+    opts?: { system?: string },
+  ): Promise<void> {
+    const trimmed = text.trim();
+    if (!trimmed || streaming()) return;
+
+    const provider = config.getProvider();
+    if (!provider) {
+      setError({ code: "unknown", message: "No AI provider configured" });
+      return;
+    }
+
+    setError(null);
+    const history: ChatTurn[] = [...messages(), { role: "user", content: trimmed }];
+    setMessages(history);
+    setStreamingText("");
+    setToolActivity([]);
+    setStreaming(true);
+    controller = new AbortController();
+
+    const aiMessages: AIMessage[] = history.map((t) => ({
+      role: t.role,
+      content: t.content,
+    }));
+
+    // Resolve tools lazily so newly-connected MCP servers are picked up. A
+    // failure to list tools must not block the chat — proceed tool-less.
+    let tools: AITool[] | undefined;
+    try {
+      tools = config.getTools ? await config.getTools() : undefined;
+    } catch {
+      tools = undefined;
+    }
+
+    try {
+      const stream = provider.chat(aiMessages, {
+        system: opts?.system ?? config.system?.(),
+        signal: controller.signal,
+        ...(tools && tools.length
+          ? { tools, ...(config.maxSteps != null ? { maxSteps: config.maxSteps } : {}) }
+          : {}),
+      });
+      for await (const part of stream) {
+        if (part.type === "text-delta") {
+          setStreamingText((prev) => prev + part.text);
+        } else if (part.type === "tool-call") {
+          setToolActivity((prev) => [
+            ...prev,
+            {
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              source: part.source,
+              args: part.args,
+              status: "running",
+            },
+          ]);
+        } else if (part.type === "tool-result") {
+          const isError =
+            part.isError === true ||
+            (typeof part.result === "object" &&
+              part.result !== null &&
+              (part.result as { isError?: boolean }).isError === true);
+          setToolActivity((prev) =>
+            prev.map((a) =>
+              a.toolCallId === part.toolCallId
+                ? { ...a, status: isError ? "error" : "done", result: part.result }
+                : a,
+            ),
+          );
+        } else if (part.type === "error") {
+          // `aborted` is user-initiated — keep the partial reply, no error UI.
+          if (part.code !== "aborted") {
+            setError({ code: part.code, message: part.message });
+          }
+          break;
+        } else if (part.type === "done") {
+          break;
+        }
+        // `citation` parts are ignored until file:line grounding lands.
+      }
+    } catch (e) {
+      setError({
+        code: "unknown",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      const finalText = streamingText();
+      const turnTools = toolActivity();
+      if (finalText.length > 0 || turnTools.length > 0) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: finalText,
+            ...(turnTools.length ? { tools: turnTools } : {}),
+          },
+        ]);
+      }
+      setStreamingText("");
+      setToolActivity([]);
+      setStreaming(false);
+      controller = null;
+    }
+  }
+
+  function cancel(): void {
+    controller?.abort();
+  }
+
+  function clear(): void {
+    cancel();
+    setMessages([]);
+    setStreamingText("");
+    setToolActivity([]);
+    setError(null);
+  }
+
+  return {
+    messages,
+    streamingText,
+    toolActivity,
+    streaming,
+    error,
+    providerReady,
+    sendMessage,
+    cancel,
+    clear,
+  };
+}

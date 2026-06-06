@@ -22,6 +22,7 @@ const GROUP_TITLE_KEYS: Record<ShortcutGroup, string> = {
   File: "shortcuts_section_file",
   Tabs: "shortcuts_section_tabs",
   Navigation: "shortcuts_section_navigation",
+  AI: "shortcuts_section_ai",
   Help: "shortcuts_section_help",
 };
 
