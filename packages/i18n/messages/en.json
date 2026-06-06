@@ -115,6 +115,7 @@
   "tree_collapse_all": "Collapse All",
   "tree_remove_from_workspace": "Remove from Workspace",
   "tree_cut": "Cut",
+  "tree_copy": "Copy",
   "tree_paste": "Paste",
   "tree_create_file_placeholder": "name.md",
   "tree_create_folder_placeholder": "folder",

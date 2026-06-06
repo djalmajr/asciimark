@@ -12,6 +12,7 @@ import IconFilePlain from "~icons/lucide/file";
 import IconEllipsisVertical from "~icons/lucide/ellipsis-vertical";
 import IconClipboard from "~icons/lucide/clipboard-copy";
 import IconClipboardPaste from "~icons/lucide/clipboard-paste";
+import IconCopy from "~icons/lucide/copy";
 import IconScissors from "~icons/lucide/scissors";
 import IconPencil from "~icons/lucide/pencil";
 import IconTrash from "~icons/lucide/trash-2";
@@ -71,6 +72,13 @@ function canMoveInto(src: FSEntry, dstDir: string): boolean {
 const RENAME_SHORTCUT_LABEL = IS_MAC ? "⌘↵" : "F2";
 /** Copy-path shortcut: ⇧⌘C on macOS, Alt+Shift+C elsewhere. */
 const COPY_SHORTCUT_LABEL = IS_MAC ? "⇧⌘C" : "Alt+Shift+C";
+/** Cut / Copy / Paste (move clipboard) and create / trash shortcut labels. */
+const CUT_SHORTCUT_LABEL = IS_MAC ? "⌘X" : "Ctrl+X";
+const COPY_ENTRY_SHORTCUT_LABEL = IS_MAC ? "⌘C" : "Ctrl+C";
+const PASTE_SHORTCUT_LABEL = IS_MAC ? "⌘V" : "Ctrl+V";
+const NEW_FILE_SHORTCUT_LABEL = IS_MAC ? "⌘N" : "Ctrl+N";
+const NEW_FOLDER_SHORTCUT_LABEL = IS_MAC ? "⇧⌘N" : "Ctrl+Shift+N";
+const TRASH_SHORTCUT_LABEL = IS_MAC ? "⌘⌫" : "Del";
 
 /** Middle-click affordance glyph shown next to "Open in New Tab". */
 function MiddleClickGlyph() {
@@ -127,6 +135,9 @@ interface FileTreeItemProps {
   onRename?: (entry: FSEntry, rootId: string, newName: string) => Promise<void>;
   onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   onSelect: (entry: FSEntry) => void;
+  /** Focus/select a folder row (without expanding it) so keyboard actions
+   *  like ⌘V have a target. Files focus implicitly via `onSelect`. */
+  onFocusEntry?: (entry: FSEntry) => void;
   /** Open file in a new pinned tab (right-click / middle-click). */
   onOpenInNewTab?: (entry: FSEntry) => void;
   /** Double-click on file — pin the tab. */
@@ -139,6 +150,9 @@ interface FileTreeItemProps {
    *  Powers drag & drop and the Cut/Paste menu entries. When omitted
    *  (web/extension), dragging and Cut/Paste are disabled. */
   onMove?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
+  /** Desktop-only: copy `entry` into `targetDirRel` ("" = workspace root),
+   *  auto-numbering on collision. Powers the Copy/Paste menu + ⌘C/⌘V. */
+  onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
   /**
    * Render the per-item context menu and the three-dot dropdown
    * (Copy path / Rename / Delete / Open in New Tab). When false, the
@@ -205,26 +219,71 @@ export function FileTreeItem(props: FileTreeItemProps) {
       if (props.onRename) startRename();
     };
     const onCopyEvt = () => copyPath();
+    const onCutEvt = () => {
+      if (props.onMove) app.setMoveClipboard({ entry: props.entry, rootId: props.rootId, mode: "cut" });
+    };
+    const onCopyEntryEvt = () => {
+      if (props.onCopy) app.setMoveClipboard({ entry: props.entry, rootId: props.rootId, mode: "copy" });
+    };
+    const onPasteEvt = () => doPaste();
+    const onTrashEvt = () => props.onDelete?.(props.entry, props.rootId);
     itemRef.addEventListener("tree-expand", onExpand);
     itemRef.addEventListener("tree-collapse", onCollapse);
     itemRef.addEventListener("tree-rename", onRenameEvt);
     itemRef.addEventListener("tree-copy-path", onCopyEvt);
+    itemRef.addEventListener("tree-cut", onCutEvt);
+    itemRef.addEventListener("tree-copy", onCopyEntryEvt);
+    itemRef.addEventListener("tree-paste", onPasteEvt);
+    itemRef.addEventListener("tree-trash", onTrashEvt);
     onCleanup(() => {
       itemRef!.removeEventListener("tree-expand", onExpand);
       itemRef!.removeEventListener("tree-collapse", onCollapse);
       itemRef!.removeEventListener("tree-rename", onRenameEvt);
       itemRef!.removeEventListener("tree-copy-path", onCopyEvt);
+      itemRef!.removeEventListener("tree-cut", onCutEvt);
+      itemRef!.removeEventListener("tree-copy", onCopyEntryEvt);
+      itemRef!.removeEventListener("tree-paste", onPasteEvt);
+      itemRef!.removeEventListener("tree-trash", onTrashEvt);
     });
   });
 
   const isFocused = () => props.focusedPath === props.entry.path;
   const isSelected = () => props.selectedPath === props.entry.path;
   const isDirectory = () => props.entry.kind === "directory";
-  /** This entry is on the move clipboard (Cut) — shown italic/dimmed. */
+  /** This entry is on the clipboard via Cut — shown italic/dimmed. (Copy
+   *  leaves the original visually intact.) */
   const isCut = () => {
     const c = app.moveClipboard();
-    return !!c && c.rootId === props.rootId && c.entry.path === props.entry.path;
+    return !!c && c.mode === "cut" && c.rootId === props.rootId && c.entry.path === props.entry.path;
   };
+
+  /** Directory a paste lands in: this dir if it is one, else its parent. */
+  function pasteTargetDir(): string {
+    if (isDirectory()) return props.entry.path;
+    return props.entry.path.includes("/")
+      ? props.entry.path.slice(0, props.entry.path.lastIndexOf("/"))
+      : "";
+  }
+
+  /** Whether the current clipboard can paste into `dir` (same root assumed). */
+  function pasteAllowed(clip: NonNullable<ReturnType<typeof app.moveClipboard>>, dir: string): boolean {
+    if (clip.mode === "cut") return canMoveInto(clip.entry, dir);
+    // Copy auto-numbers on collision, so same-parent is fine; only block
+    // copying a folder into its own subtree (would recurse).
+    return !(clip.entry.kind === "directory" && (dir === clip.entry.path || dir.startsWith(clip.entry.path + "/")));
+  }
+
+  /** Execute the pending Cut (move) or Copy into `pasteTargetDir()`. */
+  function doPaste() {
+    const clip = app.moveClipboard();
+    if (!clip || clip.rootId !== props.rootId) return;
+    const dir = pasteTargetDir();
+    if (!pasteAllowed(clip, dir)) return;
+    app.setMoveClipboard(null);
+    if (isDirectory()) setExpanded(true);
+    const handler = clip.mode === "cut" ? props.onMove : props.onCopy;
+    void Promise.resolve(handler?.(clip.entry, dir, clip.rootId)).catch(() => {});
+  }
   const isEditing = () => app.editingPath() === props.entry.path;
   const indent = () => props.depth * INDENT_PER_DEPTH + BASE_PADDING;
 
@@ -271,14 +330,29 @@ export function FileTreeItem(props: FileTreeItemProps) {
   function handleClick() {
     if (isEditing()) return;
     if (isDirectory()) {
-      setExpanded(!expanded());
+      // A folder row click selects/focuses the folder (so keyboard actions
+      // like ⌘V target it) — it does NOT expand. Expansion is the chevron's
+      // job (or a double-click), keeping select and expand separate. Focus the
+      // nav so its keydown handler (⌘V/⌘X/…) receives keys.
+      props.onFocusEntry?.(props.entry);
+      focusNav();
     } else {
       props.onSelect(props.entry);
     }
   }
 
+  function handleChevronClick(e: MouseEvent) {
+    e.stopPropagation();
+    if (isEditing()) return;
+    setExpanded(!expanded());
+  }
+
   function handleDoubleClick() {
-    if (isEditing() || isDirectory()) return;
+    if (isEditing()) return;
+    if (isDirectory()) {
+      setExpanded(!expanded());
+      return;
+    }
     props.onDoubleClickFile?.(props.entry);
   }
 
@@ -405,14 +479,16 @@ export function FileTreeItem(props: FileTreeItemProps) {
           icon: <IconFilePlus width={14} height={14} />,
           label: m.tree_new_file,
           onSelect: () => startCreate("file"),
-          itemClass: "gap-2",
+          shortcut: NEW_FILE_SHORTCUT_LABEL,
+          itemClass: "justify-between gap-3",
         },
         {
           id: "new-folder",
           icon: <IconFolderPlus width={14} height={14} />,
           label: m.tree_new_folder,
           onSelect: () => startCreate("folder"),
-          itemClass: "gap-2",
+          shortcut: NEW_FOLDER_SHORTCUT_LABEL,
+          itemClass: "justify-between gap-3",
         },
       );
     }
@@ -458,24 +534,33 @@ export function FileTreeItem(props: FileTreeItemProps) {
         id: "cut",
         icon: <IconScissors width={14} height={14} />,
         label: m.tree_cut,
-        onSelect: () => app.setMoveClipboard({ entry: props.entry, rootId: props.rootId }),
+        onSelect: () => app.setMoveClipboard({ entry: props.entry, rootId: props.rootId, mode: "cut" }),
+        shortcut: CUT_SHORTCUT_LABEL,
         separatorBefore: true,
-        itemClass: "gap-2",
+        itemClass: "justify-between gap-3",
       });
+    }
+    if (props.onCopy) {
+      list.push({
+        id: "copy",
+        icon: <IconCopy width={14} height={14} />,
+        label: m.tree_copy,
+        onSelect: () => app.setMoveClipboard({ entry: props.entry, rootId: props.rootId, mode: "copy" }),
+        shortcut: COPY_ENTRY_SHORTCUT_LABEL,
+        separatorBefore: !props.onMove,
+        itemClass: "justify-between gap-3",
+      });
+    }
+    if (props.onMove || props.onCopy) {
       const clip = app.moveClipboard();
-      if (isDirectory() && clip && clip.rootId === props.rootId && canMoveInto(clip.entry, props.entry.path)) {
+      if (isDirectory() && clip && clip.rootId === props.rootId && pasteAllowed(clip, props.entry.path)) {
         list.push({
           id: "paste",
           icon: <IconClipboardPaste width={14} height={14} />,
           label: m.tree_paste,
-          onSelect: () => {
-            const c = app.moveClipboard();
-            if (!c) return;
-            app.setMoveClipboard(null);
-            setExpanded(true);
-            void Promise.resolve(props.onMove!(c.entry, props.entry.path, props.rootId)).catch(() => {});
-          },
-          itemClass: "gap-2",
+          onSelect: doPaste,
+          shortcut: PASTE_SHORTCUT_LABEL,
+          itemClass: "justify-between gap-3",
         });
       }
     }
@@ -485,8 +570,9 @@ export function FileTreeItem(props: FileTreeItemProps) {
         icon: <IconTrash width={14} height={14} />,
         label: m.tree_move_to_trash,
         onSelect: () => props.onDelete?.(props.entry, props.rootId),
+        shortcut: TRASH_SHORTCUT_LABEL,
         separatorBefore: true,
-        itemClass: "gap-2",
+        itemClass: "justify-between gap-3",
       });
     }
     return list;
@@ -588,7 +674,10 @@ export function FileTreeItem(props: FileTreeItemProps) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <span class="tree-icon">
+          <span
+            class={`tree-icon ${isDirectory() ? "tree-chevron" : ""}`}
+            onClick={isDirectory() ? handleChevronClick : undefined}
+          >
             <Show when={isDirectory()}>
               <IconChevronRight
                 width={14}
@@ -721,10 +810,12 @@ export function FileTreeItem(props: FileTreeItemProps) {
               onRename={props.onRename}
               onDelete={props.onDelete}
               onSelect={props.onSelect}
+              onFocusEntry={props.onFocusEntry}
               onOpenInNewTab={props.onOpenInNewTab}
               onDoubleClickFile={props.onDoubleClickFile}
               onCreate={props.onCreate}
               onMove={props.onMove}
+              onCopy={props.onCopy}
               showItemMenu={props.showItemMenu}
             />
           )}

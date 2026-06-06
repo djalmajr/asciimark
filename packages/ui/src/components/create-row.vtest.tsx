@@ -44,14 +44,21 @@ describe("CreateRow", () => {
   });
 
   it("uses a distinct placeholder for file vs folder", () => {
+    // Render one at a time and unmount between — two un-interacted create
+    // inputs in the DOM at once would ping-pong focus (each reclaims it on
+    // blur). Production only ever shows a single CreateRow.
     const file = render(() => (
       <CreateRow kind="file" indent={8} icon={<span />} onCommit={() => {}} onCancel={() => {}} />
     ));
+    const filePh = file.container.querySelector<HTMLInputElement>(".tree-create-input")!.placeholder;
+    file.unmount();
+
     const folder = render(() => (
       <CreateRow kind="folder" indent={8} icon={<span />} onCommit={() => {}} onCancel={() => {}} />
     ));
-    const filePh = file.container.querySelector<HTMLInputElement>(".tree-create-input")!.placeholder;
     const folderPh = folder.container.querySelector<HTMLInputElement>(".tree-create-input")!.placeholder;
+    folder.unmount();
+
     expect(filePh).not.toBe("");
     expect(folderPh).not.toBe("");
     expect(filePh).not.toBe(folderPh);

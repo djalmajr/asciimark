@@ -57,6 +57,9 @@ interface FileTreeProps {
   /** Desktop-only: move an entry into a directory ("" = workspace root).
    *  Powers tree drag & drop and the Cut/Paste menu entries. */
   onMove?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
+  /** Desktop-only: copy an entry into a directory ("" = workspace root),
+   *  auto-numbering on collision. Powers Copy/Paste + ⌘C/⌘V. */
+  onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
   onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   onReorderRoots?: (newOrder: string[]) => void;
   onSelect: (entry: FSEntry, rootId: string) => void;
@@ -400,14 +403,21 @@ export function FileTree(props: FileTreeProps) {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </Show>
-                <Show when={(() => { const c = app.moveClipboard(); return props.onMove && c && c.rootId === rootId && c.entry.path.includes("/"); })()}>
+                <Show when={(() => {
+                  const c = app.moveClipboard();
+                  if (!c || c.rootId !== rootId) return false;
+                  // Cut to root only makes sense for a nested entry; Copy to
+                  // root is fine for anything (auto-numbered on collision).
+                  return c.mode === "cut" ? (props.onMove && c.entry.path.includes("/")) : !!props.onCopy;
+                })()}>
                   <DropdownMenuItem
                     class="gap-2"
                     onSelect={() => {
                       const c = app.moveClipboard();
                       if (!c) return;
                       app.setMoveClipboard(null);
-                      void Promise.resolve(props.onMove!(c.entry, "", rootId)).catch(() => {});
+                      const handler = c.mode === "cut" ? props.onMove : props.onCopy;
+                      void Promise.resolve(handler?.(c.entry, "", rootId)).catch(() => {});
                     }}
                   >
                     <span class="flex items-center gap-2"><IconClipboardPaste width={14} height={14} /> {m.tree_paste()}</span>
@@ -497,10 +507,12 @@ export function FileTree(props: FileTreeProps) {
                 onRename={props.onRename}
                 onDelete={props.onDelete}
                 onSelect={(e) => props.onSelect(e, rootId)}
+                onFocusEntry={(e) => setFocusedPath(e.path)}
                 onOpenInNewTab={props.onOpenInNewTab ? (e) => props.onOpenInNewTab!(e, rootId) : undefined}
                 onDoubleClickFile={props.onDoubleClickFile ? (e) => props.onDoubleClickFile!(e, rootId) : undefined}
                 onCreate={props.onCreate}
                 onMove={props.onMove}
+                onCopy={props.onCopy}
                 showItemMenu={props.showItemMenu}
               />
             )}
@@ -636,17 +648,50 @@ export function FileTree(props: FileTreeProps) {
       }
       case "c":
       case "C": {
-        // Copy focused item's absolute path. Shortcut: ⇧⌘C on macOS,
-        // Alt+Shift+C on Windows/Linux. Dispatched as an event so the item
-        // can call its platform-provided `onCopyPath` (which knows the
-        // workspace root and can build the absolute path).
-        if (!e.shiftKey) return;
         const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+        // ⌘C / Ctrl+C → copy the focused entry onto the tree clipboard.
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
+          if (idx < 0) return;
+          e.preventDefault();
+          items[idx].dispatchEvent(new Event("tree-copy"));
+          break;
+        }
+        // ⇧⌘C / Alt+Shift+C → copy the focused item's absolute path.
+        if (!e.shiftKey) return;
         const modifierOk = isMac ? e.metaKey : e.altKey;
         if (!modifierOk) return;
         if (idx < 0) return;
         e.preventDefault();
         items[idx].dispatchEvent(new Event("tree-copy-path"));
+        break;
+      }
+      case "x":
+      case "X": {
+        // ⌘X / Ctrl+X → cut (move clipboard).
+        if (!(e.metaKey || e.ctrlKey) || e.shiftKey) return;
+        if (idx < 0) return;
+        e.preventDefault();
+        items[idx].dispatchEvent(new Event("tree-cut"));
+        break;
+      }
+      case "v":
+      case "V": {
+        // ⌘V / Ctrl+V → paste the clipboard into the focused dir (or the
+        // focused file's parent).
+        if (!(e.metaKey || e.ctrlKey) || e.shiftKey) return;
+        if (idx < 0) return;
+        e.preventDefault();
+        items[idx].dispatchEvent(new Event("tree-paste"));
+        break;
+      }
+      case "Backspace":
+      case "Delete": {
+        // ⌘⌫ (macOS) / Ctrl+Del → move the focused entry to Trash (the host
+        // still confirms before deleting).
+        if (!(e.metaKey || e.ctrlKey)) return;
+        if (idx < 0) return;
+        e.preventDefault();
+        items[idx].dispatchEvent(new Event("tree-trash"));
         break;
       }
       case "Home": {

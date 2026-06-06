@@ -3,8 +3,8 @@ import { writeText as clipboardWriteText } from "@tauri-apps/plugin-clipboard-ma
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import type { AppState } from "@asciimark/ui/composables/create-app-state.ts";
-import { createDir, createFile, openDirectory, readTree, renameFile, trashPath, writeFile } from "./fs.ts";
-import { joinRelative, withDefaultExtension } from "./fs-paths.ts";
+import { copyPath, createDir, createFile, openDirectory, readTree, renameFile, trashPath, writeFile } from "./fs.ts";
+import { joinRelative, nextAvailableName, withDefaultExtension } from "./fs-paths.ts";
 import type { FileWatcher } from "./watcher.ts";
 
 interface FolderDeps {
@@ -330,11 +330,39 @@ export function createFolder(deps: FolderDeps) {
     await refreshRoot(rootId);
   }
 
+  /** Copy `entry` into the directory at `targetDirRel` ("" = workspace root).
+   *  On a name collision (notably copying into the entry's own parent) the
+   *  copy is suffixed ` (1)`, ` (2)`, … before the extension. Returns the
+   *  workspace-relative path of the created copy. */
+  async function handleCopy(
+    entry: FSEntry,
+    targetDirRel: string,
+    rootId: string,
+  ): Promise<string> {
+    const rootPath = rootPaths().get(rootId);
+    if (!rootPath) throw new Error("Root not found");
+    if (
+      entry.kind === "directory"
+      && (targetDirRel === entry.path || targetDirRel.startsWith(entry.path + "/"))
+    ) {
+      throw new Error("Cannot copy a folder into itself");
+    }
+
+    const taken = (candidate: string) =>
+      state.findEntryByPath(joinRelative(targetDirRel, candidate), rootId) != null;
+    const name = nextAvailableName(entry.name, taken, entry.kind === "directory");
+    const newRelative = joinRelative(targetDirRel, name);
+    await copyPath(rootPath, entry.path, newRelative);
+    await refreshRoot(rootId);
+    return newRelative;
+  }
+
   return {
     getPathName,
     handleCreateFile,
     handleCreateFolder,
     handleMove,
+    handleCopy,
     handleCloseRoot,
     handleCopyPath,
     handleRevealInFileManager,

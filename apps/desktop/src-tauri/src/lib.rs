@@ -249,6 +249,15 @@ async fn create_dir(root: String, relative: String) -> Result<(), String> {
     create_dir_impl(&PathBuf::from(&root), &relative)
 }
 
+#[tauri::command]
+async fn copy_path(
+    root: String,
+    from_relative: String,
+    to_relative: String,
+) -> Result<(), String> {
+    copy_path_impl(&PathBuf::from(&root), &from_relative, &to_relative)
+}
+
 /// Read a file by joining `relative` to `root`. Public for testing.
 pub fn read_file_relative_impl(root: &Path, relative: &str) -> Result<String, String> {
     let full = root.join(relative);
@@ -503,6 +512,56 @@ pub fn create_dir_impl(root: &Path, relative: &str) -> Result<(), String> {
         return Err("directory already exists".into());
     }
     std::fs::create_dir(&target).map_err(|e| e.to_string())
+}
+
+/// Copy the file or directory at `from_rel` to `to_rel` inside `root`.
+/// Directories are copied recursively. Validates both endpoints against the
+/// workspace root and refuses to overwrite an existing destination (the
+/// caller is responsible for choosing a free `to_rel`, e.g. `name (1).md`).
+pub fn copy_path_impl(root: &Path, from_rel: &str, to_rel: &str) -> Result<(), String> {
+    let from = root.join(from_rel);
+    let root_canon = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let from_canon = std::fs::canonicalize(&from).map_err(|e| e.to_string())?;
+    if !from_canon.starts_with(&root_canon) {
+        return Err("copy source escapes workspace root".into());
+    }
+
+    let parent_canon = ensure_parent_within_root(root, to_rel)?;
+    let name = Path::new(to_rel)
+        .file_name()
+        .ok_or_else(|| "invalid destination name".to_string())?;
+    let to = parent_canon.join(name);
+    if to.exists() {
+        return Err("destination already exists".into());
+    }
+
+    // Refuse to copy a directory into its own subtree (would recurse forever).
+    if from_canon.is_dir() && to.starts_with(&from_canon) {
+        return Err("cannot copy a folder into itself".into());
+    }
+
+    if from_canon.is_dir() {
+        copy_dir_recursive(&from_canon, &to)
+    } else {
+        std::fs::copy(&from_canon, &to).map(|_| ()).map_err(|e| e.to_string())
+    }
+}
+
+/// Recursively copy `from` (a directory) to `to`, creating `to` and mirroring
+/// the subtree. Assumes `to` does not yet exist.
+fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(from).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        let dest = to.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_recursive(&entry.path(), &dest)?;
+        } else {
+            std::fs::copy(entry.path(), &dest).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 struct WatcherHolder(
@@ -897,6 +956,7 @@ pub fn run() {
             trash_path,
             create_file,
             create_dir,
+            copy_path,
             watch_paths,
             stop_watching,
             watch_dirs,
@@ -999,6 +1059,52 @@ mod tests {
         let dir = tempdir().unwrap();
         let err = create_dir_impl(dir.path(), "../evil").unwrap_err();
         assert_eq!(err, "invalid path");
+    }
+
+    #[test]
+    fn copy_file_duplicates_content() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.md"), b"hello").unwrap();
+        copy_path_impl(dir.path(), "a.md", "a (1).md").unwrap();
+        assert_eq!(fs::read(dir.path().join("a (1).md")).unwrap(), b"hello");
+        // original is untouched.
+        assert_eq!(fs::read(dir.path().join("a.md")).unwrap(), b"hello");
+    }
+
+    #[test]
+    fn copy_file_into_subdir_creates_parents() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.md"), b"x").unwrap();
+        copy_path_impl(dir.path(), "a.md", "sub/deep/a.md").unwrap();
+        assert!(dir.path().join("sub/deep/a.md").exists());
+    }
+
+    #[test]
+    fn copy_dir_recursively_mirrors_subtree() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("src/inner")).unwrap();
+        fs::write(dir.path().join("src/top.md"), b"1").unwrap();
+        fs::write(dir.path().join("src/inner/leaf.md"), b"2").unwrap();
+        copy_path_impl(dir.path(), "src", "src-copy").unwrap();
+        assert_eq!(fs::read(dir.path().join("src-copy/top.md")).unwrap(), b"1");
+        assert_eq!(fs::read(dir.path().join("src-copy/inner/leaf.md")).unwrap(), b"2");
+    }
+
+    #[test]
+    fn copy_refuses_to_overwrite_existing_destination() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.md"), b"x").unwrap();
+        fs::write(dir.path().join("b.md"), b"y").unwrap();
+        let err = copy_path_impl(dir.path(), "a.md", "b.md").unwrap_err();
+        assert_eq!(err, "destination already exists");
+    }
+
+    #[test]
+    fn copy_refuses_directory_into_itself() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("docs")).unwrap();
+        let err = copy_path_impl(dir.path(), "docs", "docs/copy").unwrap_err();
+        assert_eq!(err, "cannot copy a folder into itself");
     }
 
     #[test]

@@ -16,3 +16,23 @@ export function withDefaultExtension(name: string): string {
   const base = name.slice(name.lastIndexOf("/") + 1);
   return base.includes(".") ? name : `${name}.md`;
 }
+
+/** Pick a collision-free name for a copy of `name` in a directory, given a
+ *  predicate that reports whether a candidate name is already taken. Inserts
+ *  ` (1)`, ` (2)`, … before the extension: `notes.md` → `notes (1).md`,
+ *  `docs` → `docs (1)`. A directory's name is treated as having no extension
+ *  (no dot split), so `my.dir` stays `my.dir (1)`. */
+export function nextAvailableName(
+  name: string,
+  taken: (candidate: string) => boolean,
+  isDirectory = false,
+): string {
+  if (!taken(name)) return name;
+  const dot = isDirectory ? -1 : name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  for (let n = 1; ; n++) {
+    const candidate = `${stem} (${n})${ext}`;
+    if (!taken(candidate)) return candidate;
+  }
+}

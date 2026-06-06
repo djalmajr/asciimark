@@ -91,12 +91,14 @@ export type CreatingAt = {
   kind: "file" | "folder";
 };
 
-/** An entry placed on the move clipboard via "Cut", waiting for a "Paste"
- *  into a target directory. Scoped to a single root — pasting is only
- *  offered on directories of the same `rootId`. */
+/** An entry placed on the tree clipboard via "Cut" (move) or "Copy"
+ *  (duplicate), waiting for a "Paste" into a target directory. Scoped to a
+ *  single root — pasting is only offered on directories of the same `rootId`.
+ *  `mode` decides whether Paste moves the original or copies it. */
 export type MoveClipboard = {
   entry: FSEntry;
   rootId: string;
+  mode: "cut" | "copy";
 };
 
 interface AppStateConfig {

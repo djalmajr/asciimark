@@ -88,6 +88,14 @@ export async function createDir(
   await invoke("create_dir", { root: rootPath, relative });
 }
 
+export async function copyPath(
+  rootPath: string,
+  fromRelative: string,
+  toRelative: string,
+): Promise<void> {
+  await invoke("copy_path", { root: rootPath, fromRelative, toRelative });
+}
+
 export interface FileMatch {
   /** Workspace-relative, forward-slash path. */
   path: string;

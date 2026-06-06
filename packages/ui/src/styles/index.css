@@ -986,6 +986,12 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   font-weight: 500;
 }
 
+/* The chevron is its own click target (toggles expand/collapse); the rest of
+   the folder row selects/focuses without toggling. */
+.tree-chevron {
+  cursor: pointer;
+}
+
 /* WKWebView (macOS) will not initiate a native HTML5 drag for an arbitrary
    <div> unless the element opts in explicitly. Without this the file-tree
    rows are marked draggable but never start a drag. */

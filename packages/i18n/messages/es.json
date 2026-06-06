@@ -115,6 +115,7 @@
   "tree_collapse_all": "Contraer todo",
   "tree_remove_from_workspace": "Quitar del espacio de trabajo",
   "tree_cut": "Cortar",
+  "tree_copy": "Copiar",
   "tree_paste": "Pegar",
   "tree_create_file_placeholder": "nombre.md",
   "tree_create_folder_placeholder": "carpeta",

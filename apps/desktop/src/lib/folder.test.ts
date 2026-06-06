@@ -26,6 +26,7 @@ let resolveReadTree: ((entries: unknown[]) => void) | undefined;
 let writeFileCalls: Array<{ path: string; content: string }> = [];
 let renameFileCalls: Array<{ root: string; from: string; to: string }> = [];
 let trashCalls: Array<{ root: string; rel: string }> = [];
+let copyCalls: Array<{ root: string; from: string; to: string }> = [];
 
 mock.module("./fs.ts", () => ({
   writeFile: (path: string, content: string) => {
@@ -53,6 +54,9 @@ mock.module("./fs.ts", () => ({
   openDirectory: async () => null,
   createFile: async () => {},
   createDir: async () => {},
+  copyPath: async (root: string, from: string, to: string) => {
+    copyCalls.push({ root, from, to });
+  },
 }));
 
 mock.module("@tauri-apps/plugin-clipboard-manager", () => ({
@@ -143,6 +147,7 @@ beforeEach(() => {
   writeFileCalls = [];
   renameFileCalls = [];
   trashCalls = [];
+  copyCalls = [];
   localStorage.clear();
 });
 
@@ -321,6 +326,67 @@ describe("createFolder.handleMove", () => {
       folder.handleMove({ name: "docs", path: "docs", kind: "directory" }, "docs/inner", "root1"),
     ).rejects.toThrow(/into itself/);
     expect(renameFileCalls).toEqual([]);
+  });
+});
+
+describe("createFolder.handleCopy", () => {
+  it("copies an entry into the target dir, keeping its name when free", async () => {
+    const paneManager = createPaneManager();
+    const state = makeState(paneManager); // findEntryByPath → null (no collisions)
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+
+    const p = folder.handleCopy({ name: "a.md", path: "a.md", kind: "file" }, "sub", "root1");
+    await Promise.resolve();
+    await Promise.resolve();
+    resolveReadTree!([]);
+    const rel = await p;
+
+    expect(copyCalls).toEqual([{ root: "/work/root1", from: "a.md", to: "sub/a.md" }]);
+    expect(rel).toBe("sub/a.md");
+  });
+
+  it("auto-numbers ' (1)' when copying into the entry's own parent (collision)", async () => {
+    const paneManager = createPaneManager();
+    const state = makeState(paneManager);
+    // a.md already exists at the root; the bare name collides, "a (1).md" is free.
+    (state as unknown as { findEntryByPath: (p: string) => unknown }).findEntryByPath = (path: string) =>
+      path === "a.md" ? { name: "a.md", path: "a.md", kind: "file" } : null;
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+
+    const p = folder.handleCopy({ name: "a.md", path: "a.md", kind: "file" }, "", "root1");
+    await Promise.resolve();
+    await Promise.resolve();
+    resolveReadTree!([]);
+    const rel = await p;
+
+    expect(copyCalls).toEqual([{ root: "/work/root1", from: "a.md", to: "a (1).md" }]);
+    expect(rel).toBe("a (1).md");
+  });
+
+  it("refuses to copy a folder into its own subtree", async () => {
+    const paneManager = createPaneManager();
+    const state = makeState(paneManager);
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+
+    await expect(
+      folder.handleCopy({ name: "docs", path: "docs", kind: "directory" }, "docs/inner", "root1"),
+    ).rejects.toThrow(/into itself/);
+    expect(copyCalls).toEqual([]);
   });
 });
 

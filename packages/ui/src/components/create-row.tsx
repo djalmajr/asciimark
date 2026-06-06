@@ -22,26 +22,15 @@ interface CreateRowProps {
 export function CreateRow(props: CreateRowProps) {
   let inputRef: HTMLInputElement | undefined;
   let done = false;
-  // The row is usually opened from a Kobalte menu item. When that menu
-  // closes it restores focus to its trigger, which blurs (and would cancel)
-  // a naively-focused input. We focus across a couple of frames to win that
-  // race, and ignore any blur until `armed` — the menu's focus-restoration
-  // happens before the user could plausibly click away.
-  let armed = false;
+  // The row is usually opened from a Kobalte menu item. When that menu closes
+  // it restores focus to its trigger, which blurs (and would otherwise cancel)
+  // the freshly-focused input. Until the user actually interacts, treat any
+  // blur as that spurious focus-restoration and reclaim focus instead of
+  // committing/cancelling. No timers — keeps the behaviour deterministic.
+  let interacted = false;
 
   onMount(() => {
-    const focusInput = () => {
-      if (!inputRef) return;
-      inputRef.focus();
-      inputRef.select();
-    };
-    requestAnimationFrame(() => {
-      focusInput();
-      requestAnimationFrame(() => {
-        focusInput();
-        armed = true;
-      });
-    });
+    queueMicrotask(() => inputRef?.focus());
   });
 
   function commit() {
@@ -57,9 +46,9 @@ export function CreateRow(props: CreateRowProps) {
   }
 
   function onBlur() {
-    // Reclaim focus from the menu's close-time focus restoration instead of
-    // committing/cancelling on this spurious blur.
-    if (!armed) {
+    // Before the user has touched the input, a blur is the menu's close-time
+    // focus restoration — reclaim focus rather than commit/cancel.
+    if (!interacted) {
       queueMicrotask(() => inputRef?.focus());
       return;
     }
@@ -68,6 +57,7 @@ export function CreateRow(props: CreateRowProps) {
 
   function onKeyDown(e: KeyboardEvent) {
     e.stopPropagation();
+    interacted = true;
     if (e.key === "Enter") {
       e.preventDefault();
       commit();

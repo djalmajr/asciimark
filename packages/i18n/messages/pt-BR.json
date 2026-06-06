@@ -115,6 +115,7 @@
   "tree_collapse_all": "Recolher tudo",
   "tree_remove_from_workspace": "Remover do workspace",
   "tree_cut": "Recortar",
+  "tree_copy": "Copiar",
   "tree_paste": "Colar",
   "tree_create_file_placeholder": "nome.md",
   "tree_create_folder_placeholder": "pasta",
