@@ -963,7 +963,7 @@ export function FileTree(props: FileTreeProps) {
                 );
               }}
             </For>
-            <DragOverlay>
+            <DragOverlay dropAnimation={null}>
               {(source: any) => (
                 <div class="workspace-root-overlay">
                   {isItemDndId(source?.id)
