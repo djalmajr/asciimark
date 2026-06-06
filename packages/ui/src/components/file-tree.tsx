@@ -787,11 +787,23 @@ export function FileTree(props: FileTreeProps) {
       case "v":
       case "V": {
         // ⌘V / Ctrl+V → paste the clipboard into the focused dir (or the
-        // focused file's parent).
+        // focused file's parent), or — when a workspace root is selected
+        // (focusedPath === "", so no tree-item is focused) — into that root's
+        // top level, since the root header isn't a `.tree-item`.
         if (!(e.metaKey || e.ctrlKey) || e.shiftKey) return;
-        if (idx < 0) return;
-        e.preventDefault();
-        items[idx].dispatchEvent(new Event("tree-paste"));
+        if (idx >= 0) {
+          e.preventDefault();
+          items[idx].dispatchEvent(new Event("tree-paste"));
+          break;
+        }
+        const root = activeRootId();
+        const clip = app.moveClipboard();
+        if (focusedPath() === "" && root && clip) {
+          e.preventDefault();
+          app.setMoveClipboard(null);
+          const handler = clip.mode === "cut" ? props.onMove : props.onCopy;
+          void Promise.resolve(handler?.(clip.entry, "", clip.rootId, root)).catch(() => {});
+        }
         break;
       }
       case "Backspace":

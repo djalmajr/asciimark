@@ -862,8 +862,10 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 }
 
 /* Selected workspace root — same active treatment as a selected folder/file
-   row (.tree-item.selected): background highlight + primary text. */
-.workspace-root-active {
+   row (.tree-item.selected): background highlight + primary text. The
+   `.workspace-root-header` qualifier matches the `:hover` rule's specificity
+   so the active state persists on hover instead of being overridden by it. */
+.workspace-root-header.workspace-root-active {
   background: hsl(var(--bg-selected));
   color: hsl(var(--primary));
   border-radius: 4px;
