@@ -143,7 +143,7 @@ interface FileTreeItemProps {
   /** Desktop-only: move `entry` into `targetDirRel` ("" = workspace root).
    *  Powers drag & drop and the Cut/Paste menu entries. When omitted
    *  (web/extension), dragging and Cut/Paste are disabled. */
-  onMove?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
+  onMove?: (entry: FSEntry, targetDirRel: string, rootId: string, targetRootId?: string) => void | Promise<void>;
   /** Desktop-only: copy `entry` into `targetDirRel` ("" = workspace root),
    *  auto-numbering on collision. Powers the Copy/Paste menu + ⌘C/⌘V. */
   onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
@@ -379,13 +379,16 @@ export function FileTreeItem(props: FileTreeItemProps) {
       return !props.onMove || isEditing();
     },
   });
+  // Both folders and files are drop targets: dropping onto a folder moves the
+  // entry inside it; dropping onto a file moves it next to that file (into the
+  // file's parent). FileTree.onDragEnd resolves the destination directory.
   const droppable = useDroppable({
     id: dndId,
     get data() {
       return dndData();
     },
     get disabled() {
-      return !props.onMove || !isDirectory();
+      return !props.onMove;
     },
   });
   const isDropTarget = () => droppable.isDropTarget();

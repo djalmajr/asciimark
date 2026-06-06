@@ -96,6 +96,15 @@ export async function copyPath(
   await invoke("copy_path", { root: rootPath, fromRelative, toRelative });
 }
 
+export async function movePath(
+  srcRoot: string,
+  srcRelative: string,
+  dstRoot: string,
+  dstRelative: string,
+): Promise<void> {
+  await invoke("move_path", { srcRoot, srcRelative, dstRoot, dstRelative });
+}
+
 export interface FileMatch {
   /** Workspace-relative, forward-slash path. */
   path: string;

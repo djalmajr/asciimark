@@ -56,7 +56,7 @@ interface FileTreeProps {
   onCreate?: (parentPath: string, name: string, kind: "file" | "folder", rootId: string) => void;
   /** Desktop-only: move an entry into a directory ("" = workspace root).
    *  Powers tree drag & drop and the Cut/Paste menu entries. */
-  onMove?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
+  onMove?: (entry: FSEntry, targetDirRel: string, rootId: string, targetRootId?: string) => void | Promise<void>;
   /** Desktop-only: copy an entry into a directory ("" = workspace root),
    *  auto-numbering on collision. Powers Copy/Paste + ⌘C/⌘V. */
   onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
@@ -261,19 +261,39 @@ export function FileTree(props: FileTreeProps) {
   }
 
   function handleProviderDragEnd(event: any) {
-    // Entry move (drag a file/folder onto a folder). Distinct from root
-    // reordering by the source id namespace; the backend `handleMove` guards
-    // no-ops and folder-into-itself, so we just forward valid same-root drops.
+    // Entry move (drag a file/folder onto a folder, a sibling file, or a
+    // workspace root). Distinct from root reordering by the source id
+    // namespace. Resolves the destination dir + root, then forwards to
+    // handleMove (which guards no-ops, folder-into-itself, and overwrites,
+    // and handles cross-workspace moves).
     if (isItemDndId(event?.operation?.source?.id)) {
       const src = event?.operation?.source?.data as ItemDndData | undefined;
-      const tgt = event?.operation?.target?.data as ItemDndData | undefined;
-      if (
-        !event?.canceled && src && tgt && props.onMove
-        && tgt.kind === "directory" && src.rootId === tgt.rootId
-      ) {
-        void Promise.resolve(
-          props.onMove({ name: src.name, path: src.path, kind: src.kind }, tgt.path, src.rootId),
-        ).catch(() => {});
+      const targetId = event?.operation?.target?.id;
+      if (!event?.canceled && src && props.onMove && targetId) {
+        let targetRootId: string | null = null;
+        let targetDir: string | null = null;
+        if (isItemDndId(targetId)) {
+          const tgt = event?.operation?.target?.data as ItemDndData | undefined;
+          if (tgt) {
+            targetRootId = tgt.rootId;
+            // Onto a folder → inside it; onto a file → its parent dir.
+            targetDir = tgt.kind === "directory"
+              ? tgt.path
+              : (tgt.path.includes("/") ? tgt.path.slice(0, tgt.path.lastIndexOf("/")) : "");
+          }
+        } else {
+          // Dropped on a workspace-root header → that root's top level.
+          const rootId = fromRootDndId(targetId);
+          if (rootId) {
+            targetRootId = rootId;
+            targetDir = "";
+          }
+        }
+        if (targetRootId !== null && targetDir !== null) {
+          void Promise.resolve(
+            props.onMove({ name: src.name, path: src.path, kind: src.kind }, targetDir, src.rootId, targetRootId),
+          ).catch(() => {});
+        }
       }
       return;
     }
@@ -329,10 +349,12 @@ export function FileTree(props: FileTreeProps) {
         return !canReorderRoots();
       },
     });
+    // Droppable for BOTH root reordering and as a destination for entries
+    // dragged onto the workspace header (move to that root's top level).
     const droppable = useDroppable({
       id: dndId,
       get disabled() {
-        return !canReorderRoots();
+        return !canReorderRoots() && !props.onMove;
       },
     });
 

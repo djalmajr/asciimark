@@ -27,6 +27,7 @@ let writeFileCalls: Array<{ path: string; content: string }> = [];
 let renameFileCalls: Array<{ root: string; from: string; to: string }> = [];
 let trashCalls: Array<{ root: string; rel: string }> = [];
 let copyCalls: Array<{ root: string; from: string; to: string }> = [];
+let moveAcrossCalls: Array<{ srcRoot: string; srcRel: string; dstRoot: string; dstRel: string }> = [];
 
 mock.module("./fs.ts", () => ({
   writeFile: (path: string, content: string) => {
@@ -56,6 +57,9 @@ mock.module("./fs.ts", () => ({
   createDir: async () => {},
   copyPath: async (root: string, from: string, to: string) => {
     copyCalls.push({ root, from, to });
+  },
+  movePath: async (srcRoot: string, srcRel: string, dstRoot: string, dstRel: string) => {
+    moveAcrossCalls.push({ srcRoot, srcRel, dstRoot, dstRel });
   },
 }));
 
@@ -148,6 +152,7 @@ beforeEach(() => {
   renameFileCalls = [];
   trashCalls = [];
   copyCalls = [];
+  moveAcrossCalls = [];
   localStorage.clear();
 });
 
@@ -310,6 +315,32 @@ describe("createFolder.handleMove", () => {
     // a.md already lives at root → moving into "" yields the same path.
     await folder.handleMove({ name: "a.md", path: "a.md", kind: "file" }, "", "root1");
     expect(renameFileCalls).toEqual([]);
+  });
+
+  it("uses move_path (not rename) when moving across workspace roots", async () => {
+    const paneManager = createPaneManager();
+    const state = makeState(paneManager);
+    const folder = createFolder({
+      rootPaths: () => new Map([["root1", "/work/root1"], ["root2", "/work/root2"]]),
+      setRootPaths: () => {},
+      state,
+      watcher,
+    });
+
+    const flush = async () => {
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    };
+    const p = folder.handleMove({ name: "a.md", path: "a.md", kind: "file" }, "sub", "root1", "root2");
+    await flush();
+    resolveReadTree?.([]); // refreshRoot(root1)
+    await flush();
+    resolveReadTree?.([]); // refreshRoot(root2)
+    await p;
+
+    expect(moveAcrossCalls).toEqual([
+      { srcRoot: "/work/root1", srcRel: "a.md", dstRoot: "/work/root2", dstRel: "sub/a.md" },
+    ]);
+    expect(renameFileCalls).toEqual([]); // not a within-root rename
   });
 
   it("refuses to move a folder into its own subtree", async () => {

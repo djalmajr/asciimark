@@ -3,7 +3,7 @@ import { writeText as clipboardWriteText } from "@tauri-apps/plugin-clipboard-ma
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import type { AppState } from "@asciimark/ui/composables/create-app-state.ts";
-import { copyPath, createDir, createFile, openDirectory, readTree, renameFile, trashPath, writeFile } from "./fs.ts";
+import { copyPath, createDir, createFile, movePath, openDirectory, readTree, renameFile, trashPath, writeFile } from "./fs.ts";
 import { joinRelative, nextAvailableName, withDefaultExtension } from "./fs-paths.ts";
 import type { FileWatcher } from "./watcher.ts";
 
@@ -296,38 +296,54 @@ export function createFolder(deps: FolderDeps) {
     return relative;
   }
 
-  /** Move `entry` into the directory at `targetDirRel` ("" = workspace root).
-   *  Reuses `rename_file`; refuses to drop a folder into itself and rewrites
-   *  the open file's path like handleRename. */
+  /** Move `entry` into the directory at `targetDirRel` ("" = workspace root)
+   *  of `targetRootId` (defaults to `rootId` for within-root moves). Within a
+   *  root it reuses `rename_file`; across roots it uses `move_path`. Refuses
+   *  to drop a folder into itself and rewrites the open file's path. */
   async function handleMove(
     entry: FSEntry,
     targetDirRel: string,
     rootId: string,
+    targetRootId: string = rootId,
   ): Promise<void> {
     const rootPath = rootPaths().get(rootId);
-    if (!rootPath) throw new Error("Root not found");
+    const targetRootPath = rootPaths().get(targetRootId);
+    if (!rootPath || !targetRootPath) throw new Error("Root not found");
     const newRelative = joinRelative(targetDirRel, entry.name);
-    if (newRelative === entry.path) return;
+    const sameRoot = targetRootId === rootId;
+    if (sameRoot && newRelative === entry.path) return;
     if (
       entry.kind === "directory"
+      && sameRoot
       && (targetDirRel === entry.path || targetDirRel.startsWith(entry.path + "/"))
     ) {
       throw new Error("Cannot move a folder into itself");
     }
 
     const targetPane = state.paneManager.activePane();
-    await renameFile(rootPath, entry.path, newRelative);
+    if (sameRoot) {
+      await renameFile(rootPath, entry.path, newRelative);
+    } else {
+      await movePath(rootPath, entry.path, targetRootPath, newRelative);
+    }
 
+    // Keep the open file pointing at its new location (path, and root when it
+    // crossed workspaces).
     const sel = targetPane.selectedFile();
     if (sel && targetPane.selectedRootId() === rootId) {
+      const rewrite = (path: string) => {
+        if (!sameRoot) targetPane.setSelectedRootId(targetRootId);
+        targetPane.setSelectedFile({ ...sel, path });
+      };
       if (sel.path === entry.path) {
-        targetPane.setSelectedFile({ ...sel, path: newRelative });
+        rewrite(newRelative);
       } else if (sel.path.startsWith(entry.path + "/")) {
-        targetPane.setSelectedFile({ ...sel, path: newRelative + sel.path.slice(entry.path.length) });
+        rewrite(newRelative + sel.path.slice(entry.path.length));
       }
     }
 
     await refreshRoot(rootId);
+    if (!sameRoot) await refreshRoot(targetRootId);
   }
 
   /** Copy `entry` into the directory at `targetDirRel` ("" = workspace root).

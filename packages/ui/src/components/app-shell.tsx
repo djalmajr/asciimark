@@ -100,7 +100,7 @@ interface AppShellProps {
   /** Desktop-only: commit an inline-created file/folder under `parentPath`. */
   onCreate?: (parentPath: string, name: string, kind: "file" | "folder", rootId: string) => void;
   /** Desktop-only: move an entry into a directory ("" = workspace root). */
-  onMove?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
+  onMove?: (entry: FSEntry, targetDirRel: string, rootId: string, targetRootId?: string) => void | Promise<void>;
   /** Desktop-only: copy an entry into a directory ("" = workspace root). */
   onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
   /**

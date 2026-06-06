@@ -1442,7 +1442,7 @@ export function App() {
       onOpenRecentFolder={handleOpenRecentFolder}
       onRename={folder.handleRename}
       onCreate={handleCreate}
-      onMove={(entry, targetDirRel, rootId) => folder.handleMove(entry, targetDirRel, rootId)}
+      onMove={(entry, targetDirRel, rootId, targetRootId) => folder.handleMove(entry, targetDirRel, rootId, targetRootId)}
       onCopy={(entry, targetDirRel, rootId) => {
         void folder.handleCopy(entry, targetDirRel, rootId);
       }}
