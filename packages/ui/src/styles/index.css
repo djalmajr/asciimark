@@ -809,7 +809,9 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: hsl(var(--muted-foreground));
+  /* Same text colour as the regular folder/file rows (.tree-item) — the root
+     is no longer dimmed relative to its children. */
+  color: hsl(var(--foreground));
   cursor: pointer;
   user-select: none;
 }
