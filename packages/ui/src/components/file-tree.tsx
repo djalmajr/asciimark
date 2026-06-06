@@ -60,7 +60,7 @@ interface FileTreeProps {
   onMove?: (entry: FSEntry, targetDirRel: string, rootId: string, targetRootId?: string) => void | Promise<void>;
   /** Desktop-only: copy an entry into a directory ("" = workspace root),
    *  auto-numbering on collision. Powers Copy/Paste + ⌘C/⌘V. */
-  onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
+  onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string, targetRootId?: string) => void | Promise<void>;
   onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   onReorderRoots?: (newOrder: string[]) => void;
   onSelect: (entry: FSEntry, rootId: string) => void;
@@ -510,10 +510,11 @@ export function FileTree(props: FileTreeProps) {
                 </Show>
                 <Show when={(() => {
                   const c = app.moveClipboard();
-                  if (!c || c.rootId !== rootId) return false;
-                  // Cut to root only makes sense for a nested entry; Copy to
-                  // root is fine for anything (auto-numbered on collision).
-                  return c.mode === "cut" ? (props.onMove && c.entry.path.includes("/")) : !!props.onCopy;
+                  if (!c) return false;
+                  if (c.mode === "copy") return !!props.onCopy;
+                  // Cut to this root's top makes sense unless it is already a
+                  // top-level entry of THIS same root (a no-op).
+                  return props.onMove && (c.rootId !== rootId || c.entry.path.includes("/"));
                 })()}>
                   <DropdownMenuItem
                     class="gap-2"
@@ -522,7 +523,7 @@ export function FileTree(props: FileTreeProps) {
                       if (!c) return;
                       app.setMoveClipboard(null);
                       const handler = c.mode === "cut" ? props.onMove : props.onCopy;
-                      void Promise.resolve(handler?.(c.entry, "", rootId)).catch(() => {});
+                      void Promise.resolve(handler?.(c.entry, "", c.rootId, rootId)).catch(() => {});
                     }}
                   >
                     <span class="flex items-center gap-2"><IconClipboardPaste width={14} height={14} /> {m.tree_paste()}</span>

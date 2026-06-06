@@ -861,8 +861,12 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   background: hsl(var(--bg-hover));
 }
 
+/* Selected workspace root — same active treatment as a selected folder/file
+   row (.tree-item.selected): background highlight + primary text. */
 .workspace-root-active {
-  color: hsl(var(--foreground));
+  background: hsl(var(--bg-selected));
+  color: hsl(var(--primary));
+  border-radius: 4px;
 }
 
 .workspace-root-icon {
@@ -1010,6 +1014,14 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 .tree-item.cut-pending .tree-name {
   font-style: italic;
   opacity: 0.55;
+}
+
+/* On the clipboard via Copy — the original stays, so mark it with a subtle
+   dashed outline instead of dimming it. */
+.tree-item.copy-pending {
+  outline: 1px dashed hsl(var(--primary) / 0.6);
+  outline-offset: -2px;
+  border-radius: 4px;
 }
 
 .tree-icon {

@@ -146,7 +146,7 @@ interface FileTreeItemProps {
   onMove?: (entry: FSEntry, targetDirRel: string, rootId: string, targetRootId?: string) => void | Promise<void>;
   /** Desktop-only: copy `entry` into `targetDirRel` ("" = workspace root),
    *  auto-numbering on collision. Powers the Copy/Paste menu + ⌘C/⌘V. */
-  onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
+  onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string, targetRootId?: string) => void | Promise<void>;
   /**
    * Render the per-item context menu and the three-dot dropdown
    * (Copy path / Rename / Delete / Open in New Tab). When false, the
@@ -244,12 +244,14 @@ export function FileTreeItem(props: FileTreeItemProps) {
   const isFocused = () => props.focusedPath === props.entry.path;
   const isSelected = () => props.selectedPath === props.entry.path;
   const isDirectory = () => props.entry.kind === "directory";
-  /** This entry is on the clipboard via Cut — shown italic/dimmed. (Copy
-   *  leaves the original visually intact.) */
-  const isCut = () => {
+  /** This entry is on the clipboard. Cut → italic/dimmed (it will move away);
+   *  Copy → a subtle marked outline (the original stays put). */
+  const onClipboard = (mode: "cut" | "copy") => {
     const c = app.moveClipboard();
-    return !!c && c.mode === "cut" && c.rootId === props.rootId && c.entry.path === props.entry.path;
+    return !!c && c.mode === mode && c.rootId === props.rootId && c.entry.path === props.entry.path;
   };
+  const isCut = () => onClipboard("cut");
+  const isCopy = () => onClipboard("copy");
 
   /** Directory a paste lands in: this dir if it is one, else its parent. */
   function pasteTargetDir(): string {
@@ -259,24 +261,28 @@ export function FileTreeItem(props: FileTreeItemProps) {
       : "";
   }
 
-  /** Whether the current clipboard can paste into `dir` (same root assumed). */
+  /** Whether the current clipboard can paste into `dir` of this row's root. */
   function pasteAllowed(clip: NonNullable<ReturnType<typeof app.moveClipboard>>, dir: string): boolean {
+    // Cross-workspace paste is always allowed — the backend (handleMove /
+    // handleCopy) is the source of truth and guards within-root edge cases.
+    if (clip.rootId !== props.rootId) return true;
     if (clip.mode === "cut") return canMoveInto(clip.entry, dir);
     // Copy auto-numbers on collision, so same-parent is fine; only block
     // copying a folder into its own subtree (would recurse).
     return !(clip.entry.kind === "directory" && (dir === clip.entry.path || dir.startsWith(clip.entry.path + "/")));
   }
 
-  /** Execute the pending Cut (move) or Copy into `pasteTargetDir()`. */
+  /** Execute the pending Cut (move) or Copy into `pasteTargetDir()` — into
+   *  this row's root, which may differ from the clipboard's (cross-workspace). */
   function doPaste() {
     const clip = app.moveClipboard();
-    if (!clip || clip.rootId !== props.rootId) return;
+    if (!clip) return;
     const dir = pasteTargetDir();
     if (!pasteAllowed(clip, dir)) return;
     app.setMoveClipboard(null);
     if (isDirectory()) setExpanded(true);
     const handler = clip.mode === "cut" ? props.onMove : props.onCopy;
-    void Promise.resolve(handler?.(clip.entry, dir, clip.rootId)).catch(() => {});
+    void Promise.resolve(handler?.(clip.entry, dir, clip.rootId, props.rootId)).catch(() => {});
   }
   const isEditing = () => app.editingPath() === props.entry.path;
   const indent = () => props.depth * INDENT_PER_DEPTH + BASE_PADDING;
@@ -537,7 +543,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
     }
     if (props.onMove || props.onCopy) {
       const clip = app.moveClipboard();
-      if (isDirectory() && clip && clip.rootId === props.rootId && pasteAllowed(clip, props.entry.path)) {
+      if (isDirectory() && clip && pasteAllowed(clip, props.entry.path)) {
         list.push({
           id: "paste",
           icon: <IconClipboardPaste width={14} height={14} />,
@@ -645,7 +651,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
       <ContextMenu>
         <ContextMenuTrigger
           as="div"
-          class={`tree-item ${isSelected() ? "selected" : ""} ${isDirectory() ? "directory" : "file"} ${isFocused() ? "focused" : ""} ${isCut() ? "cut-pending" : ""}`}
+          class={`tree-item ${isSelected() ? "selected" : ""} ${isDirectory() ? "directory" : "file"} ${isFocused() ? "focused" : ""} ${isCut() ? "cut-pending" : ""} ${isCopy() ? "copy-pending" : ""}`}
           data-expanded={isDirectory() ? String(expanded()) : undefined}
           data-kind={props.entry.kind}
           data-path={props.entry.path}

@@ -1443,8 +1443,8 @@ export function App() {
       onRename={folder.handleRename}
       onCreate={handleCreate}
       onMove={(entry, targetDirRel, rootId, targetRootId) => folder.handleMove(entry, targetDirRel, rootId, targetRootId)}
-      onCopy={(entry, targetDirRel, rootId) => {
-        void folder.handleCopy(entry, targetDirRel, rootId);
+      onCopy={(entry, targetDirRel, rootId, targetRootId) => {
+        void folder.handleCopy(entry, targetDirRel, rootId, targetRootId);
       }}
       onDelete={async (entry, rootId) => {
         const label = entry.kind === "directory" ? "folder" : "file";

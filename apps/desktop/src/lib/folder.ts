@@ -346,30 +346,36 @@ export function createFolder(deps: FolderDeps) {
     if (!sameRoot) await refreshRoot(targetRootId);
   }
 
-  /** Copy `entry` into the directory at `targetDirRel` ("" = workspace root).
-   *  On a name collision (notably copying into the entry's own parent) the
-   *  copy is suffixed ` (1)`, ` (2)`, … before the extension. Returns the
-   *  workspace-relative path of the created copy. */
+  /** Copy `entry` into the directory at `targetDirRel` ("" = workspace root) of
+   *  `targetRootId` (defaults to `rootId`; differs for cross-workspace copies).
+   *  On a name collision (notably copying into the entry's own parent) the copy
+   *  is suffixed ` (1)`, ` (2)`, … before the extension. Returns the new copy's
+   *  workspace-relative path. */
   async function handleCopy(
     entry: FSEntry,
     targetDirRel: string,
     rootId: string,
+    targetRootId: string = rootId,
   ): Promise<string> {
     const rootPath = rootPaths().get(rootId);
-    if (!rootPath) throw new Error("Root not found");
+    const targetRootPath = rootPaths().get(targetRootId);
+    if (!rootPath || !targetRootPath) throw new Error("Root not found");
+    const sameRoot = targetRootId === rootId;
     if (
       entry.kind === "directory"
+      && sameRoot
       && (targetDirRel === entry.path || targetDirRel.startsWith(entry.path + "/"))
     ) {
       throw new Error("Cannot copy a folder into itself");
     }
 
     const taken = (candidate: string) =>
-      state.findEntryByPath(joinRelative(targetDirRel, candidate), rootId) != null;
+      state.findEntryByPath(joinRelative(targetDirRel, candidate), targetRootId) != null;
     const name = nextAvailableName(entry.name, taken, entry.kind === "directory");
     const newRelative = joinRelative(targetDirRel, name);
-    await copyPath(rootPath, entry.path, newRelative);
-    await refreshRoot(rootId);
+    await copyPath(rootPath, entry.path, targetRootPath, newRelative);
+    await refreshRoot(targetRootId);
+    if (!sameRoot) await refreshRoot(rootId);
     return newRelative;
   }
 

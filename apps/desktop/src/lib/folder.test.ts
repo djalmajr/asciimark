@@ -26,7 +26,7 @@ let resolveReadTree: ((entries: unknown[]) => void) | undefined;
 let writeFileCalls: Array<{ path: string; content: string }> = [];
 let renameFileCalls: Array<{ root: string; from: string; to: string }> = [];
 let trashCalls: Array<{ root: string; rel: string }> = [];
-let copyCalls: Array<{ root: string; from: string; to: string }> = [];
+let copyCalls: Array<{ srcRoot: string; from: string; dstRoot: string; to: string }> = [];
 let moveAcrossCalls: Array<{ srcRoot: string; srcRel: string; dstRoot: string; dstRel: string }> = [];
 
 mock.module("./fs.ts", () => ({
@@ -55,8 +55,8 @@ mock.module("./fs.ts", () => ({
   openDirectory: async () => null,
   createFile: async () => {},
   createDir: async () => {},
-  copyPath: async (root: string, from: string, to: string) => {
-    copyCalls.push({ root, from, to });
+  copyPath: async (srcRoot: string, from: string, dstRoot: string, to: string) => {
+    copyCalls.push({ srcRoot, from, dstRoot, to });
   },
   movePath: async (srcRoot: string, srcRel: string, dstRoot: string, dstRel: string) => {
     moveAcrossCalls.push({ srcRoot, srcRel, dstRoot, dstRel });
@@ -377,7 +377,7 @@ describe("createFolder.handleCopy", () => {
     resolveReadTree!([]);
     const rel = await p;
 
-    expect(copyCalls).toEqual([{ root: "/work/root1", from: "a.md", to: "sub/a.md" }]);
+    expect(copyCalls).toEqual([{ srcRoot: "/work/root1", from: "a.md", dstRoot: "/work/root1", to: "sub/a.md" }]);
     expect(rel).toBe("sub/a.md");
   });
 
@@ -400,7 +400,7 @@ describe("createFolder.handleCopy", () => {
     resolveReadTree!([]);
     const rel = await p;
 
-    expect(copyCalls).toEqual([{ root: "/work/root1", from: "a.md", to: "a (1).md" }]);
+    expect(copyCalls).toEqual([{ srcRoot: "/work/root1", from: "a.md", dstRoot: "/work/root1", to: "a (1).md" }]);
     expect(rel).toBe("a (1).md");
   });
 

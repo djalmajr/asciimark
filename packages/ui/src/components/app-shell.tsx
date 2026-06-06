@@ -102,7 +102,7 @@ interface AppShellProps {
   /** Desktop-only: move an entry into a directory ("" = workspace root). */
   onMove?: (entry: FSEntry, targetDirRel: string, rootId: string, targetRootId?: string) => void | Promise<void>;
   /** Desktop-only: copy an entry into a directory ("" = workspace root). */
-  onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string) => void | Promise<void>;
+  onCopy?: (entry: FSEntry, targetDirRel: string, rootId: string, targetRootId?: string) => void | Promise<void>;
   /**
    * Resolve an `<img>` src in the rendered document. Desktop maps relative
    * paths to Tauri asset URLs so the webview can load files from disk.

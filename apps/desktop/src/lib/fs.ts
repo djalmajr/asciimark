@@ -89,11 +89,12 @@ export async function createDir(
 }
 
 export async function copyPath(
-  rootPath: string,
+  srcRoot: string,
   fromRelative: string,
+  dstRoot: string,
   toRelative: string,
 ): Promise<void> {
-  await invoke("copy_path", { root: rootPath, fromRelative, toRelative });
+  await invoke("copy_path", { srcRoot, fromRelative, dstRoot, toRelative });
 }
 
 export async function movePath(
