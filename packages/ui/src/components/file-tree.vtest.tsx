@@ -9,10 +9,13 @@ import { FileTree } from "./file-tree.tsx";
 // Minimal AppState stub — only the fields FileTreeItem actually reads.
 function makeAppStub(): AppState {
   const [editingPath, setEditingPath] = createSignal<string | null>(null);
+  const [creatingAt, setCreatingAt] = createSignal<null>(null);
   const [selectedFile, setSelectedFile] = createSignal<FSEntry | null>(null);
   return {
     editingPath,
     setEditingPath,
+    creatingAt,
+    setCreatingAt,
     selectedFile,
     setSelectedFile,
     isDirty: () => false,

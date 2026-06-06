@@ -51,6 +51,8 @@ mock.module("./fs.ts", () => ({
       resolveReadTree = (entries) => resolve(entries);
     }),
   openDirectory: async () => null,
+  createFile: async () => {},
+  createDir: async () => {},
 }));
 
 mock.module("@tauri-apps/plugin-clipboard-manager", () => ({

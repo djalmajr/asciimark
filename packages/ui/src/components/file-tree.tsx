@@ -3,6 +3,8 @@ import { DragDropProvider, DragOverlay, useDraggable, useDroppable } from "@dnd-
 import * as m from "@asciimark/i18n";
 import { useLocale } from "@asciimark/i18n/solid";
 import { FileTreeItem } from "./file-tree-item.tsx";
+import { CreateRow } from "./create-row.tsx";
+import { useApp } from "../context/app-context.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +18,8 @@ import ExpandIcon from "~icons/fluent/arrow-between-down-20-filled";
 import IconSlidersHorizontal from "~icons/lucide/sliders-horizontal";
 import IconX from "~icons/lucide/x";
 import IconFolderOpen from "~icons/lucide/folder-open";
+import IconFolder from "~icons/lucide/folder";
+import IconFile from "~icons/lucide/file";
 import { fileKind, isSupportedFile } from "@asciimark/core/utils.ts";
 import type { FSEntry, WorkspaceRoot } from "@asciimark/core/types.ts";
 
@@ -40,6 +44,9 @@ interface FileTreeProps {
   onCopyPath?: (entry: FSEntry, rootId: string) => void | Promise<void>;
   onRevealInFileManager?: (entry: FSEntry, rootId: string) => void | Promise<void>;
   onRename?: (entry: FSEntry, rootId: string, newName: string) => Promise<void>;
+  /** Desktop-only: commit an inline-created file/folder under `parentPath`
+   *  ("" = workspace root). When omitted, New File/Folder entries are hidden. */
+  onCreate?: (parentPath: string, name: string, kind: "file" | "folder", rootId: string) => void;
   onDelete?: (entry: FSEntry, rootId: string) => Promise<void>;
   onReorderRoots?: (newOrder: string[]) => void;
   onSelect: (entry: FSEntry, rootId: string) => void;
@@ -121,6 +128,7 @@ function fromRootDndId(dndId: unknown): string | null {
 }
 
 export function FileTree(props: FileTreeProps) {
+  const app = useApp();
   const [filterText, setFilterText] = createSignal("");
   const [focusedPath, setFocusedPath] = createSignal<string | null>(null);
   const [expandActions, setExpandActions] = createSignal<Record<string, ExpandAction>>({});
@@ -389,6 +397,23 @@ export function FileTree(props: FileTreeProps) {
           </div>
         </div>
         <Show when={!propsRoot.root().collapsed}>
+          <Show when={app.creatingAt()?.parentPath === "" && app.creatingAt()?.rootId === rootId}>
+            <CreateRow
+              kind={app.creatingAt()!.kind}
+              indent={24}
+              icon={
+                app.creatingAt()!.kind === "folder"
+                  ? <IconFolder width={14} height={14} />
+                  : <IconFile width={14} height={14} />
+              }
+              onCommit={(name) => {
+                const c = app.creatingAt()!;
+                app.setCreatingAt(null);
+                props.onCreate?.(c.parentPath, name, c.kind, rootId);
+              }}
+              onCancel={() => app.setCreatingAt(null)}
+            />
+          </Show>
           <For each={propsRoot.root().entries}>
             {(entry) => (
               <FileTreeItem
@@ -409,6 +434,7 @@ export function FileTree(props: FileTreeProps) {
                 onSelect={(e) => props.onSelect(e, rootId)}
                 onOpenInNewTab={props.onOpenInNewTab ? (e) => props.onOpenInNewTab!(e, rootId) : undefined}
                 onDoubleClickFile={props.onDoubleClickFile ? (e) => props.onDoubleClickFile!(e, rootId) : undefined}
+                onCreate={props.onCreate}
                 showItemMenu={props.showItemMenu}
               />
             )}

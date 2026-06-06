@@ -768,6 +768,19 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   pointer-events: none;
 }
 
+.create-row .tree-create-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid hsl(var(--ring));
+  border-radius: 4px;
+  padding: 0 4px;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  outline: none;
+}
+
 .file-tree-list {
   flex: 1;
   overflow: auto;

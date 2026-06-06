@@ -15,6 +15,9 @@ import IconPencil from "~icons/lucide/pencil";
 import IconTrash from "~icons/lucide/trash-2";
 import IconFolderOpen from "~icons/lucide/folder-open";
 import IconExternalLink from "~icons/lucide/external-link";
+import IconFilePlus from "~icons/lucide/file-plus";
+import IconFolderPlus from "~icons/lucide/folder-plus";
+import { CreateRow } from "./create-row.tsx";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -107,6 +110,10 @@ interface FileTreeItemProps {
   onOpenInNewTab?: (entry: FSEntry) => void;
   /** Double-click on file — pin the tab. */
   onDoubleClickFile?: (entry: FSEntry) => void;
+  /** Desktop-only: commit a new file/folder created inline under
+   *  `parentPath` (workspace-relative, "" = root). When omitted (web/
+   *  extension), the New File / New Folder entries are hidden. */
+  onCreate?: (parentPath: string, name: string, kind: "file" | "folder", rootId: string) => void;
   /**
    * Render the per-item context menu and the three-dot dropdown
    * (Copy path / Rename / Delete / Open in New Tab). When false, the
@@ -222,6 +229,15 @@ export function FileTreeItem(props: FileTreeItemProps) {
     }
   });
 
+  // Auto-expand a directory when an inline create targets it, so the CreateRow
+  // placeholder is visible even if the folder was collapsed.
+  createEffect(() => {
+    const c = app.creatingAt();
+    if (c && c.parentPath === props.entry.path && c.rootId === props.rootId && isDirectory() && !expanded()) {
+      setExpanded(true);
+    }
+  });
+
   function handleClick() {
     if (isEditing()) return;
     if (isDirectory()) {
@@ -285,6 +301,33 @@ export function FileTreeItem(props: FileTreeItemProps) {
   // the entries (icon / label / action / shortcut / order) live here once.
   const menuEntries = (): TreeMenuEntry[] => {
     const list: TreeMenuEntry[] = [];
+    if (props.onCreate) {
+      const dir = isDirectory()
+        ? props.entry.path
+        : props.entry.path.includes("/")
+          ? props.entry.path.slice(0, props.entry.path.lastIndexOf("/"))
+          : "";
+      const startCreate = (kind: "file" | "folder") => {
+        if (isDirectory()) setExpanded(true);
+        app.setCreatingAt({ parentPath: dir, rootId: props.rootId, kind });
+      };
+      list.push(
+        {
+          id: "new-file",
+          icon: <IconFilePlus width={14} height={14} />,
+          label: () => "New File",
+          onSelect: () => startCreate("file"),
+          itemClass: "gap-2",
+        },
+        {
+          id: "new-folder",
+          icon: <IconFolderPlus width={14} height={14} />,
+          label: () => "New Folder",
+          onSelect: () => startCreate("folder"),
+          itemClass: "gap-2",
+        },
+      );
+    }
     if (!isDirectory() && props.onOpenInNewTab) {
       list.push({
         id: "open-in-new-tab",
@@ -522,8 +565,25 @@ export function FileTreeItem(props: FileTreeItemProps) {
           </ContextMenuContent>
         </Show>
       </ContextMenu>
-      <Show when={isDirectory() && (expanded() || props.forceExpand) && props.entry.children}>
-        <For each={props.entry.children}>
+      <Show when={isDirectory() && (expanded() || props.forceExpand)}>
+        <Show when={app.creatingAt()?.parentPath === props.entry.path && app.creatingAt()?.rootId === props.rootId}>
+          <CreateRow
+            kind={app.creatingAt()!.kind}
+            indent={(props.depth + 1) * INDENT_PER_DEPTH + BASE_PADDING}
+            icon={
+              app.creatingAt()!.kind === "folder"
+                ? <IconFolder width={14} height={14} />
+                : <IconFilePlain width={14} height={14} />
+            }
+            onCommit={(name) => {
+              const c = app.creatingAt()!;
+              app.setCreatingAt(null);
+              props.onCreate?.(c.parentPath, name, c.kind, props.rootId);
+            }}
+            onCancel={() => app.setCreatingAt(null)}
+          />
+        </Show>
+        <For each={props.entry.children ?? []}>
           {(child) => (
             <FileTreeItem
               depth={props.depth + 1}
@@ -543,6 +603,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
               onSelect={props.onSelect}
               onOpenInNewTab={props.onOpenInNewTab}
               onDoubleClickFile={props.onDoubleClickFile}
+              onCreate={props.onCreate}
               showItemMenu={props.showItemMenu}
             />
           )}

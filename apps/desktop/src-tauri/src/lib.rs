@@ -239,6 +239,16 @@ async fn trash_path(root: String, relative: String) -> Result<(), String> {
     trash::delete(&target_canon).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn create_file(root: String, relative: String) -> Result<(), String> {
+    create_file_impl(&PathBuf::from(&root), &relative)
+}
+
+#[tauri::command]
+async fn create_dir(root: String, relative: String) -> Result<(), String> {
+    create_dir_impl(&PathBuf::from(&root), &relative)
+}
+
 /// Read a file by joining `relative` to `root`. Public for testing.
 pub fn read_file_relative_impl(root: &Path, relative: &str) -> Result<String, String> {
     let full = root.join(relative);
@@ -433,6 +443,66 @@ pub fn rename_file_impl(
     }
 
     std::fs::rename(&from, &to).map_err(|e| e.to_string())
+}
+
+/// Reject traversal/absolute paths, create the parent directory chain, and
+/// return the canonicalized parent — guaranteed to live inside `root`.
+pub fn ensure_parent_within_root(root: &Path, relative: &str) -> Result<PathBuf, String> {
+    let rel = Path::new(relative);
+    if rel.file_name().is_none()
+        || rel.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        })
+    {
+        return Err("invalid path".into());
+    }
+    let root_canon = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let target = root_canon.join(rel);
+    let parent = target.parent().ok_or_else(|| "invalid destination".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let parent_canon = std::fs::canonicalize(parent).map_err(|e| e.to_string())?;
+    if !parent_canon.starts_with(&root_canon) {
+        return Err("destination escapes workspace root".into());
+    }
+    Ok(parent_canon)
+}
+
+/// Create an empty file at `relative` inside `root`, creating parent dirs as
+/// needed. Validates traversal and refuses to overwrite an existing file.
+pub fn create_file_impl(root: &Path, relative: &str) -> Result<(), String> {
+    let parent_canon = ensure_parent_within_root(root, relative)?;
+    let name = Path::new(relative)
+        .file_name()
+        .ok_or_else(|| "invalid file name".to_string())?;
+    let target = parent_canon.join(name);
+    if target.exists() {
+        return Err("file already exists".into());
+    }
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Create a directory at `relative` inside `root`, creating parent dirs as
+/// needed. Validates traversal and refuses to overwrite an existing entry.
+pub fn create_dir_impl(root: &Path, relative: &str) -> Result<(), String> {
+    let parent_canon = ensure_parent_within_root(root, relative)?;
+    let name = Path::new(relative)
+        .file_name()
+        .ok_or_else(|| "invalid directory name".to_string())?;
+    let target = parent_canon.join(name);
+    if target.exists() {
+        return Err("directory already exists".into());
+    }
+    std::fs::create_dir(&target).map_err(|e| e.to_string())
 }
 
 struct WatcherHolder(
@@ -825,6 +895,8 @@ pub fn run() {
             write_file,
             rename_file,
             trash_path,
+            create_file,
+            create_dir,
             watch_paths,
             stop_watching,
             watch_dirs,
@@ -864,6 +936,69 @@ mod tests {
 
     fn names(entries: &[DirEntry]) -> Vec<&str> {
         entries.iter().map(|e| e.name.as_str()).collect()
+    }
+
+    #[test]
+    fn create_file_makes_an_empty_file() {
+        let dir = tempdir().unwrap();
+        create_file_impl(dir.path(), "notes.md").unwrap();
+        let p = dir.path().join("notes.md");
+        assert!(p.exists());
+        assert_eq!(fs::read_to_string(&p).unwrap(), "");
+    }
+
+    #[test]
+    fn create_file_makes_parent_dirs() {
+        let dir = tempdir().unwrap();
+        create_file_impl(dir.path(), "a/b/c.md").unwrap();
+        assert!(dir.path().join("a/b/c.md").exists());
+    }
+
+    #[test]
+    fn create_file_refuses_to_overwrite() {
+        let dir = tempdir().unwrap();
+        touch(&dir.path().join("x.md"));
+        fs::write(dir.path().join("x.md"), b"keep").unwrap();
+        let err = create_file_impl(dir.path(), "x.md").unwrap_err();
+        assert!(err.contains("already exists"), "got: {err}");
+        assert_eq!(fs::read_to_string(dir.path().join("x.md")).unwrap(), "keep");
+    }
+
+    #[test]
+    fn create_file_rejects_parent_traversal() {
+        let dir = tempdir().unwrap();
+        let err = create_file_impl(dir.path(), "../escape.md").unwrap_err();
+        assert_eq!(err, "invalid path");
+        assert!(!dir.path().parent().unwrap().join("escape.md").exists());
+    }
+
+    #[test]
+    fn create_file_rejects_absolute_path() {
+        let dir = tempdir().unwrap();
+        let err = create_file_impl(dir.path(), "/tmp/escape.md").unwrap_err();
+        assert_eq!(err, "invalid path");
+    }
+
+    #[test]
+    fn create_dir_makes_nested_dirs() {
+        let dir = tempdir().unwrap();
+        create_dir_impl(dir.path(), "a/b/c").unwrap();
+        assert!(dir.path().join("a/b/c").is_dir());
+    }
+
+    #[test]
+    fn create_dir_refuses_to_overwrite() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("d")).unwrap();
+        let err = create_dir_impl(dir.path(), "d").unwrap_err();
+        assert!(err.contains("already exists"), "got: {err}");
+    }
+
+    #[test]
+    fn create_dir_rejects_traversal() {
+        let dir = tempdir().unwrap();
+        let err = create_dir_impl(dir.path(), "../evil").unwrap_err();
+        assert_eq!(err, "invalid path");
     }
 
     #[test]

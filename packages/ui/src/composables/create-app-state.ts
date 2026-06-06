@@ -83,6 +83,14 @@ import { fileKind, isMdFile, UNSUPPORTED_CONTENT } from "@asciimark/core/utils.t
 
 export type ThemeMode = "system" | "light" | "dark";
 
+/** An in-progress inline create in the file tree. `parentPath` is the
+ *  workspace-relative directory the new entry goes into ("" = workspace root). */
+export type CreatingAt = {
+  parentPath: string;
+  rootId: string;
+  kind: "file" | "folder";
+};
+
 interface AppStateConfig {
   applyTheme: (mode: ThemeMode) => void;
   convertAdoc: (opts: ConvertOptions) => Promise<ConvertResult>;
@@ -119,6 +127,7 @@ export function createAppState(config: AppStateConfig) {
   const setFrontmatter = ((value: unknown) =>
     (paneManager.activePane().setFrontmatter as (v: unknown) => unknown)(value)) as Setter<Frontmatter | null>;
   const [editingPath, setEditingPath] = createSignal<string | null>(null);
+  const [creatingAt, setCreatingAt] = createSignal<CreatingAt | null>(null);
   const loading = (): boolean => paneManager.activePane().loading();
   const setLoading = ((value: unknown) =>
     (paneManager.activePane().setLoading as (v: unknown) => unknown)(value)) as Setter<boolean>;
@@ -823,6 +832,7 @@ export function createAppState(config: AppStateConfig) {
     html,
     frontmatter,
     editingPath,
+    creatingAt,
     loading,
     navIndex,
     navStack,
@@ -872,6 +882,7 @@ export function createAppState(config: AppStateConfig) {
     setHtml,
     setFrontmatter,
     setEditingPath,
+    setCreatingAt,
     setLoading,
     setNavIndex,
     setNavStack,
