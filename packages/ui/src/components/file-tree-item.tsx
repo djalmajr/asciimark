@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, Show, For, onMount, onCleanup, type JSX } from "solid-js";
+import { createEffect, createMemo, Show, For, onMount, onCleanup, type JSX } from "solid-js";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import { fileKind, fileManagerKind } from "@asciimark/core/utils.ts";
 import * as m from "@asciimark/i18n";
@@ -22,7 +22,7 @@ import IconFilePlus from "~icons/lucide/file-plus";
 import IconFolderPlus from "~icons/lucide/folder-plus";
 import { useDraggable, useDroppable } from "@dnd-kit/solid";
 import { CreateRow } from "./create-row.tsx";
-import { type ItemDndData, toItemDndId } from "./file-tree.tsx";
+import { type ItemDndData, siblingDropParent, toItemDndId } from "./tree-dnd.ts";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -391,7 +391,14 @@ export function FileTreeItem(props: FileTreeItemProps) {
       return !props.onMove;
     },
   });
-  const isDropTarget = () => droppable.isDropTarget();
+  // This folder is the resolved drop destination (hovered directly, or the
+  // parent of a hovered sibling). The dashed affordance goes on the whole
+  // subtree (the wrapper), matching the workspace-root drop zone.
+  const isDropFolder = () => {
+    if (!isDirectory()) return false;
+    const s = siblingDropParent();
+    return !!s && s.path === props.entry.path && s.rootId === props.rootId;
+  };
   const setItemRef = (el: HTMLDivElement) => {
     itemRef = el;
     draggable.ref(el);
@@ -630,11 +637,15 @@ export function FileTreeItem(props: FileTreeItemProps) {
   const menuEnabled = () => props.showItemMenu !== false;
 
   return (
-    <div class="tree-item-wrapper" style={isVisible() ? undefined : { display: "none" }}>
+    <div
+      class="tree-item-wrapper"
+      classList={{ "drop-into": isDropFolder() }}
+      style={isVisible() ? undefined : { display: "none" }}
+    >
       <ContextMenu>
         <ContextMenuTrigger
           as="div"
-          class={`tree-item ${isSelected() ? "selected" : ""} ${isDirectory() ? "directory" : "file"} ${isFocused() ? "focused" : ""} ${isDropTarget() ? (isDirectory() ? "drop-target" : "drop-sibling") : ""} ${isCut() ? "cut-pending" : ""}`}
+          class={`tree-item ${isSelected() ? "selected" : ""} ${isDirectory() ? "directory" : "file"} ${isFocused() ? "focused" : ""} ${isCut() ? "cut-pending" : ""}`}
           data-expanded={isDirectory() ? String(expanded()) : undefined}
           data-kind={props.entry.kind}
           data-path={props.entry.path}

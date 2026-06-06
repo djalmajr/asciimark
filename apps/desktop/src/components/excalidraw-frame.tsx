@@ -142,8 +142,11 @@ export function ExcalidrawFrame(props: ExcalidrawFrameProps) {
     <Frame
       name="excalidraw"
       // TODO(prod): serve the guest as a bundled static asset instead of the
-      // app-excalidraw vite dev server.
-      src="http://localhost:4204/"
+      // app-excalidraw vite dev server. Match the host's hostname (127.0.0.1
+      // vs localhost are different origins): the z-frame needs same-origin
+      // with the guest, so deriving it from window.location avoids the
+      // "Blocked a frame ... Protocols, domains, and ports must match" error.
+      src={`http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:4204/`}
       style="width:100%;height:100%;border:0;display:block"
       drawingData={scene()}
       save={save}

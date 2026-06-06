@@ -3,6 +3,7 @@ import { DragDropProvider, DragOverlay, useDraggable, useDroppable } from "@dnd-
 import * as m from "@asciimark/i18n";
 import { useLocale } from "@asciimark/i18n/solid";
 import { FileTreeItem } from "./file-tree-item.tsx";
+import { type ItemDndData, isItemDndId, setSiblingDropParent, siblingDropParent } from "./tree-dnd.ts";
 import { CreateRow } from "./create-row.tsx";
 import { useApp } from "../context/app-context.tsx";
 import {
@@ -140,25 +141,6 @@ function fromRootDndId(dndId: unknown): string | null {
   return dndId.slice(ROOT_DND_PREFIX.length);
 }
 
-// File-tree entries are draggable/droppable via the same @dnd-kit provider as
-// the workspace roots. Their drag id namespaces by root + path; the entry's
-// details ride along in the draggable/droppable `data`.
-const ITEM_DND_PREFIX = "item::";
-
-export function toItemDndId(rootId: string, path: string): string {
-  return `${ITEM_DND_PREFIX}${rootId}::${path}`;
-}
-
-function isItemDndId(dndId: unknown): boolean {
-  return typeof dndId === "string" && dndId.startsWith(ITEM_DND_PREFIX);
-}
-
-export interface ItemDndData {
-  rootId: string;
-  path: string;
-  name: string;
-  kind: FSEntry["kind"];
-}
 
 export function FileTree(props: FileTreeProps) {
   const app = useApp();
@@ -260,7 +242,41 @@ export function FileTree(props: FileTreeProps) {
     setActiveDragRootId(sourceRootId);
   }
 
+  // While dragging an entry, mark the *parent folder* of a hovered sibling file
+  // as the drop zone (dashed) — not the sibling row itself. Dropping straight
+  // onto a folder leaves siblingDropParent null (that folder shows its own
+  // solid highlight instead).
+  function handleProviderDragOver(event: any) {
+    if (!isItemDndId(event?.operation?.source?.id)) {
+      setSiblingDropParent(null);
+      return;
+    }
+    const tgtId = event?.operation?.target?.id;
+    // Resolve the *destination folder* — a folder hovered directly, the parent
+    // of a hovered sibling file, or a workspace root's top level. Highlighting
+    // that single folder (not the hovered row) keeps the indicator stable: a
+    // folder and the files inside it all map to the same destination, so there
+    // is no flicker as the pointer moves between them.
+    if (isItemDndId(tgtId)) {
+      const tgt = event?.operation?.target?.data as ItemDndData | undefined;
+      if (tgt) {
+        const dir = tgt.kind === "directory"
+          ? tgt.path
+          : (tgt.path.includes("/") ? tgt.path.slice(0, tgt.path.lastIndexOf("/")) : "");
+        setSiblingDropParent({ path: dir, rootId: tgt.rootId });
+        return;
+      }
+    }
+    const rootId = fromRootDndId(tgtId);
+    if (rootId) {
+      setSiblingDropParent({ path: "", rootId });
+      return;
+    }
+    setSiblingDropParent(null);
+  }
+
   function handleProviderDragEnd(event: any) {
+    setSiblingDropParent(null);
     // Entry move (drag a file/folder onto a folder, a sibling file, or a
     // workspace root). Distinct from root reordering by the source id
     // namespace. Resolves the destination dir + root, then forwards to
@@ -358,8 +374,13 @@ export function FileTree(props: FileTreeProps) {
       },
     });
 
-    const isDropTarget = () =>
-      droppable.isDropTarget() && activeDragRootId() !== rootId;
+    const isDropTarget = () => {
+      // Root reorder hover, OR a sibling drop whose parent is this root's top
+      // level (path "") — same dashed affordance as a folder sibling drop.
+      if (droppable.isDropTarget() && activeDragRootId() !== rootId) return true;
+      const s = siblingDropParent();
+      return !!s && s.path === "" && s.rootId === rootId;
+    };
     const isRootCollapsed = () => propsRoot.root().collapsed;
     const currentExpandAction = () => expandActions()[rootId] ?? null;
 
@@ -389,6 +410,16 @@ export function FileTree(props: FileTreeProps) {
       });
     }
 
+    function toggleRoot() {
+      setExpandActions((prev) => {
+        if (!(rootId in prev)) return prev;
+        const next = { ...prev };
+        delete next[rootId];
+        return next;
+      });
+      props.onToggleRootCollapsed?.(rootId);
+    }
+
     return (
       <div
         class="workspace-root-block"
@@ -396,25 +427,25 @@ export function FileTree(props: FileTreeProps) {
           "drag-over": isDropTarget(),
           "dragging": draggable.isDragging(),
         }}
-        ref={droppable.ref}
       >
         <div
           class="workspace-root-header"
           classList={{
-            "workspace-root-active": props.selectedRootId === rootId,
+            "workspace-root-active": activeRootId() === rootId && focusedPath() === "",
             "draggable-root": canReorderRoots(),
           }}
-          ref={draggable.ref}
+          ref={(el: HTMLDivElement) => {
+            draggable.ref(el);
+            droppable.ref(el);
+          }}
           onClick={() => {
             if (Date.now() < suppressRootClickUntil) return;
-            setExpandActions((prev) => {
-              if (!(rootId in prev)) return prev;
-              const next = { ...prev };
-              delete next[rootId];
-              return next;
-            });
-            props.onToggleRootCollapsed?.(rootId);
+            // Match child folders: a row click selects the root (so ⌘V targets
+            // its top level); expand/collapse is the chevron's (or dbl-click's)
+            // job.
+            selectNode("", rootId);
           }}
+          onDblClick={() => toggleRoot()}
         >
           <div class="workspace-root-main">
             <Show when={canReorderRoots()}>
@@ -426,7 +457,13 @@ export function FileTree(props: FileTreeProps) {
                 onClick={(e: MouseEvent) => e.stopPropagation()}
               />
             </Show>
-            <span class="tree-icon">
+            <span
+              class="tree-icon tree-chevron"
+              onClick={(e: MouseEvent) => {
+                e.stopPropagation();
+                toggleRoot();
+              }}
+            >
               <IconChevronRight
                 width={14}
                 height={14}
@@ -893,6 +930,7 @@ export function FileTree(props: FileTreeProps) {
         <Show when={hasAnyEntries()} fallback={<div class="file-tree-empty">{(useLocale(), m.tree_no_files_found())}</div>}>
           <DragDropProvider
             onDragStart={handleProviderDragStart}
+            onDragOver={handleProviderDragOver}
             onDragEnd={handleProviderDragEnd}
           >
             <For each={rootIds()}>
