@@ -869,6 +869,9 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   background: hsl(var(--bg-selected));
   color: hsl(var(--primary));
   border-radius: 4px;
+  /* Same focus ring a selected tree row gets (.tree-item.focused). */
+  outline: 1px solid hsl(var(--ring) / 0.55);
+  outline-offset: -2px;
 }
 
 .workspace-root-icon {
