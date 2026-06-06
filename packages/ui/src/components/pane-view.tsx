@@ -11,7 +11,7 @@ import type { FavoriteFile } from "@asciimark/core/favorites.ts";
 import type { AppState } from "../composables/create-app-state.ts";
 import type { PaneStore } from "../composables/create-pane-store.ts";
 import { ContentToolbar } from "./content-toolbar.tsx";
-import { Editor } from "./editor.tsx";
+import { Editor, type EditorApi } from "./editor.tsx";
 import { EditorToolbar } from "./editor-toolbar.tsx";
 import { EmptyState } from "./empty-state.tsx";
 import { MediaViewer } from "./media-viewer.tsx";
@@ -350,6 +350,11 @@ export function PaneView(props: PaneViewProps) {
               syncScrollTargetVersion={editorSyncTargetVersion()}
               scrollToLine={editorScrollToLine()}
               scrollToLineVersion={editorScrollToLineVersion()}
+              onReady={(api) => {
+                // Ad-hoc handle on the pane so the host (⌘I / inline overlay)
+                // can read the selection and apply AI edits to THIS pane.
+                (pane() as PaneStore & { editorApi?: EditorApi }).editorApi = api;
+              }}
               redoTrigger={editorRedoTrigger()}
               searchOpen={s.editorSearchOpen()}
               undoTrigger={editorUndoTrigger()}

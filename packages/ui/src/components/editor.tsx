@@ -59,6 +59,25 @@ interface EditorProps {
   onHistoryStateChange: (historyState: { canRedo: boolean; canUndo: boolean }) => void;
   onScrollRatioChange: (ratio: number) => void;
   onSearchOpenChange: (open: boolean) => void;
+  /** Hands the host an imperative handle once the view is created (DJA-13/14):
+   *  read the selection/cursor, anchor the inline overlay, and apply AI edits.
+   *  New pattern (not the prop-driven scrollToLine) — kept narrow on purpose. */
+  onReady?: (api: EditorApi) => void;
+}
+
+/** Imperative editor handle for the AI surfaces (DJA-13/14). `replaceRange`
+ *  applies a USER edit (fires `onChange` → reconvert/preview), so it must NOT
+ *  use the `externalContentSwap` annotation. */
+export interface EditorApi {
+  /** Current selection + its text, or null when the view is gone. */
+  getSelection(): { from: number; to: number; text: string } | null;
+  /** Replace [from,to) with `insert` and place the cursor after it. */
+  replaceRange(from: number, to: number, insert: string): void;
+  /** Viewport coords of a document offset, for anchoring the inline overlay. */
+  coordsAtPos(pos: number): { left: number; top: number; bottom: number } | null;
+  /** The current cursor offset (selection head). */
+  getCursorOffset(): number;
+  focus(): void;
 }
 
 class VisibleWhitespaceWidget extends WidgetType {
@@ -342,6 +361,32 @@ export function Editor(props: EditorProps) {
 
     view = new EditorView({ state, parent: containerRef });
     emitHistoryState(state);
+
+    props.onReady?.({
+      getSelection: () => {
+        if (!view) return null;
+        const sel = view.state.selection.main;
+        return {
+          from: sel.from,
+          to: sel.to,
+          text: view.state.doc.sliceString(sel.from, sel.to),
+        };
+      },
+      replaceRange: (from, to, insert) => {
+        // User edit (not externalContentSwap) so onChange fires and the
+        // preview reconverts.
+        view?.dispatch({
+          changes: { from, to, insert },
+          selection: { anchor: from + insert.length },
+        });
+      },
+      coordsAtPos: (pos) => {
+        const c = view?.coordsAtPos(pos);
+        return c ? { left: c.left, top: c.top, bottom: c.bottom } : null;
+      },
+      getCursorOffset: () => view?.state.selection.main.head ?? 0,
+      focus: () => view?.focus(),
+    });
 
     const scrollEl = view.scrollDOM;
     let scrollRaf = 0;

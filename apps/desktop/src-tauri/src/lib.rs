@@ -5,6 +5,24 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+// AI provider API keys (OS keychain) + ai.json config IO (DJA-11E).
+// Imported by simple name so the IPC-contract check (scripts/check-ipc-contract.sh)
+// sees them as registered commands.
+mod ai_keychain;
+use ai_keychain::{
+    ai_delete_api_key, ai_get_api_key, ai_read_config, ai_set_api_key, ai_write_config,
+};
+
+// MCP client manager — connect to N MCP servers over stdio/HTTP; the AI
+// tool-calling loop discovers their tools via ai_mcp_list_tools and invokes
+// them via ai_mcp_call_tool. Imported by simple name so the IPC-contract check
+// (scripts/check-ipc-contract.sh) sees the commands as registered.
+mod ai_mcp;
+use ai_mcp::{
+    ai_mcp_call_tool, ai_mcp_connect, ai_mcp_disconnect, ai_mcp_list_servers, ai_mcp_list_tools,
+    McpManager,
+};
+
 // Pure-Rust helpers split out of this file so the Miri sub-crate
 // (`tools/miri-helpers-tests`) can exercise them without pulling in
 // the full Tauri dep graph. The `ctor` macro inside
@@ -995,6 +1013,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // When a second instance opens with file args, emit an event
             // so the frontend can navigate to the file.
@@ -1011,6 +1030,7 @@ pub fn run() {
         }))
         .manage(WatcherHolder(Mutex::new(None)))
         .manage(DirWatcherHolder(Mutex::new(None)))
+        .manage(McpManager::default())
         .invoke_handler(tauri::generate_handler![
             open_directory_dialog,
             read_dir,
@@ -1033,6 +1053,16 @@ pub fn run() {
             stop_watching,
             watch_dirs,
             stop_watching_dirs,
+            ai_set_api_key,
+            ai_get_api_key,
+            ai_delete_api_key,
+            ai_read_config,
+            ai_write_config,
+            ai_mcp_connect,
+            ai_mcp_disconnect,
+            ai_mcp_list_servers,
+            ai_mcp_list_tools,
+            ai_mcp_call_tool,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

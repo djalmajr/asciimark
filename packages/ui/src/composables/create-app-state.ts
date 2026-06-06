@@ -7,6 +7,9 @@ import {
 } from "solid-js";
 import type { FSEntry, QualifiedPath, WorkspaceRoot } from "@asciimark/core/types.ts";
 import { createPaneManager, type PaneManager } from "./create-pane-manager.ts";
+import { createAiChatStore } from "./create-ai-chat-store.ts";
+import { createAiInlineStore } from "./create-ai-inline-store.ts";
+import type { AIProvider, AITool } from "@asciimark/ai/types.ts";
 import type { ConvertOptions, ConvertResult } from "@asciimark/core/converter.ts";
 import type { Frontmatter } from "@asciimark/core/frontmatter.ts";
 import {
@@ -113,6 +116,14 @@ interface AppStateConfig {
    *  manager keeps standalone callers (tests, the storybook ext if
    *  any) working without any boilerplate. */
   paneManager?: PaneManager;
+  /** Builds the active AI provider for chat/inline/diagram, or null when none
+   *  is configured. The single DI seam every AI surface consumes. M1 hosts
+   *  inject the MockProvider; DJA-11F swaps in a real engine. */
+  createAIProvider?: () => AIProvider | null;
+  /** Resolves the tools the chat may call this turn (MCP servers via the Rust
+   *  manager + in-process app tools). Injected by the host so packages/ui stays
+   *  free of Tauri. Resolved lazily per send. */
+  getAITools?: () => AITool[] | Promise<AITool[]>;
 }
 
 export { FontFamilies, FontSizes };
@@ -440,6 +451,29 @@ export function createAppState(config: AppStateConfig) {
   function triggerPreviewFind() {
     setPreviewSearchOpen(true);
     setPreviewFindTrigger((value) => value + 1);
+  }
+
+  // ── AI assistant (DJA-11D) ─────────────────────────────────────────
+  // One shared chat store + the AI panel's active-tab and composer-focus
+  // signals, so the sidebar (DJA-12), inline actions (DJA-13) and
+  // diagram-from-text (DJA-14) all drive a single place. The provider is
+  // injected by the host (MockProvider in M1; a real engine in DJA-11F).
+  const aiChat = createAiChatStore({
+    getProvider: () => config.createAIProvider?.() ?? null,
+    ...(config.getAITools ? { getTools: config.getAITools } : {}),
+  });
+  // Inline overlay (DJA-13): floating ⌘I widget on the editor selection.
+  const aiInline = createAiInlineStore({
+    getProvider: () => config.createAIProvider?.() ?? null,
+  });
+  const [aiActiveTab, setAiActiveTab] = createSignal<
+    "toc" | "backlinks" | "ai"
+  >("toc");
+  const [aiComposerFocusTrigger, setAiComposerFocusTrigger] = createSignal(0);
+  /** Front the AI segment and pulse the composer-focus trigger (⌘L). */
+  function focusAiComposer() {
+    setAiActiveTab("ai");
+    setAiComposerFocusTrigger((value) => value + 1);
   }
 
   function handleClearRecentFiles() {
@@ -828,6 +862,15 @@ export function createAppState(config: AppStateConfig) {
     // PaneView per pane and the host (app.tsx) can wire shortcuts
     // to splitFromActive / setActivePane.
     paneManager,
+
+    // AI assistant (DJA-11D) — shared chat store + panel tab/focus controls
+    aiChat,
+    aiInline,
+    aiActiveTab,
+    setAiActiveTab,
+    aiComposerFocusTrigger,
+    setAiComposerFocusTrigger,
+    focusAiComposer,
 
     // Signals (getter + setter)
     autoRefresh,

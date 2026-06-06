@@ -20,6 +20,7 @@ import IconColumns from "~icons/lucide/columns-2";
 import IconMenu from "~icons/lucide/menu";
 import IconAppWindow from "~icons/lucide/app-window";
 import IconRefreshCw from "~icons/lucide/refresh-cw";
+import IconSettings from "~icons/lucide/settings";
 import IconSun from "~icons/lucide/sun";
 import IconLogOut from "~icons/lucide/log-out";
 import IconMinimize2 from "~icons/lucide/minimize-2";
@@ -86,6 +87,9 @@ interface ToolbarProps {
   /** Open the About dialog. Wired to a menu item; if omitted the
    *  item is hidden (extension passes nothing). */
   onAbout?: () => void;
+  /** Open the app Settings dialog. Wired to a menu item; if omitted
+   *  the item is hidden (extension passes nothing). */
+  onOpenSettings?: () => void;
   /** Toggle the split editor (open second pane / collapse). When
    *  omitted, the toolbar split button is hidden — handy for
    *  platforms that don't support the feature. */
@@ -368,8 +372,17 @@ export function Toolbar(props: ToolbarProps) {
           || props.onCheckForUpdates
           || props.onReleaseNotes
           || props.onAbout
+          || props.onOpenSettings
         }>
           <DropdownMenuSeparator />
+        </Show>
+        {/* App settings — opens the Settings dialog. Hidden when the host
+            doesn't provide a handler (e.g. the Chrome extension). */}
+        <Show when={props.onOpenSettings}>
+          <DropdownMenuItem onSelect={props.onOpenSettings}>
+            <IconSettings width={14} height={14} />
+            {(useLocale(), m.menu_settings())}
+          </DropdownMenuItem>
         </Show>
         <Show when={props.hasFile && props.onExportPdf}>
           <DropdownMenuItem onSelect={props.onExportPdf}>

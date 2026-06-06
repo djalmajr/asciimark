@@ -20,6 +20,13 @@ import { PaneSplitter } from "./pane-splitter.tsx";
 import { fromTabDndId } from "./tab-bar.tsx";
 import { TocPanel } from "./toc-panel.tsx";
 import { BacklinksList, type BacklinkEntry } from "./backlinks-list.tsx";
+import { AiPanel } from "./ai-panel.tsx";
+import { AiInlineOverlay } from "./ai-inline-overlay.tsx";
+import {
+  SettingsDialog,
+  type IndexingTier,
+  type SettingsAiProvider,
+} from "./settings-dialog.tsx";
 import { QuickOpen } from "./quick-open.tsx";
 import { ShortcutsHelp } from "./shortcuts-help.tsx";
 import { CommandPalette } from "./command-palette.tsx";
@@ -75,6 +82,49 @@ interface AppShellProps {
   onGoBack: () => void;
   onGoForward: () => void;
   onLoadFile: (entry: FSEntry, rootId: string) => void;
+  /** Label for the AI provider chip (e.g. "Ollama · local"), or null/undefined
+   *  → "No provider". DJA-12. */
+  aiProviderLabel?: string | null;
+  /** Opens Settings → AI (AI panel empty-state CTA). Wired by DJA-15. */
+  onOpenSettings?: () => void;
+  // Settings modal (DJA-15)
+  settingsOpen?: boolean;
+  onSettingsClose?: () => void;
+  aiProviders?: SettingsAiProvider[];
+  aiSelectedModel?: string | null;
+  /** MCP servers (config + live status) for the Settings → MCP section, plus
+   *  add/remove/toggle handlers. Forwarded to SettingsDialog. */
+  mcpServers?: Array<{
+    id: string;
+    name?: string;
+    transport: "stdio" | "http";
+    enabled: boolean;
+    connected: boolean;
+    toolCount: number;
+    command?: string;
+    url?: string;
+    error?: string;
+  }>;
+  onSaveMcpServer?: (server: {
+    id: string;
+    name?: string;
+    transport: "stdio" | "http";
+    command?: string;
+    args?: string[];
+    url?: string;
+    headers?: Record<string, string>;
+    enabled: boolean;
+  }) => void | Promise<void>;
+  onRemoveMcpServer?: (id: string) => void | Promise<void>;
+  onToggleMcpServer?: (id: string, enabled: boolean) => void | Promise<void>;
+  indexingTier?: IndexingTier;
+  onIndexingTierChange?: (tier: IndexingTier) => void;
+  onListModels?: (providerId: string, apiKey: string) => Promise<string[]>;
+  onSaveAiProvider?: (opts: {
+    providerId: string;
+    apiKey: string;
+    modelId: string;
+  }) => void | Promise<void>;
   onOpenInNewTab?: (entry: FSEntry, rootId: string) => void;
   onDoubleClickFile?: (entry: FSEntry, rootId: string) => void;
   onNavigate: (path: string, fragment?: string | null) => void;
@@ -406,6 +456,26 @@ export function AppShell(props: AppShellProps) {
         open={!!props.shortcutsHelpOpen}
         onClose={() => props.onShortcutsHelpClose?.()}
       />
+      <AiInlineOverlay store={s.aiInline} />
+      <Show when={props.settingsOpen}>
+        <SettingsDialog
+          open={!!props.settingsOpen}
+          onClose={() => props.onSettingsClose?.()}
+          aiProviders={props.aiProviders ?? []}
+          selectedModel={props.aiSelectedModel ?? null}
+          indexingTier={props.indexingTier ?? "lite"}
+          onTierChange={(t) => props.onIndexingTierChange?.(t)}
+          onListModels={(id, key) =>
+            props.onListModels?.(id, key) ?? Promise.resolve([])
+          }
+          onSaveProvider={(o) => props.onSaveAiProvider?.(o)}
+          mcpServers={props.mcpServers ?? []}
+          onSaveMcpServer={(s) => props.onSaveMcpServer?.(s)}
+          onRemoveMcpServer={(id) => props.onRemoveMcpServer?.(id)}
+          onToggleMcpServer={(id, enabled) => props.onToggleMcpServer?.(id, enabled)}
+          appVersion={props.aboutVersion}
+        />
+      </Show>
       <Show when={props.aboutVersion}>
         <AboutDialog
           open={!!props.aboutOpen}
@@ -497,6 +567,7 @@ export function AppShell(props: AppShellProps) {
             onReleaseNotes={props.onReleaseNotes}
             onShortcutsHelp={props.onShortcutsHelpOpen}
             onAbout={props.aboutVersion ? props.onAboutOpen : undefined}
+            onOpenSettings={props.onOpenSettings}
             isSplit={visiblePanes().length > 1}
             onToggleSplit={
               props.enableSplit === false
@@ -688,6 +759,16 @@ export function AppShell(props: AppShellProps) {
             contentRef={(el) => { tocContainerRef = el; }}
             panelRef={(el) => { tocPanelRef = el; }}
             backlinksCount={s.activeBacklinks().length}
+            activeTab={s.aiActiveTab()}
+            onActiveTabChange={s.setAiActiveTab}
+            aiSlot={
+              <AiPanel
+                store={s.aiChat}
+                focusTrigger={s.aiComposerFocusTrigger()}
+                providerLabel={props.aiProviderLabel}
+                onOpenSettings={props.onOpenSettings}
+              />
+            }
             backlinksSlot={
               <BacklinksList
                 entries={s.activeBacklinks().map<BacklinkEntry>((path) => ({

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { createConverter } from "@asciimark/core/converter.ts";
 import ConvertWorker from "@asciimark/core/convert-worker.ts?worker";
 import type { IndexedFile } from "@asciimark/core/file-index.ts";
@@ -11,8 +11,39 @@ import { invoke } from "./lib/chaos-invoke.ts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { createAppState } from "@asciimark/ui/composables/create-app-state.ts";
+import { createMockProvider } from "@asciimark/ai/mock-provider.ts";
+import type { AIConfig, MCPServerConfig } from "@asciimark/ai/config-schema.ts";
+import type { AIProvider, AITool } from "@asciimark/ai/types.ts";
+import { resolveModel } from "@asciimark/ai/resolve-model.ts";
+import { resolveCredential } from "@asciimark/ai/resolve-credential.ts";
+import { createProvider as createAiProvider } from "@asciimark/ai/adapter.ts";
+import { withBuiltins } from "@asciimark/ai/builtin-providers.ts";
+import {
+  getStoredAiEngine,
+  getStoredAiModel,
+  setStoredAiModel,
+  getStoredIndexingTier,
+  setStoredIndexingTier,
+  type IndexingTier,
+} from "@asciimark/core/ai-prefs.ts";
+import { fetchModels } from "@asciimark/ai/model-catalog.ts";
+import { loadAIConfig, loadUserAIConfig, saveAIConfig } from "./lib/ai-config.ts";
+import { buildMcpTools } from "@asciimark/ai/mcp-tools.ts";
+import {
+  createMcpBridge,
+  connectEnabledServers,
+  connectMcpServer,
+  disconnectMcpServer,
+  listMcpServers,
+  type McpServerStatus,
+} from "./lib/ai-mcp.ts";
+import { buildInProcessTools } from "./lib/ai-tools.ts";
+import { getApiKey, setApiKey } from "./lib/ai-credentials.ts";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import type { TabStore } from "@asciimark/ui/composables/create-tab-store.ts";
 import { AppShell } from "@asciimark/ui/components/app-shell.tsx";
+import type { EditorApi } from "@asciimark/ui/components/editor.tsx";
+import { mermaidBlockAtOffset } from "@asciimark/core/block-detection.ts";
 import * as m from "@asciimark/i18n";
 import { switchLocale, useLocale, locales as i18nLocales } from "@asciimark/i18n/solid";
 import { getStoredTheme, applyTheme } from "./main.tsx";
@@ -51,18 +82,290 @@ import { UpdateAvailableDialog } from "@asciimark/ui/components/update-available
 import { ReleaseNotesDialog } from "@asciimark/ui/components/release-notes-dialog.tsx";
 import { findInFiles } from "./lib/fs.ts";
 import { WindowControls } from "./components/window-controls.tsx";
-import { FigmaCaptureButton } from "./components/figma-capture-button.tsx";
+// Capture-to-Figma button is hidden for now (per request). Re-enable by
+// restoring this import and its render site below.
+// import { FigmaCaptureButton } from "./components/figma-capture-button.tsx";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 const { convertAdoc, convertMarkdown } = createConverter(new ConvertWorker());
 
 export function App() {
+  // AI provider catalog (ai.json merged over builtins). Starts with builtins so
+  // a provider is resolvable before the async load completes; refreshed onMount.
+  const [aiConfig, setAiConfig] = createSignal<AIConfig>(withBuiltins({}));
+
+  // MCP (Model Context Protocol) client. The Rust manager (src-tauri/ai_mcp.rs)
+  // owns connections for both transports; this bridge drives tool discovery and
+  // `mcpStatuses` mirrors live connection state for the settings UI.
+  const mcpBridge = createMcpBridge();
+  const [mcpStatuses, setMcpStatuses] = createSignal<McpServerStatus[]>([]);
+  // An AI-proposed edit awaiting the user's Accept/Reject (app__propose_edit).
+  const [pendingEdit, setPendingEdit] = createSignal<{
+    find: string;
+    replace: string;
+    apply: () => void;
+    reject: () => void;
+  } | null>(null);
+
+  // Build the active provider from ai-prefs + config + keychain. Falls back to
+  // the mock when no model is configured, so the AI surfaces always work.
+  function buildAIProvider(): AIProvider {
+    const modelId = getStoredAiModel();
+    if (!modelId) return createMockProvider();
+    const resolved = resolveModel(aiConfig(), modelId);
+    if (!resolved) return createMockProvider();
+    // If the user put the key in ai.json (config), use it directly and skip the
+    // keychain — avoids touching the OS keychain when it isn't the source.
+    const hasConfigKey = !!resolved.provider.options?.apiKey;
+    return createAiProvider(
+      getStoredAiEngine(),
+      resolved,
+      () =>
+        resolveCredential(
+          resolved.providerId,
+          resolved.provider,
+          hasConfigKey
+            ? {}
+            : { keychain: (id) => getApiKey(id).then((k) => k ?? undefined) },
+        ),
+      // Route provider HTTP through Rust (Tauri HTTP plugin) to avoid the
+      // WKWebView CORS wall on direct cross-origin calls.
+      { fetch: tauriFetch as unknown as typeof globalThis.fetch },
+    );
+  }
+
+  /** Provider chip label: real "Provider · model" when configured, else mock. */
+  const aiProviderLabel = (): string => {
+    const modelId = getStoredAiModel();
+    const resolved = modelId ? resolveModel(aiConfig(), modelId) : null;
+    return resolved ? `${resolved.provider.name} · ${resolved.modelId}` : "Mock (dev)";
+  };
+
   const state = createAppState({
     applyTheme,
     convertAdoc,
     convertMarkdown,
     getStoredTheme,
     printPage: () => invoke("print_webview"),
+    // Real engine driven by ai-prefs + keychain, with a mock fallback (DJA-11F).
+    createAIProvider: () => buildAIProvider(),
+    // Tools for the chat tool-calling loop: in-process app tools + MCP servers.
+    getAITools,
+  });
+
+  // Load the AI config (ai.json merged with builtins) once at startup, then
+  // connect any enabled MCP servers so their tools are ready for the first turn.
+  onMount(async () => {
+    try {
+      const cfg = await loadAIConfig();
+      setAiConfig(cfg);
+      await connectEnabledServers(cfg.mcp);
+      await refreshMcpStatuses();
+    } catch {
+      // keep the builtins-only config
+    }
+  });
+
+  // ── Settings modal (DJA-15) ────────────────────────────────────────────
+  const [settingsOpen, setSettingsOpen] = createSignal(false);
+  const [indexingTier, setIndexingTier] = createSignal<IndexingTier>(
+    getStoredIndexingTier(),
+  );
+
+  const aiProviders = createMemo(() =>
+    Object.entries(aiConfig().provider).map(([id, p]) => ({
+      id,
+      name: p.name,
+      models: Object.keys(p.models),
+    })),
+  );
+
+  async function listAiModels(providerId: string, apiKey: string): Promise<string[]> {
+    const provider = aiConfig().provider[providerId];
+    const baseURL = provider?.options?.baseURL;
+    if (!baseURL) return Object.keys(provider?.models ?? {});
+    const list = await fetchModels(
+      baseURL,
+      apiKey || undefined,
+      provider?.options?.headers,
+      tauriFetch as unknown as typeof globalThis.fetch,
+    );
+    return list.map((mdl) => mdl.id);
+  }
+
+  async function saveAiProvider(opts: {
+    providerId: string;
+    apiKey: string;
+    modelId: string;
+  }): Promise<void> {
+    const { providerId, apiKey, modelId } = opts;
+    if (apiKey) await setApiKey(providerId, apiKey); // key → OS keychain only
+    const modelRef = `${providerId}/${modelId}`;
+    // Read-modify-write so sibling sections (mcp servers, other providers)
+    // survive instead of being clobbered. Keys never touch ai.json.
+    const user = await loadUserAIConfig();
+    await saveAIConfig(
+      JSON.stringify({
+        ...user,
+        model: modelRef,
+        provider: {
+          ...(user.provider ?? {}),
+          [providerId]: { models: { [modelId]: { name: modelId } } },
+        },
+      }),
+    );
+    setStoredAiModel(modelRef);
+    setAiConfig(await loadAIConfig());
+  }
+
+  // ── MCP servers + in-process tools (chat tool-calling) ─────────────────
+  /** Tools the chat may call: in-process app tools (active doc / workspace,
+   *  edits via Accept/Reject) plus every connected MCP server's tools. */
+  async function getAITools(): Promise<AITool[]> {
+    const inProcess = buildInProcessTools({
+      getActiveDoc: () => state.editorContent(),
+      getActiveDocPath: () => state.selectedFile()?.path ?? null,
+      getWorkspaceRoots: () => Array.from(rootPaths().values()),
+      proposeEdit: proposeAiEdit,
+    });
+    let mcp: AITool[] = [];
+    try {
+      mcp = await buildMcpTools(mcpBridge);
+    } catch {
+      mcp = [];
+    }
+    return [...inProcess, ...mcp];
+  }
+
+  /** Stage an AI-proposed find→replace edit for the user to Accept/Reject.
+   *  Resolves to a short status the model sees; never mutates without approval. */
+  function proposeAiEdit(edit: { find: string; replace: string }): Promise<string> {
+    const content = state.editorContent();
+    const idx = content.indexOf(edit.find);
+    if (idx < 0) {
+      return Promise.resolve("The text to replace was not found in the document.");
+    }
+    const pane = state.paneManager.activePane() as { editorApi?: EditorApi };
+    const api = pane.editorApi;
+    if (!api) {
+      return Promise.resolve("No active editor is available to apply the edit.");
+    }
+    const from = idx;
+    const to = idx + edit.find.length;
+    return new Promise<string>((resolve) => {
+      setPendingEdit({
+        find: edit.find,
+        replace: edit.replace,
+        apply: () => {
+          api.replaceRange(from, to, edit.replace);
+          setPendingEdit(null);
+          resolve("The edit was applied by the user.");
+        },
+        reject: () => {
+          setPendingEdit(null);
+          resolve("The user rejected the proposed edit.");
+        },
+      });
+    });
+  }
+
+  async function refreshMcpStatuses(): Promise<void> {
+    try {
+      setMcpStatuses(await listMcpServers());
+    } catch {
+      // best-effort UI state
+    }
+  }
+
+  /** Persist the MCP server list into ai.json, preserving sibling sections. */
+  async function persistMcpServers(servers: MCPServerConfig[]): Promise<void> {
+    const user = await loadUserAIConfig();
+    await saveAIConfig(JSON.stringify({ ...user, mcp: servers }));
+    setAiConfig(await loadAIConfig());
+  }
+
+  async function saveMcpServer(input: {
+    id: string;
+    name?: string;
+    transport: "stdio" | "http";
+    command?: string;
+    args?: string[];
+    url?: string;
+    headers?: Record<string, string>;
+    enabled: boolean;
+  }): Promise<void> {
+    // Preserve headers already set (e.g. via ai.json) when an edit doesn't
+    // re-supply them, so a UI tweak never silently drops an auth token.
+    const existing = (aiConfig().mcp ?? []).find((s) => s.id === input.id);
+    const headers = input.headers ?? existing?.headers;
+    const next: MCPServerConfig = {
+      id: input.id,
+      transport: input.transport,
+      enabled: input.enabled,
+      ...(input.name ? { name: input.name } : {}),
+      ...(input.command ? { command: input.command } : {}),
+      ...(input.args && input.args.length ? { args: input.args } : {}),
+      ...(input.url ? { url: input.url } : {}),
+      ...(headers && Object.keys(headers).length ? { headers } : {}),
+    };
+    const servers = [...(aiConfig().mcp ?? [])];
+    const idx = servers.findIndex((s) => s.id === input.id);
+    if (idx >= 0) servers[idx] = next;
+    else servers.push(next);
+    await persistMcpServers(servers);
+    try {
+      if (next.enabled !== false) await connectMcpServer(next);
+      else await disconnectMcpServer(next.id);
+    } catch (e) {
+      console.warn(`[mcp] connect failed for "${next.id}":`, e);
+    }
+    await refreshMcpStatuses();
+  }
+
+  async function removeMcpServer(id: string): Promise<void> {
+    const servers = (aiConfig().mcp ?? []).filter((s) => s.id !== id);
+    try {
+      await disconnectMcpServer(id);
+    } catch {
+      // not connected
+    }
+    await persistMcpServers(servers);
+    await refreshMcpStatuses();
+  }
+
+  async function toggleMcpServer(id: string, enabled: boolean): Promise<void> {
+    const servers = (aiConfig().mcp ?? []).map((s) =>
+      s.id === id ? { ...s, enabled } : s,
+    );
+    await persistMcpServers(servers);
+    const server = servers.find((s) => s.id === id);
+    if (server) {
+      try {
+        if (enabled) await connectMcpServer(server);
+        else await disconnectMcpServer(id);
+      } catch (e) {
+        console.warn(`[mcp] toggle failed for "${id}":`, e);
+      }
+    }
+    await refreshMcpStatuses();
+  }
+
+  /** View model for the settings MCP list: persisted config + live status. */
+  const mcpServersView = createMemo(() => {
+    const statuses = new Map(mcpStatuses().map((s) => [s.id, s]));
+    return (aiConfig().mcp ?? []).map((s) => {
+      const st = statuses.get(s.id);
+      return {
+        id: s.id,
+        name: s.name,
+        transport: s.transport,
+        enabled: s.enabled !== false,
+        connected: st?.connected ?? false,
+        toolCount: st?.toolCount ?? 0,
+        command: s.command,
+        url: s.url,
+      };
+    });
   });
 
   // TabStore lives inside each PaneStore (see `createPaneStore`). The
@@ -1043,6 +1346,13 @@ export function App() {
         run: () => { setAboutOpen(true); },
       },
       {
+        id: "help.settings",
+        group: "Help",
+        title: m.command_settings(),
+        shortcut: { mac: ["⌘", ","], other: ["Ctrl", ","] },
+        run: () => { setSettingsOpen(true); },
+      },
+      {
         id: "view.toggleReaderMode",
         group: "View",
         title: m.command_toggle_reader_mode(),
@@ -1358,6 +1668,47 @@ export function App() {
         state.setReaderMode((v) => !v);
       }
 
+      // ⌘L / Ctrl+L: open & focus the AI chat in the sidebar (DJA-12)
+      if (mod && !e.shiftKey && (e.key === "l" || e.key === "L")) {
+        e.preventDefault();
+        state.focusAiComposer();
+      }
+
+      // ⌘, / Ctrl+,: open Settings (DJA-15)
+      if (mod && !e.shiftKey && e.key === ",") {
+        e.preventDefault();
+        setSettingsOpen(true);
+      }
+
+      // ⌘I / Ctrl+I: inline AI overlay. A mermaid block under the cursor wins
+      // (diagram mode, DJA-14); otherwise a non-empty selection (DJA-13).
+      if (mod && !e.shiftKey && (e.key === "i" || e.key === "I")) {
+        e.preventDefault();
+        const pane = state.paneManager.activePane() as { editorApi?: EditorApi };
+        const api = pane.editorApi;
+        if (!api) return;
+        const content = state.editorContent();
+        const cursor = api.getCursorOffset();
+        const block = mermaidBlockAtOffset(content, cursor);
+        if (block) {
+          state.aiInline.openForDiagram(
+            {
+              contentFrom: block.contentFrom,
+              contentTo: block.contentTo,
+              isEmpty: block.isEmpty,
+              existingSource: block.existingSource,
+            },
+            api.coordsAtPos(cursor),
+            api.replaceRange,
+          );
+          return;
+        }
+        const sel = api.getSelection();
+        if (sel && sel.text.trim()) {
+          state.aiInline.openFor(sel, api.coordsAtPos(sel.to), api.replaceRange);
+        }
+      }
+
       // Ctrl+Tab / Ctrl+Shift+Tab: cycle tabs
       if (e.ctrlKey && e.key === "Tab") {
         e.preventDefault();
@@ -1384,6 +1735,23 @@ export function App() {
       <AppShell
       state={state}
       hasRoot={rootPaths().size > 0}
+      aiProviderLabel={aiProviderLabel()}
+      onOpenSettings={() => setSettingsOpen(true)}
+      settingsOpen={settingsOpen()}
+      onSettingsClose={() => setSettingsOpen(false)}
+      aiProviders={aiProviders()}
+      aiSelectedModel={getStoredAiModel()}
+      indexingTier={indexingTier()}
+      onIndexingTierChange={(t) => {
+        setIndexingTier(t);
+        setStoredIndexingTier(t);
+      }}
+      onListModels={listAiModels}
+      onSaveAiProvider={saveAiProvider}
+      mcpServers={mcpServersView()}
+      onSaveMcpServer={saveMcpServer}
+      onRemoveMcpServer={removeMcpServer}
+      onToggleMcpServer={toggleMcpServer}
       showRecentHistory={true}
       showEditorTabs={rootPaths().size > 0}
       showNavButtons={rootPaths().size > 0}
@@ -1503,7 +1871,68 @@ export function App() {
         void openUrl(RELEASES_INDEX_URL);
       }}
     />
-    {import.meta.env.DEV && <FigmaCaptureButton />}
+    {/* Capture-to-Figma button hidden for now (per request).
+        Restore: {import.meta.env.DEV && <FigmaCaptureButton />} + its import. */}
+    {/* AI edit approval (app__propose_edit): the assistant never mutates the
+        document without an explicit Accept here. */}
+    <Show when={pendingEdit()}>
+      {(edit) => (
+        <div
+          role="dialog"
+          aria-label={m.ai_panel_title()}
+          style={{
+            position: "fixed",
+            bottom: "16px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            "z-index": "60",
+            "max-width": "min(640px, 92vw)",
+            display: "flex",
+            "flex-direction": "column",
+            gap: "10px",
+            padding: "12px 14px",
+            "border-radius": "10px",
+            border: "1px solid hsl(var(--border))",
+            background: "hsl(var(--popover))",
+            color: "hsl(var(--popover-foreground))",
+            "box-shadow": "0 10px 30px rgba(0, 0, 0, 0.25)",
+          }}
+        >
+          <div
+            style={{
+              "font-size": "13px",
+              "line-height": "1.45",
+              "white-space": "pre-wrap",
+              "word-break": "break-word",
+              "max-height": "40vh",
+              "overflow-y": "auto",
+            }}
+          >
+            <span style={{ "text-decoration": "line-through", opacity: "0.6" }}>
+              {edit().find}
+            </span>
+            <span style={{ opacity: "0.6" }}>{"  →  "}</span>
+            <span style={{ color: "hsl(var(--primary))" }}>{edit().replace}</span>
+          </div>
+          <div style={{ display: "flex", "justify-content": "flex-end", gap: "8px" }}>
+            <button
+              type="button"
+              class="inline-flex items-center justify-center rounded-md h-8 px-3 text-sm hover:bg-accent hover:text-accent-foreground border border-input"
+              onClick={() => edit().reject()}
+            >
+              {m.ai_inline_reject()}
+            </button>
+            <button
+              type="button"
+              class="inline-flex items-center justify-center rounded-md h-8 px-3 text-sm bg-primary text-primary-foreground hover:opacity-90"
+              onClick={() => edit().apply()}
+            >
+              {m.ai_inline_accept()}
+            </button>
+          </div>
+        </div>
+      )}
+    </Show>
     </>
   );
 }
