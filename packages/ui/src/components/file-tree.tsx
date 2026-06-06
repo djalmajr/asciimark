@@ -143,7 +143,16 @@ function fromRootDndId(dndId: unknown): string | null {
 export function FileTree(props: FileTreeProps) {
   const app = useApp();
   const [filterText, setFilterText] = createSignal("");
+  // The single "active" tree node — a file OR a folder. Drives the `.selected`
+  // highlight and keyboard target alike, so a folder selects exactly like a
+  // file (and can be selected with no file open). Synced from the open file
+  // and updated on click / keyboard navigation.
   const [focusedPath, setFocusedPath] = createSignal<string | null>(null);
+  const [activeRootId, setActiveRootId] = createSignal<string | null>(null);
+  const selectNode = (path: string | null, rootId: string | null) => {
+    setFocusedPath(path);
+    setActiveRootId(rootId);
+  };
   const [expandActions, setExpandActions] = createSignal<Record<string, ExpandAction>>({});
   const [activeDragRootId, setActiveDragRootId] = createSignal<string | null>(null);
   // Expanded state lives outside FileTreeItem so it survives entry reconciliation.
@@ -506,8 +515,8 @@ export function FileTree(props: FileTreeProps) {
                 onRevealInFileManager={props.onRevealInFileManager}
                 onRename={props.onRename}
                 onDelete={props.onDelete}
-                onSelect={(e) => props.onSelect(e, rootId)}
-                onFocusEntry={(e) => setFocusedPath(e.path)}
+                onSelect={(e) => { selectNode(e.path, rootId); props.onSelect(e, rootId); }}
+                onFocusEntry={(e) => selectNode(e.path, rootId)}
                 onOpenInNewTab={props.onOpenInNewTab ? (e) => props.onOpenInNewTab!(e, rootId) : undefined}
                 onDoubleClickFile={props.onDoubleClickFile ? (e) => props.onDoubleClickFile!(e, rootId) : undefined}
                 onCreate={props.onCreate}
@@ -524,10 +533,11 @@ export function FileTree(props: FileTreeProps) {
 
   // ── Focus / keyboard ───────────────────────────────────────────────────
 
-  // Sync focused path when selection changes (e.g. via click)
+  // Sync the active node when the open file changes (e.g. opened elsewhere).
   createEffect(() => {
     const sel = props.selectedPath;
-    if (sel) setFocusedPath(sel);
+    const root = props.selectedRootId;
+    if (sel) selectNode(sel, root ?? activeRootId());
   });
 
   const rootIds = createMemo(() => props.roots.map((r) => r.id));
@@ -558,13 +568,16 @@ export function FileTree(props: FileTreeProps) {
   function findFocusedIndex(items: HTMLElement[]): number {
     const fp = focusedPath();
     if (!fp) return -1;
-    return items.findIndex((el) => el.dataset.path === fp);
+    const root = activeRootId();
+    return items.findIndex(
+      (el) => el.dataset.path === fp && (!root || el.dataset.rootId === root),
+    );
   }
 
   function moveFocus(items: HTMLElement[], index: number) {
     const el = items[index];
     if (el?.dataset.path) {
-      setFocusedPath(el.dataset.path);
+      selectNode(el.dataset.path, el.dataset.rootId ?? null);
       el.scrollIntoView({ block: "nearest" });
     }
   }
@@ -836,8 +849,8 @@ export function FileTree(props: FileTreeProps) {
                     filterText(),
                   );
                 });
-                const isActiveRoot = () => props.selectedRootId === rootId;
-                const rootSelectedPath = () => isActiveRoot() ? props.selectedPath : null;
+                const isActiveRoot = () => activeRootId() === rootId;
+                const rootSelectedPath = () => isActiveRoot() ? focusedPath() : null;
                 const rootFocusedPath = () => isActiveRoot() ? focusedPath() : null;
 
                 return (

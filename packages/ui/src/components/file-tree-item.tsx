@@ -661,6 +661,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
           data-expanded={isDirectory() ? String(expanded()) : undefined}
           data-kind={props.entry.kind}
           data-path={props.entry.path}
+          data-root-id={props.rootId}
           ref={itemRef}
           style={{ "padding-left": `${indent()}px` }}
           title={props.entry.path}
