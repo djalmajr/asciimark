@@ -1016,17 +1016,18 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 
 /* An entry placed on the move clipboard via Cut — dimmed + italic until it
    is pasted (or the clipboard is cleared). */
-.tree-item.cut-pending .tree-name {
-  font-style: italic;
-  opacity: 0.55;
-}
-
-/* On the clipboard via Copy — the original stays, so mark it with a subtle
-   dashed outline instead of dimming it. */
+/* On the clipboard (Cut or Copy) — both get the dashed outline. Cut additionally
+   dims + italicises the name (the entry will move away); Copy leaves it intact. */
+.tree-item.cut-pending,
 .tree-item.copy-pending {
   outline: 1px dashed hsl(var(--primary) / 0.6);
   outline-offset: -2px;
   border-radius: 4px;
+}
+
+.tree-item.cut-pending .tree-name {
+  font-style: italic;
+  opacity: 0.55;
 }
 
 .tree-icon {
