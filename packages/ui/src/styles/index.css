@@ -768,20 +768,6 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   pointer-events: none;
 }
 
-.file-tree-switch-control {
-  width: 28px !important;
-  height: 16px !important;
-}
-
-.file-tree-switch-thumb {
-  width: 12px !important;
-  height: 12px !important;
-}
-
-.file-tree-switch-control[data-checked] .file-tree-switch-thumb {
-  transform: translateX(12px) !important;
-}
-
 .file-tree-list {
   flex: 1;
   overflow: auto;

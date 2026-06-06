@@ -623,8 +623,8 @@ export function FileTree(props: FileTreeProps) {
                 >
                   <span class="flex-1">{(useLocale(), m.file_tree_respect_gitignore())}</span>
                   <Switch checked={props.respectGitignore ?? false} class="file-tree-switch">
-                    <SwitchControl class="file-tree-switch-control">
-                      <SwitchThumb class="file-tree-switch-thumb" />
+                    <SwitchControl class="h-4 w-7">
+                      <SwitchThumb class="size-3 data-[checked]:translate-x-3" />
                     </SwitchControl>
                   </Switch>
                 </DropdownMenuItem>
@@ -636,8 +636,8 @@ export function FileTree(props: FileTreeProps) {
                 >
                   <span class="flex-1">Show Hidden</span>
                   <Switch checked={props.showHiddenEntries ?? false} class="file-tree-switch">
-                    <SwitchControl class="file-tree-switch-control">
-                      <SwitchThumb class="file-tree-switch-thumb" />
+                    <SwitchControl class="h-4 w-7">
+                      <SwitchThumb class="size-3 data-[checked]:translate-x-3" />
                     </SwitchControl>
                   </Switch>
                 </DropdownMenuItem>
@@ -649,8 +649,8 @@ export function FileTree(props: FileTreeProps) {
                 >
                   <span class="flex-1">Show All Folders</span>
                   <Switch checked={props.showAllDirs ?? false} class="file-tree-switch">
-                    <SwitchControl class="file-tree-switch-control">
-                      <SwitchThumb class="file-tree-switch-thumb" />
+                    <SwitchControl class="h-4 w-7">
+                      <SwitchThumb class="size-3 data-[checked]:translate-x-3" />
                     </SwitchControl>
                   </Switch>
                 </DropdownMenuItem>
@@ -662,8 +662,8 @@ export function FileTree(props: FileTreeProps) {
                 >
                   <span class="flex-1">Show All Files</span>
                   <Switch checked={props.showAllFiles ?? false} class="file-tree-switch">
-                    <SwitchControl class="file-tree-switch-control">
-                      <SwitchThumb class="file-tree-switch-thumb" />
+                    <SwitchControl class="h-4 w-7">
+                      <SwitchThumb class="size-3 data-[checked]:translate-x-3" />
                     </SwitchControl>
                   </Switch>
                 </DropdownMenuItem>
