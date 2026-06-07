@@ -3,10 +3,12 @@ import {
   getStoredAiEngine,
   getStoredAiModel,
   getStoredAiSmallModel,
+  getStoredAiStreaming,
   getStoredIndexingTier,
   setStoredAiEngine,
   setStoredAiModel,
   setStoredAiSmallModel,
+  setStoredAiStreaming,
   setStoredIndexingTier,
 } from "./ai-prefs.ts";
 import { installLocalStorageMock } from "./test-utils.ts";
@@ -18,11 +20,12 @@ describe("ai preferences defaults", () => {
     localStorage.clear();
   });
 
-  it("defaults: no model, lite tier, ai-sdk engine", () => {
+  it("defaults: no model, lite tier, ai-sdk engine, streaming off", () => {
     expect(getStoredAiModel()).toBeNull();
     expect(getStoredAiSmallModel()).toBeNull();
     expect(getStoredIndexingTier()).toBe("lite");
     expect(getStoredAiEngine()).toBe("ai-sdk");
+    expect(getStoredAiStreaming()).toBe(false);
   });
 
   it("falls back to lite for a corrupted tier value", () => {
@@ -58,5 +61,12 @@ describe("ai preferences round-trip", () => {
     expect(getStoredIndexingTier()).toBe("full");
     setStoredAiEngine("tanstack");
     expect(getStoredAiEngine()).toBe("tanstack");
+  });
+
+  it("persists the streaming flag", () => {
+    setStoredAiStreaming(true);
+    expect(getStoredAiStreaming()).toBe(true);
+    setStoredAiStreaming(false);
+    expect(getStoredAiStreaming()).toBe(false);
   });
 });

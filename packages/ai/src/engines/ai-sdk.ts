@@ -101,6 +101,74 @@ function classifyError(e: unknown): { code: AIErrorCode; message: string } {
   return { code: "unknown", message };
 }
 
+/** A loosely-typed AI SDK `fullStream` part — we read only the fields we map. */
+type FullStreamPart = { type: string } & Record<string, unknown>;
+
+/**
+ * Map an AI SDK v6 `streamText().fullStream` onto our `AIStreamPart` contract,
+ * owning the single terminal emission: an `error`/`abort` part yields one error
+ * and STOPS the stream (no trailing `done`); otherwise a `done` is emitted after
+ * the loop, carrying usage from the `finish` part. Unknown part types
+ * (text-start/-end, reasoning-*, tool-input-*, source, file, step boundaries,
+ * raw, ...) are intentionally ignored. Pure over the input — unit-testable.
+ */
+export async function* mapFullStream(
+  fullStream: AsyncIterable<FullStreamPart>,
+  sourceByName?: Map<string, string | undefined>,
+): AsyncIterable<AIStreamPart> {
+  let usage: { inputTokens?: number; outputTokens?: number } | undefined;
+  for await (const part of fullStream) {
+    switch (part.type) {
+      case "text-delta": {
+        const text = (part.text ?? part.textDelta) as string | undefined;
+        if (text) yield { type: "text-delta", text };
+        break;
+      }
+      case "tool-call":
+        yield {
+          type: "tool-call",
+          toolCallId: part.toolCallId as string,
+          toolName: part.toolName as string,
+          source: sourceByName?.get(part.toolName as string),
+          args: part.input,
+        };
+        break;
+      case "tool-result":
+        yield {
+          type: "tool-result",
+          toolCallId: part.toolCallId as string,
+          toolName: part.toolName as string,
+          result: part.output,
+        };
+        break;
+      case "tool-error":
+        yield {
+          type: "tool-result",
+          toolCallId: part.toolCallId as string,
+          toolName: part.toolName as string,
+          result: part.error,
+          isError: true,
+        };
+        break;
+      case "error":
+        yield { type: "error", ...classifyError(part.error) };
+        return; // own the terminal — no trailing done
+      case "abort":
+        yield { type: "error", code: "aborted", message: "Request aborted" };
+        return;
+      case "finish":
+        usage = (part.totalUsage ?? part.usage) as typeof usage;
+        break;
+      default:
+        break; // non-mapped part — ignore
+    }
+  }
+  yield {
+    type: "done",
+    usage: { inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0 },
+  };
+}
+
 /** Split completed text into ~3-token chunks (whitespace preserved) so the UI
  *  renders it with a live-typing feel even though the HTTP request was
  *  non-streaming. */
@@ -142,28 +210,44 @@ function createProvider(
     try {
       const apiKey = await getApiKey();
       const model = await buildModel(resolved, apiKey, opts?.fetch);
-      const { generateText, dynamicTool, jsonSchema, stepCountIs } = await import("ai");
+      const ai = await import("ai");
       const tools = toolList.length
         ? Object.fromEntries(
             toolList.map((t) => [
               t.name,
-              dynamicTool({
+              ai.dynamicTool({
                 description: t.description ?? "",
-                inputSchema: jsonSchema(t.inputSchema as Parameters<typeof jsonSchema>[0]),
+                inputSchema: ai.jsonSchema(t.inputSchema as Parameters<typeof ai.jsonSchema>[0]),
                 execute: (args: unknown, { abortSignal }: { abortSignal?: AbortSignal }) =>
                   t.execute(args, { signal: abortSignal }),
               }),
             ]),
           )
         : undefined;
-      const result = await generateText({
+      const common = {
         model,
         ...(chatOpts?.system ? { system: chatOpts.system } : {}),
         messages: messages.map((m) => ({ role: m.role, content: m.content })),
         ...(chatOpts?.signal ? { abortSignal: chatOpts.signal } : {}),
         ...(chatOpts?.temperature != null ? { temperature: chatOpts.temperature } : {}),
-        ...(tools ? { tools, stopWhen: stepCountIs(chatOpts?.maxSteps ?? 8) } : {}),
-      });
+        ...(tools ? { tools, stopWhen: ai.stepCountIs(chatOpts?.maxSteps ?? 8) } : {}),
+      };
+
+      // Streaming path (opt-in): real incremental deltas via `fullStream`,
+      // smoothed to word boundaries. `mapFullStream` owns the terminal. If the
+      // injected fetch doesn't surface SSE incrementally (the A0 question),
+      // smoothStream still yields a typing feel; if it hangs, the default
+      // buffered path below is the kill-switch.
+      if (opts?.streaming) {
+        const result = ai.streamText({
+          ...common,
+          experimental_transform: ai.smoothStream({ chunking: "word" }),
+        });
+        yield* mapFullStream(result.fullStream as AsyncIterable<FullStreamPart>, sourceByName);
+        return;
+      }
+
+      const result = await ai.generateText(common);
       text = result.text;
       // `totalUsage` sums every step; `usage` is only the last step (undercounts
       // multi-step tool loops).
