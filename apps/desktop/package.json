@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "dev:frontend": "bun run prepare:excalidraw && vite",
     "build": "tauri build",
     "build:frontend": "bun run prepare:excalidraw && vite build",

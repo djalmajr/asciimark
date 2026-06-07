@@ -949,6 +949,9 @@ fn get_startup_args() -> Vec<String> {
 #[cfg(target_os = "macos")]
 #[tauri::command]
 fn set_dock_visible(app: AppHandle, visible: bool) -> Result<(), String> {
+    // Dev keeps the dock icon (never the hidden "tray"/accessory mode) so the
+    // dev instance stays visible and distinct from a running prod build.
+    let visible = if cfg!(debug_assertions) { true } else { visible };
     let policy = if visible {
         tauri::ActivationPolicy::Regular
     } else {
@@ -961,6 +964,20 @@ fn set_dock_visible(app: AppHandle, visible: bool) -> Result<(), String> {
 #[tauri::command]
 fn set_dock_visible() -> Result<(), String> {
     Ok(())
+}
+
+/// Dev-only: stamp a "DEV" badge on the macOS dock icon so the dev instance is
+/// visually distinct from a running prod build (Tauri exposes no badge API).
+#[cfg(all(debug_assertions, target_os = "macos"))]
+fn set_dev_dock_badge() {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+    use objc2_foundation::NSString;
+    if let Some(mtm) = MainThreadMarker::new() {
+        let app = NSApplication::sharedApplication(mtm);
+        let label = NSString::from_str("DEV");
+        app.dockTile().setBadgeLabel(Some(&label));
+    }
 }
 
 #[tauri::command]
@@ -988,6 +1005,9 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            // Dev: mark the dock icon with a "DEV" badge (runs on the main thread).
+            #[cfg(all(debug_assertions, target_os = "macos"))]
+            set_dev_dock_badge();
             // macOS-only: make the green traffic-light button do ZOOM
             // (= classic "maximize") instead of entering native
             // fullscreen. The default behaviour hides the entire
