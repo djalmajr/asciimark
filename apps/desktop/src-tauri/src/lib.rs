@@ -1003,6 +1003,29 @@ pub fn run() {
         );
     }
 
+    // Single-instance ONLY in release. In dev the plugin is skipped so a dev
+    // build coexists with a running prod build (same identifier) without the
+    // lock collision that forwards args + steals focus + reloads the other
+    // instance. Dev keeps the prod identifier, so its AI config (ai.json) is
+    // shared/preserved — no fallback to the Mock provider.
+    #[cfg(not(debug_assertions))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // When a second instance opens with file args, emit an event
+            // so the frontend can navigate to the file.
+            if let Some(path) = argv.get(1) {
+                let _ = app.emit("open-file", path.clone());
+            }
+            // Focus the existing window and restore dock icon
+            if let Some(window) = app.get_webview_window("main") {
+                #[cfg(target_os = "macos")]
+                let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+
     builder
         .setup(|app| {
             // Dev: mark the dock icon with a "DEV" badge (runs on the main thread).
@@ -1044,20 +1067,6 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            // When a second instance opens with file args, emit an event
-            // so the frontend can navigate to the file.
-            if let Some(path) = argv.get(1) {
-                let _ = app.emit("open-file", path.clone());
-            }
-            // Focus the existing window and restore dock icon
-            if let Some(window) = app.get_webview_window("main") {
-                #[cfg(target_os = "macos")]
-                let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }))
         .manage(WatcherHolder(Mutex::new(None)))
         .manage(DirWatcherHolder(Mutex::new(None)))
         .manage(McpManager::default())
