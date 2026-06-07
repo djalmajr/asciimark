@@ -39,7 +39,7 @@
   "menu_check_for_updates": "Check for updates",
   "menu_language": "Language",
   "empty_dropzone_title": "Drop a folder/file here or click to open",
-  "empty_dropzone_hint": "Supports .adoc and .md files",
+  "empty_dropzone_hint": "Supports .adoc, .md and .excalidraw files",
   "empty_select_file_title": "Select a file",
   "empty_select_file_hint": "Choose an .adoc file from the sidebar to preview it.",
   "empty_recent_heading": "Recent",

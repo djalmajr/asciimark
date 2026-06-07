@@ -39,7 +39,7 @@
   "menu_check_for_updates": "Verificar atualizações",
   "menu_language": "Idioma",
   "empty_dropzone_title": "Solte uma pasta/arquivo aqui ou clique para abrir",
-  "empty_dropzone_hint": "Suporta arquivos .adoc e .md",
+  "empty_dropzone_hint": "Suporta arquivos .adoc, .md e .excalidraw",
   "empty_select_file_title": "Selecione um arquivo",
   "empty_select_file_hint": "Escolha um arquivo .adoc na barra lateral para visualizá-lo.",
   "empty_recent_heading": "Recentes",
