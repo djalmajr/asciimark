@@ -156,11 +156,26 @@ export async function* mapFullStream(
       case "abort":
         yield { type: "error", code: "aborted", message: "Request aborted" };
         return;
+      case "tool-output-denied":
+        // Only emitted if a tool sets the SDK's loop-level `needsApproval`, which
+        // AsciiMark does NOT (approval is the execute-wrapper in approval-policy.ts).
+        // Mapped defensively so a denial is never invisible if that ever changes.
+        yield {
+          type: "tool-result",
+          toolCallId: part.toolCallId as string,
+          toolName: part.toolName as string,
+          result: { rejected: true },
+          isError: true,
+        };
+        break;
       case "finish":
         usage = (part.totalUsage ?? part.usage) as typeof usage;
         break;
       default:
-        break; // non-mapped part — ignore
+        // Non-mapped parts (text-start/-end, reasoning-*, tool-input-*, source,
+        // file, step boundaries, raw, and tool-approval-request — unreachable as
+        // long as approval stays in the execute-wrapper) are intentionally ignored.
+        break;
     }
   }
   yield {
