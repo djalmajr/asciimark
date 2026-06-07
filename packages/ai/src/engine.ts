@@ -31,6 +31,12 @@ export type FetchImpl = typeof globalThis.fetch;
 export interface AIEngineOptions {
   /** Custom fetch (e.g. Tauri HTTP plugin) to dodge webview CORS. */
   fetch?: FetchImpl;
+  /** Use `streamText` (real incremental deltas) instead of the buffered
+   *  `generateText` + fake-typing path. Default false: whether the injected
+   *  fetch surfaces SSE incrementally in the WKWebView is unverified (the A0
+   *  spike), so streaming stays opt-in and the buffered path is the safe
+   *  default + kill-switch. */
+  streaming?: boolean;
 }
 
 /** Builds a concrete `AIProvider` for a resolved model. The implementation

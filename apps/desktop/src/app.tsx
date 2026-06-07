@@ -23,6 +23,7 @@ import {
   getStoredAiEngine,
   getStoredAiModel,
   setStoredAiModel,
+  getStoredAiStreaming,
   getStoredIndexingTier,
   setStoredIndexingTier,
   type IndexingTier,
@@ -140,8 +141,12 @@ export function App() {
             : { keychain: (id) => getApiKey(id).then((k) => k ?? undefined) },
         ),
       // Route provider HTTP through Rust (Tauri HTTP plugin) to avoid the
-      // WKWebView CORS wall on direct cross-origin calls.
-      { fetch: tauriFetch as unknown as typeof globalThis.fetch },
+      // WKWebView CORS wall on direct cross-origin calls. `streaming` is the
+      // opt-in beta path (default off = the buffered kill-switch).
+      {
+        fetch: tauriFetch as unknown as typeof globalThis.fetch,
+        streaming: getStoredAiStreaming(),
+      },
     );
   }
 

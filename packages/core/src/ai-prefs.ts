@@ -17,6 +17,7 @@ const ENGINE_KEY = "asciimark-ai-engine";
 const MODEL_KEY = "asciimark-ai-model";
 const SMALL_MODEL_KEY = "asciimark-ai-small-model";
 const TIER_KEY = "asciimark-ai-indexing-tier";
+const STREAMING_KEY = "asciimark-ai-streaming";
 
 function getStoredAiEngine(): AIEngineId {
   return localStorage.getItem(ENGINE_KEY) === "tanstack" ? "tanstack" : "ai-sdk";
@@ -57,14 +58,27 @@ function setStoredIndexingTier(tier: IndexingTier): void {
   localStorage.setItem(TIER_KEY, tier);
 }
 
+/** Whether to use the streaming engine path (real incremental deltas) instead
+ *  of the buffered + fake-typing default. Default false (opt-in beta) until the
+ *  WKWebView SSE behaviour is validated; the buffered path is the kill-switch. */
+function getStoredAiStreaming(): boolean {
+  return localStorage.getItem(STREAMING_KEY) === "true";
+}
+
+function setStoredAiStreaming(enabled: boolean): void {
+  localStorage.setItem(STREAMING_KEY, enabled ? "true" : "false");
+}
+
 export type { AIEngineId, IndexingTier };
 export {
   getStoredAiEngine,
   getStoredAiModel,
   getStoredAiSmallModel,
+  getStoredAiStreaming,
   getStoredIndexingTier,
   setStoredAiEngine,
   setStoredAiModel,
   setStoredAiSmallModel,
+  setStoredAiStreaming,
   setStoredIndexingTier,
 };
