@@ -150,7 +150,8 @@ function createProvider(
               dynamicTool({
                 description: t.description ?? "",
                 inputSchema: jsonSchema(t.inputSchema as Parameters<typeof jsonSchema>[0]),
-                execute: (args: unknown) => t.execute(args),
+                execute: (args: unknown, { abortSignal }: { abortSignal?: AbortSignal }) =>
+                  t.execute(args, { signal: abortSignal }),
               }),
             ]),
           )

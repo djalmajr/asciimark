@@ -17,10 +17,20 @@ export interface MCPToolDescriptor {
   outputSchema?: Record<string, unknown>;
 }
 
+/** Options forwarded to a bridge tool call (e.g. an abort signal). */
+export interface CallToolOptions {
+  signal?: AbortSignal;
+}
+
 /** The seam the host implements over Tauri IPC. */
 export interface MCPBridge {
   listTools(): Promise<MCPToolDescriptor[]>;
-  callTool(server: string, name: string, args: unknown): Promise<unknown>;
+  callTool(
+    server: string,
+    name: string,
+    args: unknown,
+    opts?: CallToolOptions,
+  ): Promise<unknown>;
 }
 
 export interface BuildMcpToolsOptions {
@@ -65,6 +75,6 @@ export async function buildMcpTools(
     description: d.description,
     inputSchema: sanitizeJsonSchema(d.inputSchema, { strict: options.strictSchema }),
     source: d.server,
-    execute: (args: unknown) => bridge.callTool(d.server, d.name, args),
+    execute: (args: unknown, opts) => bridge.callTool(d.server, d.name, args, opts),
   }));
 }

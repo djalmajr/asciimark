@@ -19,8 +19,8 @@ use ai_keychain::{
 // (scripts/check-ipc-contract.sh) sees the commands as registered.
 mod ai_mcp;
 use ai_mcp::{
-    ai_mcp_call_tool, ai_mcp_connect, ai_mcp_disconnect, ai_mcp_list_servers, ai_mcp_list_tools,
-    McpManager,
+    ai_mcp_call_tool, ai_mcp_cancel_call, ai_mcp_connect, ai_mcp_disconnect, ai_mcp_list_servers,
+    ai_mcp_list_tools, McpManager,
 };
 
 // Pure-Rust helpers split out of this file so the Miri sub-crate
@@ -1074,6 +1074,7 @@ pub fn run() {
             ai_mcp_list_servers,
             ai_mcp_list_tools,
             ai_mcp_call_tool,
+            ai_mcp_cancel_call,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

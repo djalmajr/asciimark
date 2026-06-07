@@ -14,12 +14,34 @@ export interface McpServerStatus {
   toolCount: number;
 }
 
+/** Invoke one MCP tool, threading the run's abort signal: a `callId` lets Rust
+ *  cancel the in-flight call when the user stops the turn. */
+async function callMcpTool(
+  server: string,
+  name: string,
+  args: unknown,
+  opts?: { signal?: AbortSignal },
+): Promise<unknown> {
+  const signal = opts?.signal;
+  if (!signal) return invoke<unknown>("ai_mcp_call_tool", { server, name, args });
+  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+  const callId = crypto.randomUUID();
+  const onAbort = () => {
+    void invoke("ai_mcp_cancel_call", { callId }).catch(() => {});
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    return await invoke<unknown>("ai_mcp_call_tool", { server, name, args, callId });
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
 /** The bridge the chat engine uses to discover + invoke MCP tools. */
 export function createMcpBridge(): MCPBridge {
   return {
     listTools: () => invoke<MCPToolDescriptor[]>("ai_mcp_list_tools"),
-    callTool: (server, name, args) =>
-      invoke<unknown>("ai_mcp_call_tool", { server, name, args }),
+    callTool: (server, name, args, opts) => callMcpTool(server, name, args, opts),
   };
 }
 
