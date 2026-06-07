@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use http::{HeaderName, HeaderValue};
-use rmcp::model::CallToolRequestParams;
+use rmcp::model::{CallToolRequestParams, CallToolResult, Content, TaskSupport};
 use rmcp::service::{RoleClient, RunningService};
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{StreamableHttpClientTransport, TokioChildProcess};
@@ -78,6 +78,10 @@ pub struct McpToolInfo {
     /// Raw JSON Schema for the tool's input — passes straight into the AI SDK's
     /// `jsonSchema()` helper on the JS side (no zod/valibot conversion).
     pub input_schema: serde_json::Value,
+    /// Optional JSON Schema for the tool's structured output, when the server
+    /// declares one. Used to prefer `structuredContent` over text on results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -139,16 +143,81 @@ async fn connect_client(config: &McpServerConfig) -> Result<McpClient, String> {
     }
 }
 
+/// Whether a tool can be surfaced to the model. Tools that *require* task-based
+/// invocation can't be called via the plain `call_tool` path, so offering them
+/// would only produce a guaranteed call-time failure — drop them at list time.
+fn keep_tool(task_support: TaskSupport) -> bool {
+    !matches!(task_support, TaskSupport::Required)
+}
+
 fn tool_infos(server: &str, tools: Vec<rmcp::model::Tool>) -> Vec<McpToolInfo> {
     tools
         .into_iter()
+        .filter(|t| keep_tool(t.task_support()))
         .map(|t| McpToolInfo {
             server: server.to_string(),
             name: t.name.to_string(),
             description: t.description.map(|d| d.to_string()),
             input_schema: serde_json::Value::Object((*t.input_schema).clone()),
+            output_schema: t
+                .output_schema
+                .as_ref()
+                .map(|s| serde_json::Value::Object((**s).clone())),
         })
         .collect()
+}
+
+/// Parse a text block as JSON when it round-trips, else keep it as a string —
+/// gives the model structured data instead of a stringified blob when possible.
+fn parse_text_or_json(text: &str) -> serde_json::Value {
+    serde_json::from_str::<serde_json::Value>(text)
+        .unwrap_or_else(|_| serde_json::Value::String(text.to_string()))
+}
+
+/// Collapse MCP result content into a model-friendly value: a lone text block
+/// becomes a string (or parsed JSON); multiple text blocks join with newlines;
+/// anything with non-text blocks (images/resources) keeps the raw envelope so
+/// nothing is lost.
+fn flatten_content(content: &[Content]) -> serde_json::Value {
+    let texts: Vec<String> = content
+        .iter()
+        .filter_map(|c| c.as_text().map(|t| t.text.clone()))
+        .collect();
+    if texts.len() != content.len() {
+        return serde_json::to_value(content).unwrap_or(serde_json::Value::Null);
+    }
+    match texts.as_slice() {
+        [] => serde_json::Value::Null,
+        [one] => parse_text_or_json(one),
+        many => serde_json::Value::String(many.join("\n")),
+    }
+}
+
+/// Turn an rmcp `CallToolResult` into the value handed to the model. Errors are
+/// surfaced as `{ isError: true, error }` so the model (and the chat store's
+/// `result.isError` check) can tell the call failed; successes are flattened,
+/// preferring `structuredContent` when the tool declares an output schema.
+fn normalize_call_result(result: CallToolResult, has_output_schema: bool) -> serde_json::Value {
+    if result.is_error == Some(true) {
+        let error = match flatten_content(&result.content) {
+            serde_json::Value::String(s) => s,
+            serde_json::Value::Null => "MCP tool returned an error".to_string(),
+            other => other.to_string(),
+        };
+        return serde_json::json!({ "isError": true, "error": error });
+    }
+    if has_output_schema {
+        if let Some(structured) = result.structured_content {
+            return structured;
+        }
+    }
+    let flattened = flatten_content(&result.content);
+    if !flattened.is_null() {
+        return flattened;
+    }
+    result
+        .structured_content
+        .unwrap_or_else(|| serde_json::Value::Object(Default::default()))
 }
 
 #[tauri::command]
@@ -218,13 +287,18 @@ pub async fn ai_mcp_call_tool(
     args: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     // Clone the cheap Peer handle out from under the lock so the network call
-    // doesn't serialize against other manager operations.
-    let peer = {
+    // doesn't serialize against other manager operations. Capture whether the
+    // tool declares an output schema while we hold the lock (cheap read).
+    let (peer, has_output_schema) = {
         let servers = state.servers.lock().await;
         let conn = servers
             .get(&server)
             .ok_or_else(|| format!("MCP server not connected: {server}"))?;
-        conn.client.peer().clone()
+        let has_output_schema = conn
+            .tools
+            .iter()
+            .any(|t| t.name == name && t.output_schema.is_some());
+        (conn.client.peer().clone(), has_output_schema)
     };
 
     let mut request = CallToolRequestParams::new(name.clone());
@@ -237,5 +311,61 @@ pub async fn ai_mcp_call_tool(
         .map_err(|_| format!("MCP tool call timed out: {server}/{name}"))?
         .map_err(|e| e.to_string())?;
 
-    serde_json::to_value(result).map_err(|e| e.to_string())
+    Ok(normalize_call_result(result, has_output_schema))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rmcp::model::CallToolResult;
+    use serde_json::json;
+
+    #[test]
+    fn keep_tool_drops_only_task_required() {
+        assert!(keep_tool(TaskSupport::Forbidden));
+        assert!(keep_tool(TaskSupport::Optional));
+        assert!(!keep_tool(TaskSupport::Required));
+    }
+
+    #[test]
+    fn normalize_single_text_block_parses_json() {
+        let result = CallToolResult::success(vec![Content::text("{\"a\":1}")]);
+        assert_eq!(normalize_call_result(result, false), json!({ "a": 1 }));
+    }
+
+    #[test]
+    fn normalize_single_plain_text_stays_a_string() {
+        let result = CallToolResult::success(vec![Content::text("hello world")]);
+        assert_eq!(normalize_call_result(result, false), json!("hello world"));
+    }
+
+    #[test]
+    fn normalize_multiple_text_blocks_join_with_newlines() {
+        let result = CallToolResult::success(vec![Content::text("a"), Content::text("b")]);
+        assert_eq!(normalize_call_result(result, false), json!("a\nb"));
+    }
+
+    #[test]
+    fn normalize_error_surfaces_is_error_and_message() {
+        let result = CallToolResult::error(vec![Content::text("boom")]);
+        assert_eq!(
+            normalize_call_result(result, false),
+            json!({ "isError": true, "error": "boom" }),
+        );
+    }
+
+    #[test]
+    fn normalize_error_without_content_has_default_message() {
+        let result = CallToolResult::error(vec![]);
+        assert_eq!(
+            normalize_call_result(result, false),
+            json!({ "isError": true, "error": "MCP tool returned an error" }),
+        );
+    }
+
+    #[test]
+    fn normalize_prefers_structured_content_when_output_schema_declared() {
+        let result = CallToolResult::structured(json!({ "temp": 22 }));
+        assert_eq!(normalize_call_result(result, true), json!({ "temp": 22 }));
+    }
 }
