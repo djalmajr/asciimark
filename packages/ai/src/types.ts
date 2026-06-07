@@ -56,10 +56,18 @@ export interface AITool {
   /** JSON Schema for the tool input (fed to the AI SDK's `jsonSchema()`). */
   inputSchema: Record<string, unknown>;
   /** Invoked when the model calls the tool. Returns a JSON-serializable
-   *  result. May await user approval (e.g. an Accept/Reject for an edit). */
-  execute: (args: unknown) => Promise<unknown>;
+   *  result. May await user approval (e.g. an Accept/Reject for an edit).
+   *  `opts.signal` is the run's abort signal, threaded so a long-running tool
+   *  (e.g. an MCP call) can be cancelled when the user stops the turn. */
+  execute: (args: unknown, opts?: ToolExecuteOptions) => Promise<unknown>;
   /** Origin label for the UI (the MCP server id, or `"app"` for in-process). */
   source?: string;
+}
+
+/** Options the engine passes to {@link AITool.execute}. */
+export interface ToolExecuteOptions {
+  /** Aborts the in-flight tool call (threaded from the chat run's signal). */
+  signal?: AbortSignal;
 }
 
 export interface ChatOptions {

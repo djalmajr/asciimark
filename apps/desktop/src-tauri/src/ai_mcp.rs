@@ -25,7 +25,7 @@ use rmcp::ServiceExt;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::process::Command;
-use tokio::sync::Mutex;
+use tokio::sync::{oneshot, Mutex};
 
 /// A live client handle. Both transports collapse to the same type after the
 /// connection is established (`RunningService` is parameterized by role +
@@ -42,6 +42,9 @@ struct Connected {
 #[derive(Default)]
 pub struct McpManager {
     servers: Mutex<HashMap<String, Connected>>,
+    /// In-flight tool calls keyed by a caller-supplied call id, so the webview
+    /// can cancel a long-running call (e.g. when the user stops the turn).
+    inflight: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
 #[derive(Deserialize)]
@@ -279,12 +282,43 @@ pub async fn ai_mcp_list_tools(state: State<'_, McpManager>) -> Result<Vec<McpTo
     Ok(out)
 }
 
+/// Which of the three racing events won in [`run_with_cancel`].
+enum CallOutcome<T> {
+    Done(T),
+    Cancelled,
+    TimedOut,
+}
+
+/// A timeout future that is `Some(sleep)` or, for `None`, never resolves.
+async fn sleep_opt(dur: Option<Duration>) {
+    match dur {
+        Some(d) => tokio::time::sleep(d).await,
+        None => std::future::pending::<()>().await,
+    }
+}
+
+/// Race a tool-call future against a cancel signal and an optional timeout.
+/// Generic over the future so it is unit-testable without rmcp.
+async fn run_with_cancel<F: std::future::Future>(
+    fut: F,
+    cancel: oneshot::Receiver<()>,
+    timeout: Option<Duration>,
+) -> CallOutcome<F::Output> {
+    tokio::select! {
+        out = fut => CallOutcome::Done(out),
+        _ = cancel => CallOutcome::Cancelled,
+        _ = sleep_opt(timeout) => CallOutcome::TimedOut,
+    }
+}
+
 #[tauri::command]
 pub async fn ai_mcp_call_tool(
     state: State<'_, McpManager>,
     server: String,
     name: String,
     args: serde_json::Value,
+    call_id: Option<String>,
+    timeout_ms: Option<u64>,
 ) -> Result<serde_json::Value, String> {
     // Clone the cheap Peer handle out from under the lock so the network call
     // doesn't serialize against other manager operations. Capture whether the
@@ -306,12 +340,49 @@ pub async fn ai_mcp_call_tool(
         request = request.with_arguments(map);
     }
 
-    let result = tokio::time::timeout(Duration::from_secs(60), peer.call_tool(request))
-        .await
-        .map_err(|_| format!("MCP tool call timed out: {server}/{name}"))?
-        .map_err(|e| e.to_string())?;
+    // Register a cancel channel keyed by call_id so the webview can abort the
+    // call; with no id, keep the sender alive locally so the receiver stays
+    // pending (and the call simply can't be cancelled).
+    let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+    let mut local_keep = None;
+    match &call_id {
+        Some(id) => {
+            state.inflight.lock().await.insert(id.clone(), cancel_tx);
+        }
+        None => local_keep = Some(cancel_tx),
+    }
 
-    Ok(normalize_call_result(result, has_output_schema))
+    // `0` disables the timeout (long agentic sub-tasks); `None` -> default 60s.
+    let timeout = match timeout_ms {
+        Some(0) => None,
+        Some(ms) => Some(Duration::from_millis(ms)),
+        None => Some(Duration::from_secs(60)),
+    };
+
+    let outcome = run_with_cancel(peer.call_tool(request), cancel_rx, timeout).await;
+
+    // Drop the inflight entry (no-op if a cancel already removed it).
+    if let Some(id) = &call_id {
+        state.inflight.lock().await.remove(id);
+    }
+    drop(local_keep);
+
+    match outcome {
+        CallOutcome::Done(Ok(result)) => Ok(normalize_call_result(result, has_output_schema)),
+        CallOutcome::Done(Err(e)) => Err(e.to_string()),
+        CallOutcome::Cancelled => Err(format!("MCP tool call cancelled: {server}/{name}")),
+        CallOutcome::TimedOut => Err(format!("MCP tool call timed out: {server}/{name}")),
+    }
+}
+
+/// Cancel an in-flight [`ai_mcp_call_tool`] by its `call_id`. Idempotent: a
+/// no-op if the call already finished (the entry was removed).
+#[tauri::command]
+pub async fn ai_mcp_cancel_call(state: State<'_, McpManager>, call_id: String) -> Result<(), String> {
+    if let Some(tx) = state.inflight.lock().await.remove(&call_id) {
+        let _ = tx.send(());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -367,5 +438,39 @@ mod tests {
     fn normalize_prefers_structured_content_when_output_schema_declared() {
         let result = CallToolResult::structured(json!({ "temp": 22 }));
         assert_eq!(normalize_call_result(result, true), json!({ "temp": 22 }));
+    }
+
+    #[tokio::test]
+    async fn run_with_cancel_returns_done_when_future_completes() {
+        let (_tx, rx) = oneshot::channel::<()>(); // sender kept alive -> never cancels
+        let outcome = run_with_cancel(async { 42 }, rx, Some(Duration::from_secs(10))).await;
+        assert!(matches!(outcome, CallOutcome::Done(42)));
+    }
+
+    #[tokio::test]
+    async fn run_with_cancel_times_out_a_hanging_future() {
+        let (_tx, rx) = oneshot::channel::<()>();
+        let outcome = run_with_cancel(
+            std::future::pending::<()>(),
+            rx,
+            Some(Duration::from_millis(10)),
+        )
+        .await;
+        assert!(matches!(outcome, CallOutcome::TimedOut));
+    }
+
+    #[tokio::test]
+    async fn run_with_cancel_cancels_when_signalled() {
+        let (tx, rx) = oneshot::channel::<()>();
+        tx.send(()).unwrap(); // signal before awaiting
+        let outcome = run_with_cancel(std::future::pending::<()>(), rx, None).await;
+        assert!(matches!(outcome, CallOutcome::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn run_with_cancel_no_timeout_waits_for_completion() {
+        let (_tx, rx) = oneshot::channel::<()>();
+        let outcome = run_with_cancel(async { "ok" }, rx, None).await;
+        assert!(matches!(outcome, CallOutcome::Done("ok")));
     }
 }
