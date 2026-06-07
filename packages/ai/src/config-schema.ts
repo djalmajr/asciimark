@@ -69,7 +69,10 @@ const MCPTransportSchema = v.picklist(["stdio", "http"] as const);
  *  references — resolved in memory at connect time (desktop: ai-mcp.ts via
  *  resolve-credential `expandRecord`), so plaintext secrets never touch
  *  `ai.json`. Embedded refs like `Bearer {env:TOKEN}` are supported; a key
- *  whose ref can't be resolved is dropped rather than sent literally. */
+ *  whose ref can't be resolved is dropped rather than sent literally.
+ *  Trust note: `{file:path}` reads any path the app can and the contents are
+ *  sent to the server (including remote HTTP MCP servers) — only reference
+ *  files you intend to transmit; prefer `{keychain:id}` for real secrets. */
 const MCPServerConfigSchema = v.object({
   /** Stable id — also namespaces the server's tools as `<id>__<tool>`. */
   id: v.string(),

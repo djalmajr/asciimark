@@ -92,6 +92,19 @@ describe("mapFullStream", () => {
     ]);
   });
 
+  it("maps tool-output-denied to a tool-result with isError", async () => {
+    const out = await collect(
+      mapFullStream(gen([{ type: "tool-output-denied", toolCallId: "c1", toolName: "t" }, { type: "finish" }])),
+    );
+    expect(out[0]).toEqual({
+      type: "tool-result",
+      toolCallId: "c1",
+      toolName: "t",
+      result: { rejected: true },
+      isError: true,
+    });
+  });
+
   it("maps an abort part to an aborted error and stops", async () => {
     const out = await collect(
       mapFullStream(gen([{ type: "abort" }, { type: "finish" }])),

@@ -34,6 +34,9 @@ export interface ApprovalRequest {
   toolName: string;
   source?: string;
   args: unknown;
+  /** The run's abort signal. When it fires, the gate auto-denies and hides the
+   *  prompt, so Stop/clear unblock a turn waiting on an approval. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -54,15 +57,72 @@ export function withApproval(
   return {
     ...tool,
     execute: async (args, opts) => {
+      const aborted = (): boolean => opts?.signal?.aborted === true;
+      // Already stopped before we even ask -> never run the side effect.
+      if (aborted()) {
+        return { rejected: true, error: `The "${tool.name}" tool call was aborted.` };
+      }
       const approved = await requestApproval({
         toolName: tool.name,
         source: tool.source,
         args,
+        signal: opts?.signal,
       });
+      // Re-check after the await: a Stop during the prompt must win over a late
+      // Accept, so a side effect never fires for an abandoned turn.
+      if (aborted()) {
+        return { rejected: true, error: `The "${tool.name}" tool call was aborted.` };
+      }
       if (!approved) {
         return { rejected: true, error: `User rejected the "${tool.name}" tool call.` };
       }
       return tool.execute(args, opts);
     },
+  };
+}
+
+/** Shows the approval UI for `req` and calls `decide(approved)` exactly once
+ *  (on the user's choice). Returns a cleanup that hides the UI. */
+export type ApprovalPrompt = (
+  req: ApprovalRequest,
+  decide: (approved: boolean) => void,
+) => () => void;
+
+/**
+ * Build a `requestApproval` that (1) SERIALIZES prompts FIFO so concurrent
+ * prompt-tier tool calls in one model step don't clobber a single-slot UI (the
+ * SDK runs a step's tools via Promise.all), and (2) auto-denies + hides on the
+ * request's abort signal so Stop/clear settle a pending approval and unblock the
+ * turn. The host supplies only `show` (render/hide one prompt).
+ */
+export function createApprovalGate(show: ApprovalPrompt): (req: ApprovalRequest) => Promise<boolean> {
+  let chain: Promise<unknown> = Promise.resolve();
+  return (req) => {
+    const run = (): Promise<boolean> =>
+      new Promise<boolean>((resolve) => {
+        if (req.signal?.aborted) {
+          resolve(false);
+          return;
+        }
+        let settled = false;
+        let hide: () => void = () => {};
+        const settle = (approved: boolean): void => {
+          if (settled) return;
+          settled = true;
+          req.signal?.removeEventListener("abort", onAbort);
+          hide();
+          resolve(approved);
+        };
+        const onAbort = (): void => settle(false);
+        req.signal?.addEventListener("abort", onAbort, { once: true });
+        hide = show(req, settle);
+      });
+    const result = chain.then(run);
+    // Advance the queue whether the prompt resolved or threw.
+    chain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   };
 }

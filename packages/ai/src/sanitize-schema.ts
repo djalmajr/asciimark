@@ -115,7 +115,9 @@ function walk(node: unknown, ctx: Ctx): unknown {
       continue;
     }
     if (SCHEMA_MAP_KEYS.has(key) && isPlainObject(value)) {
-      const mapped: JsonSchema = {};
+      // Null-proto so a property literally named `__proto__` is preserved as an
+      // own enumerable key (a plain `{}` would route it to the prototype slot).
+      const mapped: JsonSchema = Object.create(null);
       for (const [k, v] of Object.entries(value)) mapped[k] = walk(v, ctx);
       out[key] = mapped;
       continue;

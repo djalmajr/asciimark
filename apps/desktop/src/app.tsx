@@ -14,7 +14,7 @@ import { createAppState } from "@asciimark/ui/composables/create-app-state.ts";
 import { createMockProvider } from "@asciimark/ai/mock-provider.ts";
 import type { AIConfig, MCPServerConfig } from "@asciimark/ai/config-schema.ts";
 import type { AIProvider, AITool } from "@asciimark/ai/types.ts";
-import { withApproval, type ApprovalRequest } from "@asciimark/ai/approval-policy.ts";
+import { createApprovalGate, withApproval } from "@asciimark/ai/approval-policy.ts";
 import { resolveModel } from "@asciimark/ai/resolve-model.ts";
 import { resolveCredential } from "@asciimark/ai/resolve-credential.ts";
 import { createProvider as createAiProvider } from "@asciimark/ai/adapter.ts";
@@ -259,31 +259,25 @@ export function App() {
     return [...inProcess, ...mcp].map((t) => withApproval(t, requestToolApproval));
   }
 
-  /** Ask the user to Accept/Reject a prompt-tier tool call before it runs.
-   *  Resolves true to execute, false to skip (the model gets a rejection). */
-  function requestToolApproval(req: ApprovalRequest): Promise<boolean> {
+  /** Serialized, abort-aware approval gate for prompt-tier tool calls: shows one
+   *  bar at a time (FIFO so concurrent calls in a step don't clobber it) and
+   *  auto-denies + hides on Stop/clear (the run's abort signal settles it). */
+  const requestToolApproval = createApprovalGate((req, decide) => {
     let argsPreview: string;
     try {
       argsPreview = JSON.stringify(req.args, null, 2);
     } catch {
       argsPreview = String(req.args);
     }
-    return new Promise<boolean>((resolve) => {
-      setPendingApproval({
-        toolName: req.toolName,
-        source: req.source,
-        argsPreview,
-        approve: () => {
-          setPendingApproval(null);
-          resolve(true);
-        },
-        deny: () => {
-          setPendingApproval(null);
-          resolve(false);
-        },
-      });
+    setPendingApproval({
+      toolName: req.toolName,
+      source: req.source,
+      argsPreview,
+      approve: () => decide(true),
+      deny: () => decide(false),
     });
-  }
+    return () => setPendingApproval(null);
+  });
 
   /** Stage an AI-proposed find→replace edit for the user to Accept/Reject.
    *  Resolves to a short status the model sees; never mutates without approval. */

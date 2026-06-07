@@ -202,12 +202,15 @@ fn flatten_content(content: &[Content]) -> serde_json::Value {
 /// preferring `structuredContent` when the tool declares an output schema.
 fn normalize_call_result(result: CallToolResult, has_output_schema: bool) -> serde_json::Value {
     if result.is_error == Some(true) {
-        let error = match flatten_content(&result.content) {
-            serde_json::Value::String(s) => s,
-            serde_json::Value::Null => "MCP tool returned an error".to_string(),
-            other => other.to_string(),
-        };
-        return serde_json::json!({ "isError": true, "error": error });
+        // Prefer structured error detail; else flatten the content text.
+        let detail = result
+            .structured_content
+            .or_else(|| match flatten_content(&result.content) {
+                serde_json::Value::Null => None,
+                other => Some(other),
+            })
+            .unwrap_or_else(|| serde_json::Value::String("MCP tool returned an error".to_string()));
+        return serde_json::json!({ "isError": true, "error": detail });
     }
     if has_output_schema {
         if let Some(structured) = result.structured_content {
@@ -299,6 +302,11 @@ async fn sleep_opt(dur: Option<Duration>) {
 
 /// Race a tool-call future against a cancel signal and an optional timeout.
 /// Generic over the future so it is unit-testable without rmcp.
+///
+/// Cancellation/timeout is CLIENT-LOCAL: it stops awaiting and returns control,
+/// but dropping the `call_tool` future does not abort server-side execution, so
+/// a side-effecting tool may still complete on the server. (Server-side cancel
+/// would need `peer.send_cancellable_request` + a CancelledNotification.)
 async fn run_with_cancel<F: std::future::Future>(
     fut: F,
     cancel: oneshot::Receiver<()>,
@@ -378,7 +386,10 @@ pub async fn ai_mcp_call_tool(
 /// Cancel an in-flight [`ai_mcp_call_tool`] by its `call_id`. Idempotent: a
 /// no-op if the call already finished (the entry was removed).
 #[tauri::command]
-pub async fn ai_mcp_cancel_call(state: State<'_, McpManager>, call_id: String) -> Result<(), String> {
+pub async fn ai_mcp_cancel_call(
+    state: State<'_, McpManager>,
+    call_id: String,
+) -> Result<(), String> {
     if let Some(tx) = state.inflight.lock().await.remove(&call_id) {
         let _ = tx.send(());
     }
@@ -438,6 +449,15 @@ mod tests {
     fn normalize_prefers_structured_content_when_output_schema_declared() {
         let result = CallToolResult::structured(json!({ "temp": 22 }));
         assert_eq!(normalize_call_result(result, true), json!({ "temp": 22 }));
+    }
+
+    #[test]
+    fn normalize_error_prefers_structured_detail() {
+        let result = CallToolResult::structured_error(json!({ "code": "E_OOPS", "msg": "bad" }));
+        assert_eq!(
+            normalize_call_result(result, false),
+            json!({ "isError": true, "error": { "code": "E_OOPS", "msg": "bad" } }),
+        );
     }
 
     #[tokio::test]

@@ -171,4 +171,15 @@ describe("sanitizeJsonSchema — purity & robustness", () => {
   it("handles an empty schema", () => {
     expect(sanitizeJsonSchema({})).toEqual({});
   });
+
+  it("preserves a property literally named __proto__ as an own key", () => {
+    const input = JSON.parse('{"type":"object","properties":{"__proto__":{"type":"string"}}}');
+    const out = sanitizeJsonSchema(input);
+    const props = out.properties as Record<string, unknown>;
+    expect(Object.keys(props)).toContain("__proto__");
+    expect(JSON.parse(JSON.stringify(out))).toEqual({
+      type: "object",
+      properties: { __proto__: { type: "string" } },
+    });
+  });
 });
