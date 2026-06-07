@@ -653,9 +653,13 @@ export function App() {
       onFind: () => state.triggerPreviewFind(),
     }).catch((e) => console.error("Failed to set up app menu:", e));
 
-    void setupTray({
-      onOpenFolder: folder.handleOpenFolder,
-    }).catch((e) => console.error("Failed to set up tray:", e));
+    // No system tray in dev — keeps the dev instance from cluttering the menu
+    // bar / colliding with a running prod build (which owns the real tray).
+    if (!import.meta.env.DEV) {
+      void setupTray({
+        onOpenFolder: folder.handleOpenFolder,
+      }).catch((e) => console.error("Failed to set up tray:", e));
+    }
 
     // Close-to-tray: clicking the window X hides instead of quitting
     // by default. The user can flip the `closeBehavior` preference to
@@ -667,12 +671,16 @@ export function App() {
     // rule can be unit-tested without a Tauri runtime.
     const win = getCurrentWindow();
     void win.onCloseRequested(async (event) => {
-      const action = decideCloseAction({
-        closeBehavior: state.closeBehavior(),
-        isUpdating:
-          (window as unknown as { __asciimark_updating?: boolean }).__asciimark_updating ??
-          false,
-      });
+      // Dev has no tray to restore a hidden window, so X always quits cleanly
+      // instead of hiding-to-tray (which would trap the dev window).
+      const action = import.meta.env.DEV
+        ? "exit"
+        : decideCloseAction({
+            closeBehavior: state.closeBehavior(),
+            isUpdating:
+              (window as unknown as { __asciimark_updating?: boolean }).__asciimark_updating ??
+              false,
+          });
       if (action === "let-close") {
         // Updater bypass: relaunch() handles the actual exit of
         // the old process; we just let the close proceed.

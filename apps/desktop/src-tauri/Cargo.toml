@@ -67,6 +67,9 @@ tauri-plugin-mcp-bridge = "0.11"
 # v3 requires picking a native backend per platform via features.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
+# Dev-only "DEV" dock badge (set in lib.rs under debug_assertions).
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSResponder", "NSDockTile"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSString"] }
 keyring = { version = "3", features = ["apple-native"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
