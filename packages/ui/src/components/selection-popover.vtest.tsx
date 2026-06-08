@@ -6,23 +6,18 @@ afterEach(cleanup);
 
 describe("SelectionPopover", () => {
   it("renders nothing when there is no selection", () => {
-    const { baseElement } = render(() => (
-      <SelectionPopover info={null} onAddToChat={() => {}} onQuickEdit={() => {}} />
-    ));
+    const { baseElement } = render(() => <SelectionPopover info={null} onAddToChat={() => {}} />);
     expect(baseElement.querySelector(".selection-popover")).toBeNull();
   });
 
-  it("renders Add to chat + Quick edit and fires their callbacks", () => {
+  it("renders 'Add to chat' and fires the callback", () => {
     const onAddToChat = vi.fn();
-    const onQuickEdit = vi.fn();
     const { baseElement } = render(() => (
-      <SelectionPopover info={{ left: 100, bottom: 50 }} onAddToChat={onAddToChat} onQuickEdit={onQuickEdit} />
+      <SelectionPopover info={{ left: 100, bottom: 50 }} onAddToChat={onAddToChat} />
     ));
     const btns = baseElement.querySelectorAll<HTMLElement>(".selection-popover-btn");
-    expect(btns).toHaveLength(2);
+    expect(btns).toHaveLength(1);
     fireEvent.click(btns[0]);
     expect(onAddToChat).toHaveBeenCalledTimes(1);
-    fireEvent.click(btns[1]);
-    expect(onQuickEdit).toHaveBeenCalledTimes(1);
   });
 });

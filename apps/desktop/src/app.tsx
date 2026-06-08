@@ -46,7 +46,6 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import type { TabStore } from "@asciimark/ui/composables/create-tab-store.ts";
 import { AppShell } from "@asciimark/ui/components/app-shell.tsx";
 import type { EditorApi } from "@asciimark/ui/components/editor.tsx";
-import { mermaidBlockAtOffset } from "@asciimark/core/block-detection.ts";
 import { SHORTCUTS } from "@asciimark/core/keyboard-shortcuts.ts";
 import { effectiveKeys, getStoredKeybindings, matchBinding } from "@asciimark/core/keybindings.ts";
 import * as m from "@asciimark/i18n";
@@ -1682,34 +1681,6 @@ export function App() {
         void handleActivateTab(tabs[nextIdx]!.id);
       }
 
-      // ⌘I — inline AI overlay. A mermaid block under the cursor wins (diagram
-      // mode); otherwise a non-empty selection.
-      function openInlineAi() {
-        const pane = state.paneManager.activePane() as { editorApi?: EditorApi };
-        const api = pane.editorApi;
-        if (!api) return;
-        const content = state.editorContent();
-        const cursor = api.getCursorOffset();
-        const block = mermaidBlockAtOffset(content, cursor);
-        if (block) {
-          state.aiInline.openForDiagram(
-            {
-              contentFrom: block.contentFrom,
-              contentTo: block.contentTo,
-              isEmpty: block.isEmpty,
-              existingSource: block.existingSource,
-            },
-            api.coordsAtPos(cursor),
-            api.replaceRange,
-          );
-          return;
-        }
-        const sel = api.getSelection();
-        if (sel && sel.text.trim()) {
-          state.aiInline.openFor(sel, api.coordsAtPos(sel.to), api.replaceRange);
-        }
-      }
-
       // Action per catalog shortcut id. A single dispatcher below matches the
       // event against each shortcut's EFFECTIVE keys (user override or default),
       // so all of these are user-remappable from Settings → Keybindings.
@@ -1789,15 +1760,14 @@ export function App() {
           state.setReaderMode((v) => !v);
         },
         "ai.openChat": (ev) => {
-          // Add the current selection as context (visible chip), then front the
-          // chat. With no selection it just fronts the chat.
           ev.preventDefault();
-          addSelectionToChat();
           state.focusAiComposer();
         },
         "ai.inlineAction": (ev) => {
+          // ⌘I attaches the current editor selection to the chat as a chip —
+          // only acts when there IS a selection (otherwise a no-op).
           ev.preventDefault();
-          openInlineAi();
+          if (addSelectionToChat()) state.focusAiComposer();
         },
         "app.settings": (ev) => {
           ev.preventDefault();
