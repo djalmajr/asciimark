@@ -12,6 +12,7 @@ import { createAiChatSessions } from "./create-ai-chat-sessions.ts";
 import { createAiInlineStore } from "./create-ai-inline-store.ts";
 import { type AiContextItem, buildContextPreamble } from "./ai-context.ts";
 import { getChatSessionsIndex } from "@asciimark/core/ai-chat-sessions.ts";
+import { getStoredAiMode, setStoredAiMode, type AIChatMode } from "@asciimark/core/ai-prefs.ts";
 import type { AIProvider, AITool } from "@asciimark/ai/types.ts";
 import type { ConvertOptions, ConvertResult } from "@asciimark/core/converter.ts";
 import type { Frontmatter } from "@asciimark/core/frontmatter.ts";
@@ -127,6 +128,9 @@ interface AppStateConfig {
    *  manager + in-process app tools). Injected by the host so packages/ui stays
    *  free of Tauri. Resolved lazily per send. */
   getAITools?: () => AITool[] | Promise<AITool[]>;
+  /** Persist a plan produced in Plan mode (the host writes it to
+   *  `.asciimark/plans`). Called with the assistant's plan text. */
+  onPlanComplete?: (content: string) => void;
 }
 
 export { FontFamilies, FontSizes };
@@ -536,6 +540,19 @@ export function createAppState(config: AppStateConfig) {
     setAiActiveMentionLabels(labels);
   }
 
+  // Chat mode: "build" (full tools) vs "plan" (no editing tools — produce a
+  // plan that the host saves to .asciimark/plans).
+  const [aiMode, setAiModeSig] = createSignal<AIChatMode>(getStoredAiMode());
+  function setAiMode(mode: AIChatMode): void {
+    setAiModeSig(mode);
+    setStoredAiMode(mode);
+  }
+  const PLAN_SYSTEM_PROMPT =
+    "You are in PLAN mode. Do NOT call tools or modify any files. Using the " +
+    "attached context, produce a clear, structured implementation plan in " +
+    "Markdown (goal, steps, files to touch, risks). The plan will be saved for " +
+    "the user to execute later in Build mode. Output only the plan.";
+
   // ── AI assistant ───────────────────────────────────────────────────
   // Multi-chat sidebar: a manager owning N chat-session stores (one per OPEN
   // tab) plus persistent history. The right-panel active tab is an ENCODED
@@ -544,7 +561,16 @@ export function createAppState(config: AppStateConfig) {
   // ephemeral store. The provider is injected by the host.
   const aiSessions = createAiChatSessions({
     getProvider: () => config.createAIProvider?.() ?? null,
-    ...(config.getAITools ? { getTools: config.getAITools } : {}),
+    // Plan mode runs tool-less and under a planning system prompt; Build mode
+    // exposes the full host tool set with no extra system prompt.
+    system: () => (aiMode() === "plan" ? PLAN_SYSTEM_PROMPT : undefined),
+    getTools: async () => {
+      if (aiMode() === "plan") return [];
+      return config.getAITools ? await config.getAITools() : [];
+    },
+    onAssistantTurn: (content) => {
+      if (aiMode() === "plan") config.onPlanComplete?.(content);
+    },
     getContext: () => {
       const active = aiActiveMentionLabels();
       const mentionItems: AiContextItem[] = aiMentions()
@@ -1084,6 +1110,8 @@ export function createAppState(config: AppStateConfig) {
     // AI assistant — multi-chat session manager + encoded right-panel tab
     aiSessions,
     aiInline,
+    aiMode,
+    setAiMode,
     aiActiveTab,
     setAiActiveTab,
     activateChatTab,

@@ -2205,7 +2205,6 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 .ai-composer-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   padding: 4px 6px 6px 8px;
 }
@@ -2215,6 +2214,46 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Build / Plan segmented toggle (mirrors the segmented-control look). */
+.ai-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: hsl(var(--secondary));
+  flex-shrink: 0;
+}
+
+.ai-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.1s,
+    color 0.1s;
+}
+
+.ai-mode-btn:hover {
+  color: hsl(var(--foreground));
+}
+
+.ai-mode-btn-active {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
 .ai-send-btn {

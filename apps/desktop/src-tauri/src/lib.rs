@@ -249,6 +249,11 @@ async fn read_files_relative(root: String, paths: Vec<String>) -> Result<std::co
 
 #[tauri::command]
 async fn write_file(path: String, content: String) -> Result<(), String> {
+    // Create parent dirs first so callers can write into not-yet-existing
+    // folders (e.g. `.asciimark/plans/`) without a separate mkdir round-trip.
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     std::fs::write(&path, &content).map_err(|e| e.to_string())
 }
 

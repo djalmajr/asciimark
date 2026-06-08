@@ -9,6 +9,9 @@ import IconChevronDown from "~icons/lucide/chevron-down";
 import IconX from "~icons/lucide/x";
 import IconFileText from "~icons/lucide/file-text";
 import IconTextSelect from "~icons/lucide/text-select";
+import IconHammer from "~icons/lucide/hammer";
+import IconListChecks from "~icons/lucide/list-checks";
+import type { AIChatMode } from "@asciimark/core/ai-prefs.ts";
 import type { AiChatStore } from "../composables/create-ai-chat-store.ts";
 import type { AiContextItem } from "../composables/ai-context.ts";
 import { Button } from "./ui/button.tsx";
@@ -58,6 +61,11 @@ export interface AiPanelProps {
   onMentionLabelsChange?: (labels: string[]) => void;
   /** Opens Settings → AI (empty-state CTA). */
   onOpenSettings?: () => void;
+  /** Active chat mode (Plan = no tools, saves a plan; Build = implements).
+   *  When provided the composer shows a Build/Plan toggle. */
+  mode?: AIChatMode;
+  /** Persist a mode change. */
+  onModeChange?: (mode: AIChatMode) => void;
 }
 
 /**
@@ -326,6 +334,32 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
           onKeyDown={onKeyDown}
         />
         <div class="ai-composer-footer">
+          <Show when={props.onModeChange}>
+            <div class="ai-mode-toggle" role="group" aria-label={(useLocale(), m.ai_mode_label())}>
+              <button
+                type="button"
+                class="ai-mode-btn"
+                classList={{ "ai-mode-btn-active": (props.mode ?? "build") === "build" }}
+                aria-pressed={(props.mode ?? "build") === "build"}
+                onClick={() => props.onModeChange?.("build")}
+                title={(useLocale(), m.ai_mode_build_hint())}
+              >
+                <IconHammer width={12} height={12} />
+                <span>{(useLocale(), m.ai_mode_build())}</span>
+              </button>
+              <button
+                type="button"
+                class="ai-mode-btn"
+                classList={{ "ai-mode-btn-active": props.mode === "plan" }}
+                aria-pressed={props.mode === "plan"}
+                onClick={() => props.onModeChange?.("plan")}
+                title={(useLocale(), m.ai_mode_plan_hint())}
+              >
+                <IconListChecks width={12} height={12} />
+                <span>{(useLocale(), m.ai_mode_plan())}</span>
+              </button>
+            </div>
+          </Show>
           <Show
             when={props.models && props.models.length > 0}
             fallback={

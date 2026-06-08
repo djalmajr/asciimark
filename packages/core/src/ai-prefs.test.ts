@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
   getStoredAiEngine,
+  getStoredAiMode,
   getStoredAiModel,
   getStoredAiSmallModel,
   getStoredAiStreaming,
   getStoredIndexingTier,
   setStoredAiEngine,
+  setStoredAiMode,
   setStoredAiModel,
   setStoredAiSmallModel,
   setStoredAiStreaming,
@@ -26,6 +28,12 @@ describe("ai preferences defaults", () => {
     expect(getStoredIndexingTier()).toBe("lite");
     expect(getStoredAiEngine()).toBe("ai-sdk");
     expect(getStoredAiStreaming()).toBe(false);
+    expect(getStoredAiMode()).toBe("build");
+  });
+
+  it("falls back to build for an unknown/garbage mode value", () => {
+    localStorage.setItem("asciimark-ai-mode", "garbage");
+    expect(getStoredAiMode()).toBe("build");
   });
 
   it("falls back to lite for a corrupted tier value", () => {
@@ -68,5 +76,12 @@ describe("ai preferences round-trip", () => {
     expect(getStoredAiStreaming()).toBe(true);
     setStoredAiStreaming(false);
     expect(getStoredAiStreaming()).toBe(false);
+  });
+
+  it("persists the chat mode (build ↔ plan)", () => {
+    setStoredAiMode("plan");
+    expect(getStoredAiMode()).toBe("plan");
+    setStoredAiMode("build");
+    expect(getStoredAiMode()).toBe("build");
   });
 });

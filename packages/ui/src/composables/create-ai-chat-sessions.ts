@@ -68,6 +68,8 @@ export interface AiChatSessionsConfig {
   /** Explicit context preamble injected into the sent message (shared across
    *  sessions — reflects the current composer context chips). */
   getContext?: () => string | undefined;
+  /** Called when any session's assistant turn finalizes (Plan-mode save). */
+  onAssistantTurn?: (content: string) => void;
   /** Title generation from the first user message; injected for purity/testing. */
   deriveTitle?: (firstUserMessage: string) => string;
 }
@@ -174,6 +176,7 @@ export function createAiChatSessions(config: AiChatSessionsConfig): AiChatSessio
           ...(config.getTools ? { getTools: config.getTools } : {}),
           ...(config.maxSteps != null ? { maxSteps: config.maxSteps } : {}),
           ...(config.getContext ? { getContext: config.getContext } : {}),
+          ...(config.onAssistantTurn ? { onAssistantTurn: config.onAssistantTurn } : {}),
           initialMessages: initial,
         });
 
