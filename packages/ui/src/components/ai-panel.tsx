@@ -13,6 +13,7 @@ import type { AiContextItem } from "../composables/ai-context.ts";
 import { Button } from "./ui/button.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "./ui/select.tsx";
+import { ModelPicker, type ModelGroup } from "./model-picker.tsx";
 import { AiMessage } from "./ai-message.tsx";
 
 /** Compact pill styling for the composer's Select triggers (mode + model),
@@ -29,16 +30,20 @@ export interface AiPanelProps {
   /** Display label for the active provider/model, or null when none is set.
    *  Used as the footer fallback when no `models` are provided. */
   providerLabel?: string | null;
-  /** Model options for the active provider (a `providerId/modelId` value +
-   *  label). When provided the footer shows a model picker instead of the
-   *  static "connected" chip. */
-  models?: Array<{ value: string; label: string }>;
+  /** Available models grouped by provider (OpenCode-style picker). When any
+   *  group has models the footer shows the model picker instead of the static
+   *  "connected" chip. */
+  modelGroups?: ModelGroup[];
   /** Currently selected model ref (`providerId/modelId`). */
   currentModel?: string;
   /** Context window (tokens) of the active model — drives the usage ring. */
   contextLimit?: number;
   /** Persist a model selection. */
   onSelectModel?: (modelRef: string) => void;
+  /** "+" in the picker — connect/add a provider (opens Settings → AI). */
+  onAddProvider?: () => void;
+  /** "⚙" in the picker — manage models (opens Settings → AI). */
+  onManageModels?: () => void;
   /** Explicit context items (attached files / selections) shown as chips. */
   contextItems?: AiContextItem[];
   /** The active-document chip (read via tool, shown for awareness), or null. */
@@ -214,8 +219,11 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
   const hasContext = (): boolean =>
     !!props.activeFileContext || (props.contextItems?.length ?? 0) > 0;
 
+  const allModels = (): { value: string; label: string }[] =>
+    (props.modelGroups ?? []).flatMap((g) => g.models);
+  const hasModels = (): boolean => allModels().length > 0;
   const currentModelLabel = (): string => {
-    const cur = props.models?.find((mdl) => mdl.value === props.currentModel);
+    const cur = allModels().find((mdl) => mdl.value === props.currentModel);
     return cur?.label ?? props.providerLabel ?? (useLocale(), m.ai_provider_none());
   };
 
@@ -360,7 +368,7 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
             </Select>
           </Show>
           <Show
-            when={props.models && props.models.length > 0}
+            when={hasModels()}
             fallback={
               <span
                 class="ai-provider-chip"
@@ -371,25 +379,14 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
               </span>
             }
           >
-            <Select
-              value={props.currentModel}
-              onChange={(v) => {
-                if (v) props.onSelectModel?.(v);
-              }}
-              options={(props.models ?? []).map((mdl) => mdl.value)}
-              gutter={4}
-              sameWidth={false}
-              itemComponent={(ip) => (
-                <SelectItem item={ip.item}>
-                  {props.models?.find((mdl) => mdl.value === ip.item.rawValue)?.label ?? ip.item.rawValue}
-                </SelectItem>
-              )}
-            >
-              <SelectTrigger class={PILL_SELECT} title={currentModelLabel()} aria-label={currentModelLabel()}>
-                <span class="truncate max-w-[120px]">{currentModelLabel()}</span>
-              </SelectTrigger>
-              <SelectContent class="min-w-[10rem]" />
-            </Select>
+            <ModelPicker
+              groups={props.modelGroups ?? []}
+              current={props.currentModel}
+              currentLabel={currentModelLabel()}
+              onSelect={(v) => props.onSelectModel?.(v)}
+              onAddProvider={props.onAddProvider}
+              onManage={props.onManageModels}
+            />
           </Show>
           <div class="ai-composer-tools">
             <ContextUsage store={props.store} contextLimit={props.contextLimit} />

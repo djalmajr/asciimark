@@ -38,32 +38,37 @@ describe("AiPanel", () => {
     expect(btn.disabled).toBe(true);
   });
 
-  it("shows a model picker (not the static chip) listing the provider's models", () => {
+  it("shows the model picker (not the static chip) with the current model label", () => {
     const store = readyStore();
     const onSelectModel = vi.fn();
     const { baseElement } = render(() => (
       <AiPanel
         store={store}
-        models={[
-          { value: "p/m1", label: "Model 1" },
-          { value: "p/m2", label: "Model 2" },
+        modelGroups={[
+          {
+            id: "p",
+            name: "Provider P",
+            models: [
+              { value: "p/m1", label: "Model 1" },
+              { value: "p/m2", label: "Model 2" },
+            ],
+          },
         ]}
         currentModel="p/m1"
         onSelectModel={onSelectModel}
       />
     ));
-    // The static "connected" chip is replaced by a SolidUI Select whose trigger
-    // shows the current model's label.
-    const trigger = baseElement.querySelector('[aria-haspopup="listbox"]') as HTMLElement;
+    // The static "connected" chip is replaced by the OpenCode-style picker whose
+    // trigger pill shows the current model's label.
+    const trigger = baseElement.querySelector(".ai-mp-trigger") as HTMLElement;
     expect(trigger).not.toBeNull();
     expect(baseElement.querySelector(".ai-provider-chip")).toBeNull();
     expect(trigger.textContent).toContain("Model 1");
-    // Open the listbox (kobalte Select opens on the pointer sequence) and confirm
-    // the other model is listed.
-    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
-    fireEvent.pointerUp(trigger, { button: 0, pointerType: "mouse" });
+    // Open the popover and confirm the provider group + the other model show.
     fireEvent.click(trigger);
-    expect(screen.getByText("Model 2")).not.toBeNull();
+    expect(screen.getByText("Provider P")).not.toBeNull();
+    fireEvent.click(screen.getByText("Model 2"));
+    expect(onSelectModel).toHaveBeenCalledWith("p/m2");
   });
 
   it("renders context chips (active file + items) and remove fires the callbacks", () => {

@@ -205,17 +205,21 @@ export function App() {
     aiConfig();
     return getStoredAiModel() ?? "";
   });
-  const aiModelOptions = createMemo<{ value: string; label: string }[]>(() => {
-    const ref = aiCurrentModel();
-    if (!ref || !ref.includes("/")) return [];
-    const providerId = ref.slice(0, ref.indexOf("/"));
-    const provider = aiConfig().provider[providerId];
-    if (!provider) return [];
-    return Object.keys(provider.models).map((mid) => ({
-      value: `${providerId}/${mid}`,
-      label: provider.models[mid]?.name ?? mid,
-    }));
-  });
+  // All configured models grouped by provider (OpenCode-style picker). Shows
+  // every provider that has at least one model; the active one is highlighted.
+  const aiModelGroups = createMemo<{ id: string; name: string; models: { value: string; label: string }[] }[]>(
+    () =>
+      Object.entries(aiConfig().provider)
+        .map(([pid, p]) => ({
+          id: pid,
+          name: p.name,
+          models: Object.entries(p.models).map(([mid, mdl]) => ({
+            value: `${pid}/${mid}`,
+            label: mdl.name ?? mid,
+          })),
+        }))
+        .filter((g) => g.models.length > 0),
+  );
   /** Context window (tokens) of the active model — drives the composer's
    *  context-usage ring. Undefined when the model config has no `limit`. */
   const aiContextLimit = createMemo<number | undefined>(() => {
@@ -1864,7 +1868,7 @@ export function App() {
       state={state}
       hasRoot={rootPaths().size > 0}
       aiProviderLabel={aiProviderLabel()}
-      aiModels={aiModelOptions()}
+      aiModelGroups={aiModelGroups()}
       aiCurrentModel={aiCurrentModel()}
       aiContextLimit={aiContextLimit()}
       onSelectAiModel={selectAiModel}

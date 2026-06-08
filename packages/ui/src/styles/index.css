@@ -1969,10 +1969,134 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   background: hsl(142 71% 45%);
 }
 
-/* Model picker (replaces the static "connected" chip when models are known). */
-.ai-provider-dot-active {
-  background: hsl(142 71% 45%);
+/* Model picker (OpenCode-style: search + grouped models + connect/manage). */
+.ai-mp-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  max-width: 150px;
+  padding: 0 6px 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.1s;
 }
+.ai-mp-trigger:hover,
+.ai-mp-trigger[data-expanded] {
+  background: hsl(var(--bg-hover));
+}
+.ai-mp-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ai-mp-trigger-chevron {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+}
+.ai-mp-popover {
+  width: 280px;
+  padding: 0;
+  overflow: hidden;
+}
+.ai-mp-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 8px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.ai-mp-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  color: hsl(var(--muted-foreground));
+}
+.ai-mp-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  outline: none;
+  color: hsl(var(--foreground));
+  font-size: 12px;
+}
+.ai-mp-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition:
+    background 0.1s,
+    color 0.1s;
+}
+.ai-mp-icon-btn:hover {
+  background: hsl(var(--bg-hover));
+  color: hsl(var(--foreground));
+}
+.ai-mp-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.ai-mp-group-label {
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+.ai-mp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.ai-mp-row:hover {
+  background: hsl(var(--bg-hover));
+}
+.ai-mp-row-active {
+  background: hsl(var(--bg-selected));
+}
+.ai-mp-row-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-mp-row-check {
+  flex-shrink: 0;
+  color: hsl(var(--primary));
+}
+.ai-mp-empty {
+  padding: 16px 8px;
+  text-align: center;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
 .ai-messages {
   flex: 1;
   min-height: 0;
