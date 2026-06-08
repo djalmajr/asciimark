@@ -72,6 +72,27 @@ describe("Preview", () => {
     expect(container.textContent).toContain("body paragraph");
   });
 
+  it("clears the shared toc + flags no-toc when a doc renders empty (regression)", async () => {
+    // Regression: switching to an empty-rendered Markdown file (e.g. a 0-byte
+    // .md) used to leave the PREVIOUS file's toc in the shared panel and keep
+    // `hasToc` stuck true. The empty-html branch must clear both.
+    const sharedToc = document.createElement("div");
+    document.body.appendChild(sharedToc);
+    const onToc = vi.fn();
+    const [html, setHtml] = createSignal(TOC_HTML_A);
+    const props = withDefaults({ tocVisible: true, tocContainer: sharedToc, onTocChange: onToc });
+    render(() => <Preview {...props} html={html()} />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(sharedToc.querySelector("a[href='#a-section']")).not.toBeNull();
+    expect(onToc).toHaveBeenLastCalledWith(true);
+
+    setHtml(""); // switch to an empty doc
+    await new Promise((r) => setTimeout(r, 50));
+    expect(sharedToc.querySelector("#toc")).toBeNull();
+    expect(onToc).toHaveBeenLastCalledWith(false);
+    sharedToc.remove();
+  });
+
   it("adds .doc-tables-wrap on the article when wrapTables is on, omits it when off", async () => {
     // Mutation captured: dropping the `classList={{ "doc-tables-wrap": ... }}`
     // binding on the article leaves wide tables stuck in horizontal-scroll

@@ -976,6 +976,16 @@ export function Preview(props: PreviewProps) {
       // panes during the transition.
       tocNode = undefined;
       pendingNewDocument = true;
+      // An empty document has NO toc, so clear the shared tree + flag —
+      // otherwise the panel keeps showing the PREVIOUS file's headings when
+      // you switch to an empty (or heading-less, empty-rendered) Markdown file.
+      // Only the active pane owns the shared container; guard on it so an
+      // inactive pane doesn't wipe the active one's toc.
+      const emptyTocContainer = props.tocContainer;
+      if (emptyTocContainer) {
+        emptyTocContainer.textContent = "";
+        props.onTocChange(false);
+      }
       return;
     }
 
