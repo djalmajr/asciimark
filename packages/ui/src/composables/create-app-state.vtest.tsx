@@ -448,3 +448,87 @@ describe("AppState — AI multi-chat tab routing", () => {
     }, aiConfig);
   });
 });
+
+describe("AppState — AI Plan/Build mode", () => {
+  // Captures the per-turn provider options (system prompt + tools) so we can
+  // assert the mode gating. Yields a non-empty turn so onPlanComplete can fire.
+  function captureProvider() {
+    const calls: Array<{ system?: string; tools?: unknown[] }> = [];
+    const provider = {
+      // eslint-disable-next-line require-yield
+      async *chat(
+        _messages: { role: string; content: string }[],
+        opts?: { system?: string; tools?: unknown[] },
+      ) {
+        calls.push({ system: opts?.system, tools: opts?.tools });
+        yield { type: "text-delta" as const, text: "PLAN BODY" };
+        yield { type: "done" as const };
+      },
+      async complete() {
+        return "";
+      },
+      async embed() {
+        return [];
+      },
+    };
+    return { calls, provider };
+  }
+
+  const fakeTools = [{ name: "edit", description: "d" }] as never;
+
+  it("defaults to build mode", () => {
+    withState((state) => {
+      expect(state.aiMode()).toBe("build");
+    });
+  });
+
+  it("setAiMode switches and persists to localStorage", () => {
+    withState((state) => {
+      state.setAiMode("plan");
+      expect(state.aiMode()).toBe("plan");
+      expect(localStorage.getItem("asciimark-ai-mode")).toBe("plan");
+      state.setAiMode("build");
+      expect(localStorage.getItem("asciimark-ai-mode")).toBe("build");
+    });
+  });
+
+  it("build mode: forwards tools, no plan prompt, onPlanComplete not called", async () => {
+    const { calls, provider } = captureProvider();
+    const onPlanComplete = vi.fn();
+    await withState(
+      async (state) => {
+        const id = state.newChat();
+        await state.aiSessions.storeFor(id)!.sendMessage("hi");
+        expect(calls.at(-1)?.system).toBeUndefined();
+        expect(calls.at(-1)?.tools).toEqual(fakeTools);
+        expect(onPlanComplete).not.toHaveBeenCalled();
+      },
+      {
+        createAIProvider: () => provider,
+        getAITools: () => fakeTools,
+        onPlanComplete,
+      },
+    );
+  });
+
+  it("plan mode: no tools, plan system prompt, onPlanComplete gets the text", async () => {
+    const { calls, provider } = captureProvider();
+    const onPlanComplete = vi.fn();
+    await withState(
+      async (state) => {
+        state.setAiMode("plan");
+        const id = state.newChat();
+        await state.aiSessions.storeFor(id)!.sendMessage("design X");
+        // Plan mode strips tools entirely (store omits the key when empty).
+        expect(calls.at(-1)?.tools).toBeUndefined();
+        expect(calls.at(-1)?.system).toContain("PLAN mode");
+        expect(onPlanComplete).toHaveBeenCalledWith("PLAN BODY");
+      },
+      {
+        createAIProvider: () => provider,
+        getAITools: () => fakeTools,
+        onPlanComplete,
+      },
+    );
+  });
+});

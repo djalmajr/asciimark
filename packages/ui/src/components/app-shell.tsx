@@ -838,6 +838,8 @@ export function AppShell(props: AppShellProps) {
                 insertRequest={s.composerInsert()}
                 onMentionLabelsChange={s.setActiveMentionLabels}
                 onOpenSettings={props.onOpenSettings}
+                mode={s.aiMode()}
+                onModeChange={s.setAiMode}
               />
             }
             backlinksSlot={

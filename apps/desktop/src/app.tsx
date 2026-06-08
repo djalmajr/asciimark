@@ -169,6 +169,8 @@ export function App() {
     createAIProvider: () => buildAIProvider(),
     // Tools for the chat tool-calling loop: in-process app tools + MCP servers.
     getAITools,
+    // Plan mode persists each produced plan under the workspace's .asciimark/plans.
+    onPlanComplete: handlePlanComplete,
   });
 
   // Load the AI config (ai.json merged with builtins) once at startup, then
@@ -291,6 +293,28 @@ export function App() {
     // Gate prompt-tier tools (MCP/unknown) behind an Accept/Reject; in-process
     // app tools auto-run (reads; the edit tool runs its own approval).
     return [...inProcess, ...mcp].map((t) => withApproval(t, requestToolApproval));
+  }
+
+  /** Persist a Plan-mode result to `<root>/.asciimark/plans/plan-<stamp>.md`.
+   *  write_file creates the parent dirs. No-op (logged) when no folder is open. */
+  async function handlePlanComplete(content: string): Promise<void> {
+    const root = Array.from(rootPaths().values())[0];
+    if (!root) {
+      console.warn("[plan] no workspace open — plan not saved");
+      return;
+    }
+    const d = new Date();
+    const pad = (n: number): string => String(n).padStart(2, "0");
+    const stamp =
+      `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
+      `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    const path = `${root}/.asciimark/plans/plan-${stamp}.md`;
+    try {
+      await invoke("write_file", { path, content });
+      console.info(`[plan] saved ${path}`);
+    } catch (e) {
+      console.error("[plan] failed to save:", e);
+    }
   }
 
   /** Serialized, abort-aware approval gate for prompt-tier tool calls: shows one

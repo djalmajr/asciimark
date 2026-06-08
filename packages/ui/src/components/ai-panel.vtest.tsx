@@ -178,4 +178,30 @@ describe("AiPanel", () => {
     // The "· app" source chip is hidden for in-process app tools.
     expect(chip.querySelector(".ai-tool-chip-source")).toBeNull();
   });
+
+  it("hides the Build/Plan toggle when onModeChange is absent", () => {
+    const store = readyStore();
+    const { baseElement } = render(() => <AiPanel store={store} providerLabel="Mock" />);
+    expect(baseElement.querySelector(".ai-mode-toggle")).toBeNull();
+  });
+
+  it("renders the Build/Plan toggle, reflects the active mode, and fires onModeChange", () => {
+    const store = readyStore();
+    const onModeChange = vi.fn();
+    const { baseElement } = render(() => (
+      <AiPanel store={store} providerLabel="Mock" mode="plan" onModeChange={onModeChange} />
+    ));
+    const toggle = baseElement.querySelector(".ai-mode-toggle")!;
+    expect(toggle).not.toBeNull();
+    const btns = [...toggle.querySelectorAll(".ai-mode-btn")] as HTMLButtonElement[];
+    expect(btns).toHaveLength(2);
+    // "plan" is active → the Plan button carries the active class + aria-pressed.
+    const planBtn = btns.find((b) => b.textContent?.includes("Plan"))!;
+    const buildBtn = btns.find((b) => b.textContent?.includes("Build"))!;
+    expect(planBtn.classList.contains("ai-mode-btn-active")).toBe(true);
+    expect(buildBtn.classList.contains("ai-mode-btn-active")).toBe(false);
+    // Clicking Build switches the mode.
+    fireEvent.click(buildBtn);
+    expect(onModeChange).toHaveBeenCalledWith("build");
+  });
 });

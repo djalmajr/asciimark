@@ -13,11 +13,24 @@ type IndexingTier = "off" | "lite" | "full";
  *  package that ai itself depends on). */
 type AIEngineId = "ai-sdk" | "tanstack";
 
+/** Chat mode: "plan" produces a saved plan with no editing tools; "build"
+ *  implements with the full tool set. */
+type AIChatMode = "build" | "plan";
+
+const MODE_KEY = "asciimark-ai-mode";
 const ENGINE_KEY = "asciimark-ai-engine";
 const MODEL_KEY = "asciimark-ai-model";
 const SMALL_MODEL_KEY = "asciimark-ai-small-model";
 const TIER_KEY = "asciimark-ai-indexing-tier";
 const STREAMING_KEY = "asciimark-ai-streaming";
+
+function getStoredAiMode(): AIChatMode {
+  return localStorage.getItem(MODE_KEY) === "plan" ? "plan" : "build";
+}
+
+function setStoredAiMode(mode: AIChatMode): void {
+  localStorage.setItem(MODE_KEY, mode);
+}
 
 function getStoredAiEngine(): AIEngineId {
   return localStorage.getItem(ENGINE_KEY) === "tanstack" ? "tanstack" : "ai-sdk";
@@ -69,8 +82,10 @@ function setStoredAiStreaming(enabled: boolean): void {
   localStorage.setItem(STREAMING_KEY, enabled ? "true" : "false");
 }
 
-export type { AIEngineId, IndexingTier };
+export type { AIChatMode, AIEngineId, IndexingTier };
 export {
+  getStoredAiMode,
+  setStoredAiMode,
   getStoredAiEngine,
   getStoredAiModel,
   getStoredAiSmallModel,
