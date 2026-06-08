@@ -622,27 +622,6 @@ export function createAppState(config: AppStateConfig) {
     focusAiComposer();
   }
 
-  /** Selection popover → "Quick Edit": open the inline (⌘I) overlay on the selection. */
-  function quickEditFromPopover(): void {
-    const info = selectionPopover();
-    if (!info) return;
-    const api = (
-      paneManager.activePane() as {
-        editorApi?: {
-          coordsAtPos: (p: number) => { left: number; top: number; bottom: number } | null;
-          replaceRange: (from: number, to: number, insert: string) => void;
-        };
-      }
-    ).editorApi;
-    if (!api) return;
-    aiInline.openFor(
-      { from: info.from, to: info.to, text: info.text },
-      api.coordsAtPos(info.to),
-      api.replaceRange,
-    );
-    setSelectionPopover(null);
-  }
-
   function handleClearRecentFiles() {
     clearRecentFiles();
     setRecentFiles([]);
@@ -1091,7 +1070,6 @@ export function createAppState(config: AppStateConfig) {
     selectionPopover,
     setSelectionPopover,
     addSelectionContextFromPopover,
-    quickEditFromPopover,
     aiComposerFocusTrigger,
     setAiComposerFocusTrigger,
     focusAiComposer,
