@@ -87,15 +87,15 @@ interface AppShellProps {
   /** Label for the AI provider chip (e.g. "Ollama · local"), or null/undefined
    *  → "No provider". DJA-12. */
   aiProviderLabel?: string | null;
-  /** Model options for the active provider (footer model picker in the chat). */
-  aiModels?: Array<{ value: string; label: string }>;
+  /** Available models grouped by provider (the chat's OpenCode-style picker). */
+  aiModelGroups?: Array<{ id: string; name: string; models: Array<{ value: string; label: string }> }>;
   /** Currently selected model ref (`providerId/modelId`). */
   aiCurrentModel?: string;
   /** Context window (tokens) of the active model — drives the usage ring. */
   aiContextLimit?: number;
   /** Persist a model selection from the chat footer picker. */
   onSelectAiModel?: (modelRef: string) => void;
-  /** Opens Settings → AI (AI panel empty-state CTA). Wired by DJA-15. */
+  /** Opens Settings → AI (AI panel empty-state CTA + the picker's "+"/"⚙"). */
   onOpenSettings?: () => void;
   // Settings modal (DJA-15)
   settingsOpen?: boolean;
@@ -829,10 +829,12 @@ export function AppShell(props: AppShellProps) {
                 store={s.aiSessions.activeStore()}
                 focusTrigger={s.aiComposerFocusTrigger()}
                 providerLabel={props.aiProviderLabel}
-                models={props.aiModels}
+                modelGroups={props.aiModelGroups}
                 currentModel={props.aiCurrentModel}
                 contextLimit={props.aiContextLimit}
                 onSelectModel={props.onSelectAiModel}
+                onAddProvider={props.onOpenSettings}
+                onManageModels={props.onOpenSettings}
                 contextItems={s.aiContextItems()}
                 activeFileContext={s.activeFileContext()}
                 onRemoveContext={s.removeAiContext}

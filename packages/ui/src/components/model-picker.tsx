@@ -1,0 +1,150 @@
+import { For, Show, createMemo, createSignal, type JSX } from "solid-js";
+import IconSearch from "~icons/lucide/search";
+import IconPlus from "~icons/lucide/plus";
+import IconSlidersHorizontal from "~icons/lucide/sliders-horizontal";
+import IconCheck from "~icons/lucide/check";
+import IconChevronDown from "~icons/lucide/chevron-down";
+import * as m from "@asciimark/i18n";
+import { useLocale } from "@asciimark/i18n/solid";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
+
+export interface ModelOption {
+  /** "provider/model" ref. */
+  value: string;
+  label: string;
+}
+
+export interface ModelGroup {
+  /** Provider id. */
+  id: string;
+  /** Provider display name (group header). */
+  name: string;
+  models: ModelOption[];
+}
+
+export interface ModelPickerProps {
+  groups: ModelGroup[];
+  /** Current "provider/model" ref. */
+  current?: string;
+  /** Label shown on the trigger pill. */
+  currentLabel: string;
+  onSelect: (value: string) => void;
+  /** "⚙" — open the model manager (Settings → AI). */
+  onManage?: () => void;
+  /** "+" — connect/add a provider (Settings → AI). */
+  onAddProvider?: () => void;
+}
+
+/**
+ * The chat model picker (OpenCode-style): a compact pill that opens a popover
+ * with a search box, a `+` (connect provider) and `⚙` (manage models) in the
+ * header, and the available models grouped by provider with the current one
+ * checked. Uses a kobalte `Popover` (not a menu) so it can host the search
+ * input. Management lives in Settings — the header buttons just open it.
+ */
+export function ModelPicker(props: ModelPickerProps): JSX.Element {
+  const [open, setOpen] = createSignal(false);
+  const [query, setQuery] = createSignal("");
+
+  const filtered = createMemo<ModelGroup[]>(() => {
+    const q = query().trim().toLowerCase();
+    const groups = q
+      ? props.groups.map((g) => ({
+          ...g,
+          models: g.models.filter(
+            (mdl) => mdl.label.toLowerCase().includes(q) || g.name.toLowerCase().includes(q),
+          ),
+        }))
+      : props.groups;
+    return groups.filter((g) => g.models.length > 0);
+  });
+
+  const isEmpty = createMemo(() => filtered().length === 0);
+
+  function pick(value: string): void {
+    props.onSelect(value);
+    setOpen(false);
+  }
+
+  return (
+    <Popover open={open()} onOpenChange={setOpen} placement="bottom-start" gutter={4}>
+      <PopoverTrigger
+        as="button"
+        class="ai-mp-trigger"
+        title={props.currentLabel}
+        aria-label={props.currentLabel}
+      >
+        <span class="ai-mp-trigger-label">{props.currentLabel}</span>
+        <IconChevronDown width={13} height={13} class="ai-mp-trigger-chevron" />
+      </PopoverTrigger>
+      <PopoverContent class="ai-mp-popover">
+        <div class="ai-mp-header">
+          <div class="ai-mp-search">
+            <IconSearch width={14} height={14} />
+            <input
+              type="text"
+              placeholder={(useLocale(), m.ai_model_search())}
+              value={query()}
+              onInput={(e) => setQuery(e.currentTarget.value)}
+            />
+          </div>
+          <Show when={props.onAddProvider}>
+            <button
+              type="button"
+              class="ai-mp-icon-btn"
+              title={(useLocale(), m.ai_connect_provider())}
+              aria-label={(useLocale(), m.ai_connect_provider())}
+              onClick={() => {
+                setOpen(false);
+                props.onAddProvider?.();
+              }}
+            >
+              <IconPlus width={15} height={15} />
+            </button>
+          </Show>
+          <Show when={props.onManage}>
+            <button
+              type="button"
+              class="ai-mp-icon-btn"
+              title={(useLocale(), m.ai_manage_models())}
+              aria-label={(useLocale(), m.ai_manage_models())}
+              onClick={() => {
+                setOpen(false);
+                props.onManage?.();
+              }}
+            >
+              <IconSlidersHorizontal width={15} height={15} />
+            </button>
+          </Show>
+        </div>
+        <div class="ai-mp-list">
+          <For each={filtered()}>
+            {(group) => (
+              <>
+                <div class="ai-mp-group-label">{group.name}</div>
+                <For each={group.models}>
+                  {(mdl) => (
+                    <button
+                      type="button"
+                      class="ai-mp-row"
+                      classList={{ "ai-mp-row-active": mdl.value === props.current }}
+                      onClick={() => pick(mdl.value)}
+                    >
+                      <span class="ai-mp-row-label">{mdl.label}</span>
+                      <Show when={mdl.value === props.current}>
+                        <IconCheck width={14} height={14} class="ai-mp-row-check" />
+                      </Show>
+                    </button>
+                  )}
+                </For>
+              </>
+            )}
+          </For>
+          <Show when={isEmpty()}>
+            <p class="ai-mp-empty">{(useLocale(), m.ai_model_none())}</p>
+          </Show>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
