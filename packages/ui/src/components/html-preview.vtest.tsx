@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSignal } from "solid-js";
 import { render } from "@solidjs/testing-library";
-import { HtmlPreview } from "./html-preview.tsx";
+import { HtmlPreview, type HtmlPreviewFolderRoot } from "./html-preview.tsx";
+
+const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
 
 function frame(container: HTMLElement): HTMLIFrameElement {
   const el = container.querySelector("iframe.html-preview-frame");
@@ -68,5 +70,77 @@ describe("HtmlPreview", () => {
 
     await new Promise((r) => setTimeout(r, 400));
     expect(frame(container).getAttribute("srcdoc")).toContain("second");
+  });
+
+  describe("folderRoot (SPA) mode", () => {
+    function makeHost(over: Partial<HtmlPreviewFolderRoot> = {}): HtmlPreviewFolderRoot {
+      return {
+        scheme: "asciimark-preview",
+        register: vi.fn(async () => ({ token: "r0", entryRel: "index.html" })),
+        setOverlay: vi.fn(),
+        clearOverlay: vi.fn(),
+        ...over,
+      };
+    }
+
+    it("loads the entry via a protocol src in a same-origin-isolated iframe", async () => {
+      const host = makeHost();
+      const { container } = render(() => (
+        <HtmlPreview content="<p>spa</p>" folderRoot={host} />
+      ));
+      await tick();
+      const iframe = frame(container);
+      // Mutation: dropping allow-same-origin forces an opaque origin → ES
+      // modules + root-absolute paths break (the whole point of this mode).
+      const sandbox = iframe.getAttribute("sandbox") ?? "";
+      expect(sandbox).toContain("allow-scripts");
+      expect(sandbox).toContain("allow-same-origin");
+      // src points at the registered origin; no srcdoc in this mode.
+      expect(iframe.getAttribute("src")).toBe("asciimark-preview://r0/index.html?v=0");
+      expect(iframe.getAttribute("srcdoc")).toBeNull();
+    });
+
+    it("pushes the live buffer as an overlay before first load", async () => {
+      const host = makeHost();
+      render(() => <HtmlPreview content="<p>live</p>" folderRoot={host} />);
+      await tick();
+      expect(host.setOverlay).toHaveBeenCalledWith("r0", "index.html", "<p>live</p>");
+    });
+
+    it("debounced edits re-push the overlay and bump the cache-buster", async () => {
+      const [content, setContent] = createSignal("<p>v1</p>");
+      const host = makeHost();
+      const { container } = render(() => (
+        <HtmlPreview content={content()} folderRoot={host} />
+      ));
+      await tick();
+      expect(frame(container).getAttribute("src")).toBe("asciimark-preview://r0/index.html?v=0");
+
+      setContent("<p>v2</p>");
+      await tick(450);
+      expect(host.setOverlay).toHaveBeenLastCalledWith("r0", "index.html", "<p>v2</p>");
+      expect(frame(container).getAttribute("src")).toBe("asciimark-preview://r0/index.html?v=1");
+    });
+
+    it("clears the overlay on unmount so requests fall back to disk", async () => {
+      const host = makeHost();
+      const { unmount } = render(() => <HtmlPreview content="<p>x</p>" folderRoot={host} />);
+      await tick();
+      unmount();
+      expect(host.clearOverlay).toHaveBeenCalledWith("r0");
+    });
+
+    it("falls back to srcdoc when registration fails (null target)", async () => {
+      const host = makeHost({ register: vi.fn(async () => null) });
+      const { container } = render(() => (
+        <HtmlPreview content="<p>nope</p>" folderRoot={host} />
+      ));
+      await tick();
+      const iframe = frame(container);
+      // No usable src; the iframe stays without one (blank) rather than
+      // rendering an unrooted srcdoc that would mis-resolve assets.
+      expect(iframe.getAttribute("src")).toBeNull();
+      expect(host.setOverlay).not.toHaveBeenCalled();
+    });
   });
 });

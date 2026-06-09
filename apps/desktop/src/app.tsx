@@ -1028,6 +1028,32 @@ export function App() {
     return convertFileSrc(`${rootPath}/${relativePath}`);
   }
 
+  // Folder-rooted HTML preview host: registers the previewed file's directory
+  // with the Rust `asciimark-preview://` scheme (isolated origin → real SPA
+  // rendering) and pushes the live editor buffer as an overlay. See
+  // src-tauri/src/html_preview.rs for the isolation model.
+  const htmlPreviewHost = {
+    scheme: "asciimark-preview",
+    async register(rootId: string, fileRelPath: string) {
+      const rootPath = rootPaths().get(rootId);
+      if (!rootPath) return null;
+      const full = `${rootPath}/${fileRelPath}`;
+      const slash = full.lastIndexOf("/");
+      const dir = slash >= 0 ? full.slice(0, slash) : full;
+      const entryRel = slash >= 0 ? full.slice(slash + 1) : full;
+      try {
+        const token = await invoke<string>("html_preview_register", { dir });
+        return { token, entryRel };
+      } catch {
+        return null;
+      }
+    },
+    setOverlay: (token: string, relPath: string, content: string) =>
+      invoke("html_preview_set_overlay", { token, relPath, content }) as Promise<void>,
+    clearOverlay: (token: string) =>
+      invoke("html_preview_clear_overlay", { token }) as Promise<void>,
+  };
+
   async function handleOpenRecentFile(recentFile: RecentFile) {
     const opened = await folder.openFolderPath(recentFile.rootPath);
     if (!opened) {
@@ -2077,6 +2103,7 @@ export function App() {
       }}
       resolveImageSrc={resolveImageSrc}
       resolveFileSrc={resolveFileSrc}
+      htmlPreviewHost={htmlPreviewHost}
       renderExcalidraw={(file, rootId) => {
         const root = rootPaths().get(rootId);
         return root ? <ExcalidrawFrame filePath={`${root}/${file.path}`} /> : null;

@@ -197,6 +197,14 @@ interface AppShellProps {
   /** Desktop-only: render the embedded Excalidraw editor for a `.excalidraw`
    *  file. Passed straight through to each PaneView. */
   renderExcalidraw?: (file: FSEntry, rootId: string) => JSX.Element;
+  /** Desktop-only: folder-rooted HTML preview host (SPA support). Passed
+   *  straight through to each PaneView. */
+  htmlPreviewHost?: {
+    scheme: string;
+    register: (rootId: string, fileRelPath: string) => Promise<{ token: string; entryRel: string } | null>;
+    setOverlay: (token: string, relPath: string, content: string) => void | Promise<void>;
+    clearOverlay: (token: string) => void | Promise<void>;
+  };
   onToggleShowHiddenEntries?: (enabled: boolean) => void | Promise<void>;
   /** Desktop-only: paired with the new file-tree dropdown toggle that
    *  filters entries through `.gitignore`. The shell flips
@@ -761,6 +769,7 @@ export function AppShell(props: AppShellProps) {
                         resolveImageSrc={props.resolveImageSrc}
                         resolveFileSrc={props.resolveFileSrc}
                         renderExcalidraw={props.renderExcalidraw}
+                        htmlPreviewHost={props.htmlPreviewHost}
                         onLoadFile={props.onLoadFile}
                         onOpenInNewTab={props.onOpenInNewTab}
                         onActivateTab={props.onActivateTab}

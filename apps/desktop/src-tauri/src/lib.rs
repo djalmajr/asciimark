@@ -23,6 +23,13 @@ use ai_mcp::{
     ai_mcp_list_tools, McpManager,
 };
 
+// `asciimark-preview://` custom scheme — serves an HTML file's directory as an
+// isolated web origin so multi-file pages / SPAs preview with full fidelity
+// (root-absolute paths, ES modules, importmaps, hash routing). Commands
+// imported by simple name so the IPC-contract check sees them registered.
+mod html_preview;
+use html_preview::{html_preview_clear_overlay, html_preview_register, html_preview_set_overlay};
+
 // Pure-Rust helpers split out of this file so the Miri sub-crate
 // (`tools/miri-helpers-tests`) can exercise them without pulling in
 // the full Tauri dep graph. The `ctor` macro inside
@@ -1092,9 +1099,16 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
+        // Serve `asciimark-preview://<token>/<path>` from a registered HTML
+        // file's directory (isolated origin; path-traversal guarded). See
+        // html_preview.rs for the isolation model.
+        .register_uri_scheme_protocol(html_preview::SCHEME, |ctx, request| {
+            html_preview::serve(ctx.app_handle(), request)
+        })
         .manage(WatcherHolder(Mutex::new(None)))
         .manage(DirWatcherHolder(Mutex::new(None)))
         .manage(McpManager::default())
+        .manage(html_preview::HtmlPreviewState::default())
         .invoke_handler(tauri::generate_handler![
             open_directory_dialog,
             save_file_dialog,
@@ -1130,6 +1144,9 @@ pub fn run() {
             ai_mcp_list_tools,
             ai_mcp_call_tool,
             ai_mcp_cancel_call,
+            html_preview_register,
+            html_preview_set_overlay,
+            html_preview_clear_overlay,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
