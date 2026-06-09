@@ -113,6 +113,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "percent-encoding",
  "proptest",
+ "regex",
  "rmcp",
  "serde",
  "serde_json",

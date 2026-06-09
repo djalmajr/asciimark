@@ -49,6 +49,10 @@ http = "1"
 # Percent-decode the path of `htmlpreview://` requests (the custom scheme that
 # serves an HTML file's directory as an isolated origin for SPA previews).
 percent-encoding = "2"
+# Rewrite CSS-module imports (`import x from "y.css" with { type: "css" }`) in
+# served JS — WKWebView doesn't support CSS module scripts, so the preview
+# transpiles them to a constructable-stylesheet shim (see html_preview.rs).
+regex = "1"
 # Async runtime for the MCP manager: the child-process transport and holding an
 # async Mutex across .await on tool calls need process + multi-thread + time.
 # Promoted from dev-dependency (was rt+macros, test-only) to a runtime dep.
