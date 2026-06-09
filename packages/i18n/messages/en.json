@@ -272,6 +272,8 @@
   "settings_ai_model": "Model",
   "settings_ai_save": "Save",
   "settings_ai_saved": "Saved",
+  "settings_ai_manage_models": "Manage models",
+  "settings_ai_manage_models_desc": "Customize which models appear in the chat picker.",
   "settings_ai_no_models": "No models — load or pick a provider",
   "settings_ai_streaming_label": "Streaming responses (beta)",
   "settings_ai_streaming_desc": "Render replies token-by-token as they arrive. If responses hang, turn this off.",

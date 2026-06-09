@@ -5,6 +5,8 @@ import {
   getStoredAiModel,
   getStoredAiSmallModel,
   getStoredAiStreaming,
+  getStoredHiddenModels,
+  setStoredHiddenModels,
   getStoredIndexingTier,
   setStoredAiEngine,
   setStoredAiMode,
@@ -83,5 +85,18 @@ describe("ai preferences round-trip", () => {
     expect(getStoredAiMode()).toBe("plan");
     setStoredAiMode("build");
     expect(getStoredAiMode()).toBe("build");
+  });
+
+  it("hidden models default to empty and round-trip (deduped)", () => {
+    expect(getStoredHiddenModels()).toEqual([]);
+    setStoredHiddenModels(["openai/gpt-4o", "openai/gpt-4o", "anthropic/claude-haiku-4-5"]);
+    expect(getStoredHiddenModels().sort()).toEqual(["anthropic/claude-haiku-4-5", "openai/gpt-4o"]);
+  });
+
+  it("hidden models tolerate a corrupt blob (returns empty)", () => {
+    localStorage.setItem("asciimark-ai-hidden-models", "{not json");
+    expect(getStoredHiddenModels()).toEqual([]);
+    localStorage.setItem("asciimark-ai-hidden-models", JSON.stringify([1, "ok", null]));
+    expect(getStoredHiddenModels()).toEqual(["ok"]);
   });
 });

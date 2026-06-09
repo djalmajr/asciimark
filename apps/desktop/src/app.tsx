@@ -26,6 +26,8 @@ import {
   setStoredAiModel,
   getStoredAiStreaming,
   setStoredAiStreaming,
+  getStoredHiddenModels,
+  setStoredHiddenModels,
   getStoredIndexingTier,
   setStoredIndexingTier,
   type IndexingTier,
@@ -205,9 +207,8 @@ export function App() {
     aiConfig();
     return getStoredAiModel() ?? "";
   });
-  // All configured models grouped by provider (OpenCode-style picker). Shows
-  // every provider that has at least one model; the active one is highlighted.
-  const aiModelGroups = createMemo<{ id: string; name: string; models: { value: string; label: string }[] }[]>(
+  // Every configured model grouped by provider (drives Settings → Manage models).
+  const aiModelGroupsAll = createMemo<{ id: string; name: string; models: { value: string; label: string }[] }[]>(
     () =>
       Object.entries(aiConfig().provider)
         .map(([pid, p]) => ({
@@ -220,6 +221,22 @@ export function App() {
         }))
         .filter((g) => g.models.length > 0),
   );
+  // Models the user hid via "Manage models" — filtered out of the chat picker.
+  const [hiddenModels, setHiddenModels] = createSignal<string[]>(getStoredHiddenModels());
+  function toggleHiddenModel(ref: string): void {
+    setHiddenModels((cur) => {
+      const next = cur.includes(ref) ? cur.filter((r) => r !== ref) : [...cur, ref];
+      setStoredHiddenModels(next);
+      return next;
+    });
+  }
+  // What the chat picker shows: all groups minus the hidden models.
+  const aiModelGroups = createMemo(() => {
+    const hidden = new Set(hiddenModels());
+    return aiModelGroupsAll()
+      .map((g) => ({ ...g, models: g.models.filter((mdl) => !hidden.has(mdl.value)) }))
+      .filter((g) => g.models.length > 0);
+  });
   /** Context window (tokens) of the active model — drives the composer's
    *  context-usage ring. Undefined when the model config has no `limit`. */
   const aiContextLimit = createMemo<number | undefined>(() => {
@@ -1877,6 +1894,9 @@ export function App() {
       onSettingsClose={() => setSettingsOpen(false)}
       aiProviders={aiProviders()}
       aiSelectedModel={getStoredAiModel()}
+      aiAllModels={aiModelGroupsAll()}
+      aiHiddenModels={hiddenModels()}
+      onToggleModel={toggleHiddenModel}
       indexingTier={indexingTier()}
       onIndexingTierChange={(t) => {
         setIndexingTier(t);

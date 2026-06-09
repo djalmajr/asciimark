@@ -109,6 +109,12 @@ export interface SettingsDialogProps {
   aiProviders: SettingsAiProvider[];
   /** Currently selected model id "provider/model", or null. */
   selectedModel: string | null;
+  /** All configured models grouped by provider — drives "Manage models". */
+  allModels?: Array<{ id: string; name: string; models: Array<{ value: string; label: string }> }>;
+  /** Model refs currently hidden from the chat picker. */
+  hiddenModels?: string[];
+  /** Toggle a model's visibility in the chat picker. */
+  onToggleModel?: (ref: string) => void;
   indexingTier: IndexingTier;
   onTierChange: (tier: IndexingTier) => void;
   /** Fetch the live model list for a provider using the given key. */
@@ -338,6 +344,40 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
           {(useLocale(), label("settings_ai_save"))}
         </Button>
       </div>
+
+      <Show when={(props.allModels?.length ?? 0) > 0}>
+        <label class="settings-label" style={{ "margin-top": "16px" }}>
+          {(useLocale(), label("settings_ai_manage_models"))}
+        </label>
+        <p class="settings-prose" style={{ margin: "0 0 6px" }}>
+          {(useLocale(), label("settings_ai_manage_models_desc"))}
+        </p>
+        <div class="settings-models">
+          <For each={props.allModels}>
+            {(group) => (
+              <>
+                <div class="settings-models-group">{group.name}</div>
+                <For each={group.models}>
+                  {(mdl) => (
+                    <div class="settings-models-row">
+                      <span class="settings-models-name">{mdl.label}</span>
+                      <ToggleSwitch
+                        checked={!(props.hiddenModels ?? []).includes(mdl.value)}
+                        onChange={() => props.onToggleModel?.(mdl.value)}
+                        aria-label={mdl.label}
+                      >
+                        <SwitchControl>
+                          <SwitchThumb />
+                        </SwitchControl>
+                      </ToggleSwitch>
+                    </div>
+                  )}
+                </For>
+              </>
+            )}
+          </For>
+        </div>
+      </Show>
 
       <div class="settings-row" style={{ "align-items": "center", gap: "10px", "margin-top": "12px" }}>
         <ToggleSwitch
