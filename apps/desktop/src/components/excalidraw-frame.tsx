@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 // Registers the <z-frame> custom element (from the published @zomme/frame core).
 import "@zomme/frame";
+import type { ExcalidrawScene } from "@asciimark/ui/composables/ai-context.ts";
 
 interface Scene {
   appState?: Record<string, unknown>;
@@ -11,6 +12,13 @@ interface Scene {
 interface ExcalidrawFrameProps {
   /** Absolute path of the `.excalidraw` file on disk. */
   filePath: string;
+  /** Register/unregister a getter for THIS file's live scene (selection +
+   *  elements) so ⌘I can attach the diagram selection to the AI chat. Called
+   *  with a getter on mount and `null` on cleanup. */
+  onSceneApi?: (
+    filePath: string,
+    getScene: (() => Promise<ExcalidrawScene | null>) | null,
+  ) => void;
 }
 
 const RESERVED = new Set([
@@ -32,6 +40,9 @@ const isEventKey = (key: string) => /^on[A-Z]/.test(key);
 // the guest through the z-frame.
 function Frame(props: Record<string, unknown> & { name: string; src: string }): HTMLElement {
   const el = document.createElement("z-frame");
+  // Hand the element back so the host can call guest-registered RPCs on it
+  // (e.g. `el.getScene()`); RESERVED keeps `ref` out of the property-forward loop.
+  if (typeof props.ref === "function") (props.ref as (e: HTMLElement) => void)(el);
   const attached: [string, EventListener][] = [];
   const setAttr = (name: string, value: unknown) => {
     if (value == null) el.removeAttribute(name);
@@ -154,6 +165,21 @@ export function ExcalidrawFrame(props: ExcalidrawFrameProps) {
   // `pathname`. `src` is also absolute, as the z-frame does `new URL(this.src)`.
   const guestOrigin = window.location.origin;
 
+  // Captured z-frame element — the guest registers `getScene` as a callable
+  // method on it (RPC) once the iframe handshake completes.
+  let frameEl: (HTMLElement & { getScene?: () => Promise<ExcalidrawScene> }) | undefined;
+  onMount(() => {
+    props.onSceneApi?.(props.filePath, async () => {
+      if (typeof frameEl?.getScene !== "function") return null;
+      try {
+        return (await frameEl.getScene()) ?? null;
+      } catch {
+        return null;
+      }
+    });
+  });
+  onCleanup(() => props.onSceneApi?.(props.filePath, null));
+
   return (
     <Frame
       name="excalidraw"
@@ -162,6 +188,7 @@ export function ExcalidrawFrame(props: ExcalidrawFrameProps) {
       style="width:100%;height:100%;border:0;display:block"
       drawingData={scene()}
       save={save}
+      ref={(el: HTMLElement) => (frameEl = el as typeof frameEl)}
     />
   );
 }
