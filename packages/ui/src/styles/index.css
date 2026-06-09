@@ -2769,6 +2769,8 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   overflow: hidden;
   max-height: 320px;
   overflow-y: auto;
+  /* Reserve the scrollbar gutter so toggling a row never shifts the layout. */
+  scrollbar-gutter: stable;
 }
 .settings-models-group {
   display: flex;

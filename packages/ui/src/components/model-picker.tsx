@@ -1,6 +1,5 @@
 import { For, Show, createMemo, createSignal, type JSX } from "solid-js";
 import IconSearch from "~icons/lucide/search";
-import IconPlus from "~icons/lucide/plus";
 import IconSlidersHorizontal from "~icons/lucide/sliders-horizontal";
 import IconCheck from "~icons/lucide/check";
 import IconChevronDown from "~icons/lucide/chevron-down";
@@ -29,10 +28,9 @@ export interface ModelPickerProps {
   /** Label shown on the trigger pill. */
   currentLabel: string;
   onSelect: (value: string) => void;
-  /** "⚙" — open the model manager (Settings → AI). */
+  /** "⚙" — open the model manager (Settings → AI), where providers are
+   *  connected/added and model visibility is toggled. */
   onManage?: () => void;
-  /** "+" — connect/add a provider (Settings → AI). */
-  onAddProvider?: () => void;
 }
 
 /**
@@ -88,20 +86,6 @@ export function ModelPicker(props: ModelPickerProps): JSX.Element {
               onInput={(e) => setQuery(e.currentTarget.value)}
             />
           </div>
-          <Show when={props.onAddProvider}>
-            <button
-              type="button"
-              class="ai-mp-icon-btn"
-              title={(useLocale(), m.ai_connect_provider())}
-              aria-label={(useLocale(), m.ai_connect_provider())}
-              onClick={() => {
-                setOpen(false);
-                props.onAddProvider?.();
-              }}
-            >
-              <IconPlus width={15} height={15} />
-            </button>
-          </Show>
           <Show when={props.onManage}>
             <button
               type="button"
