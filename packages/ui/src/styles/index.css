@@ -2124,11 +2124,15 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   color: hsl(var(--muted-foreground));
 }
 
+/* ScrollArea root — owns the flex sizing; overflow + the custom scrollbar live
+   inside the component. The flex-column message layout moves to the measured
+   content wrapper (.ai-messages-content) since that's the messages' parent. */
 .ai-messages {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+}
+
+.ai-messages-content {
   display: flex;
   flex-direction: column;
   gap: 10px;
