@@ -39,7 +39,7 @@
   "menu_check_for_updates": "Buscar actualizaciones",
   "menu_language": "Idioma",
   "empty_dropzone_title": "Suelte una carpeta/archivo aquí o haga clic para abrir",
-  "empty_dropzone_hint": "Compatible con archivos .adoc, .md y .excalidraw",
+  "empty_dropzone_hint": "Compatible con archivos .adoc, .md, .html y .excalidraw",
   "empty_select_file_title": "Selecciona un archivo",
   "empty_select_file_hint": "Elige un archivo .adoc desde la barra lateral para previsualizarlo.",
   "empty_recent_heading": "Recientes",

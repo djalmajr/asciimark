@@ -5,9 +5,11 @@ import {
   escapeHtml,
   fileKind,
   fileManagerKind,
+  HTML_EXTENSIONS,
   IGNORED_DIRS,
   IMAGE_EXTENSIONS,
   isAdocFile,
+  isHtmlFile,
   isMdFile,
   isSupportedFile,
   MD_EXTENSIONS,
@@ -65,6 +67,13 @@ describe("fileKind", () => {
 
   it.each(PDF_EXTENSIONS)("classifies %s as pdf", (ext) => {
     expect(fileKind(`report${ext}`)).toBe("pdf");
+  });
+
+  it.each(HTML_EXTENSIONS)("classifies %s as html", (ext) => {
+    // Mutation: routing .html through the document pipeline would run it
+    // through the Markdown sanitizer (stripping its own scripts/styles).
+    expect(fileKind(`page${ext}`)).toBe("html");
+    expect(isHtmlFile(`page${ext}`)).toBe(true);
   });
 
   it("treats unknown/text extensions as other", () => {

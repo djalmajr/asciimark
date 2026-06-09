@@ -16,6 +16,7 @@ import { EditorToolbar } from "./editor-toolbar.tsx";
 import { EmptyState } from "./empty-state.tsx";
 import { MediaViewer } from "./media-viewer.tsx";
 import { Preview } from "./preview.tsx";
+import { HtmlPreview } from "./html-preview.tsx";
 import { TabBar } from "./tab-bar.tsx";
 
 /** Build the dnd id for the pane-level drop zone. Tabs from a different
@@ -135,6 +136,33 @@ export function PaneView(props: PaneViewProps) {
     return !!f && !!props.renderExcalidraw && fileKind(f.name) === "excalidraw";
   };
 
+  // `.html`/`.htm` files preview in a sandboxed iframe (their own scripts/styles
+  // render with full fidelity) instead of the Markdown/AsciiDoc sanitizer.
+  const isHtml = () => {
+    const f = pane().selectedFile();
+    return !!f && fileKind(f.name) === "html";
+  };
+  // asset:// URL of the file's directory (with a REAL trailing slash) so the
+  // previewed HTML resolves its relative resources (CSS / images / links).
+  //
+  // `convertFileSrc` percent-encodes the WHOLE path as one opaque segment
+  // (macOS: `asset://localhost/%2FUsers%2F…%2Ffile.html`), so the path has no
+  // real `/` separators to slice on — and a base ending in `%2F` isn't a
+  // directory boundary the browser will append to. We resolve the directory's
+  // path instead, strip any trailing separator, and append a literal `/`. The
+  // asset handler percent-decodes `%2F` and `/` alike, so the mixed URL
+  // (`…%2Fdir/style.css`) still maps to the right file on disk.
+  const htmlBaseHref = (): string | undefined => {
+    const f = pane().selectedFile();
+    const rootId = pane().selectedRootId();
+    if (!f || !rootId || !props.resolveFileSrc) return undefined;
+    const slash = f.path.lastIndexOf("/");
+    const dirRel = slash >= 0 ? f.path.slice(0, slash) : "";
+    const src = props.resolveFileSrc(rootId, dirRel);
+    if (!src) return undefined;
+    return `${src.replace(/(%2[fF]|\/)+$/, "")}/`;
+  };
+
   // The file-loader writes UNSUPPORTED_CONTENT into html when the file can
   // be neither rendered nor edited (a binary that isn't an image/PDF). Show
   // the notice instead of editor/preview.
@@ -216,6 +244,9 @@ export function PaneView(props: PaneViewProps) {
           />
         }
       >
+        <Show
+          when={isHtml()}
+          fallback={
         <Preview
           findTrigger={s.previewFindTrigger()}
           html={pane().html()}
@@ -245,6 +276,10 @@ export function PaneView(props: PaneViewProps) {
           onSearchOpenChange={s.setPreviewSearchOpen}
           onTocChange={(has) => s.setHasToc(has)}
         />
+          }
+        >
+          <HtmlPreview content={pane().editorContent()} baseHref={htmlBaseHref()} />
+        </Show>
       </Show>
     );
   }
