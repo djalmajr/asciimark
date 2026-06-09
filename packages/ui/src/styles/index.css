@@ -2795,6 +2795,61 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   color: hsl(var(--muted-foreground));
 }
 
+/* Settings → AI sub-pages (connect provider / custom provider). */
+.settings-subpage-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.settings-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+.settings-back:hover {
+  background: hsl(var(--bg-hover));
+  color: hsl(var(--foreground));
+}
+.settings-catalog {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  overflow: hidden;
+}
+.settings-catalog-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 12px;
+  border: none;
+  background: none;
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-catalog-row:not(:first-child) {
+  border-top: 1px solid hsl(var(--border));
+}
+.settings-catalog-row:hover {
+  background: hsl(var(--bg-hover));
+}
+.settings-catalog-chevron {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+}
+
 /* Custom provider form. */
 .settings-custom {
   display: flex;

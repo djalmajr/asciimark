@@ -30,11 +30,17 @@ function setup(overrides: Record<string, unknown> = {}) {
 }
 
 describe("SettingsDialog", () => {
-  it("renders the vertical nav and opens on the AI section", () => {
+  it("renders the vertical nav and opens on the AI section (Manage models)", () => {
     const { baseElement } = setup();
     expect(baseElement.querySelectorAll('[role="tab"]').length).toBe(8);
-    expect(baseElement.querySelector(".settings-provider-list")).not.toBeNull();
+    // The AI section opens on the OpenCode-style Manage models view.
+    expect(baseElement.querySelector(".settings-models-search")).not.toBeNull();
+    expect(baseElement.querySelector(".settings-provider-list")).toBeNull();
   });
+
+  function openCatalog(baseElement: HTMLElement): void {
+    fireEvent.click(baseElement.querySelector(".settings-models-search .ai-mp-icon-btn") as HTMLElement);
+  }
 
   it("switches sections via the nav rail", () => {
     const { baseElement } = setup();
@@ -45,58 +51,31 @@ describe("SettingsDialog", () => {
     expect(baseElement.querySelector(".settings-tiers")).not.toBeNull();
   });
 
-  it("loads models for the selected provider", async () => {
-    const { baseElement, onListModels } = setup();
-    const loadBtn = [...baseElement.querySelectorAll("button")].find((b) =>
-      /load/i.test(b.textContent ?? ""),
-    );
-    fireEvent.click(loadBtn!);
-    await waitFor(() => expect(onListModels).toHaveBeenCalled());
-    // Kobalte renders options into a portaled listbox only once opened.
-    // The trigger opens on pointerdown (mouse, left button), not click.
-    const trigger = baseElement.querySelector('[aria-haspopup="listbox"]') as HTMLElement;
-    fireEvent.pointerDown(trigger, { pointerType: "mouse", button: 0 });
-    await waitFor(() => {
-      const opts = [...baseElement.querySelectorAll('[role="option"]')].map(
-        (o) => o.textContent ?? "",
-      );
-      expect(opts).toContain("m1");
-    });
+  it("connect flow: catalog → provider → Continue fires onConnectProvider", () => {
+    const onConnectProvider = vi.fn();
+    const { baseElement } = setup({ onConnectProvider });
+    openCatalog(baseElement);
+    // The catalog lists the providers + a Custom entry.
+    const row = [...baseElement.querySelectorAll(".settings-catalog-row")].find((r) =>
+      /Anthropic/.test(r.textContent ?? ""),
+    )!;
+    fireEvent.click(row);
+    // The per-provider sub-page has a single API-key field + Continue.
+    const keyInput = baseElement.querySelector('input[type="password"]') as HTMLInputElement;
+    fireEvent.input(keyInput, { target: { value: "sk-x" } });
+    const cont = [...baseElement.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "Continue",
+    )!;
+    fireEvent.click(cont);
+    expect(onConnectProvider).toHaveBeenCalledWith({ providerId: "anthropic", apiKey: "sk-x" });
   });
 
-  it("saves the provider with key + selected model, then clears the key input", async () => {
-    const { baseElement, onSaveProvider } = setup();
-    const keyInput = baseElement.querySelector(
-      ".settings-input.ai-composer-input",
-    ) as HTMLInputElement;
-    fireEvent.input(keyInput, { target: { value: "sk-test" } });
-    // pick a model via the Kobalte Select (anthropic default has one):
-    // open the trigger, then select the desired option in the portaled listbox.
-    // Both opening and selecting are driven by pointerdown (mouse, left button).
-    const trigger = baseElement.querySelector('[aria-haspopup="listbox"]') as HTMLElement;
-    fireEvent.pointerDown(trigger, { pointerType: "mouse", button: 0 });
-    const option = await waitFor(() => {
-      const found = [...baseElement.querySelectorAll('[role="option"]')].find(
-        (o) => (o.textContent ?? "").trim() === "claude-sonnet-4-6",
-      );
-      expect(found).toBeTruthy();
-      return found as HTMLElement;
-    });
-    fireEvent.pointerDown(option, { pointerType: "mouse", button: 0 });
-    fireEvent.pointerUp(option, { pointerType: "mouse", button: 0 });
-    fireEvent.click(option);
-    const saveBtn = [...baseElement.querySelectorAll("button")].find(
-      (b) => (b.textContent ?? "").trim() === "Save",
-    );
-    fireEvent.click(saveBtn!);
-    await waitFor(() => {
-      expect(onSaveProvider).toHaveBeenCalledWith({
-        providerId: "anthropic",
-        apiKey: "sk-test",
-        modelId: "claude-sonnet-4-6",
-      });
-    });
-    expect(keyInput.value).toBe("");
+  it("catalog → back returns to Manage models", () => {
+    const { baseElement } = setup();
+    openCatalog(baseElement);
+    expect(baseElement.querySelector(".settings-catalog")).not.toBeNull();
+    fireEvent.click(baseElement.querySelector(".settings-back") as HTMLElement);
+    expect(baseElement.querySelector(".settings-models-search")).not.toBeNull();
   });
 
   it("Manage models: renders per-model toggles and fires onToggleModel", () => {
@@ -164,13 +143,14 @@ describe("SettingsDialog", () => {
     expect(rows.some((t) => /o1/.test(t))).toBe(false);
   });
 
-  it("Custom provider: fills the form and submits onSaveCustomProvider", () => {
+  it("Custom provider: catalog → Custom → fills the form and submits", () => {
     const onSaveCustomProvider = vi.fn();
     const { baseElement } = setup({ onSaveCustomProvider });
-    const addBtn = [...baseElement.querySelectorAll("button")].find((b) =>
-      /add custom provider/i.test(b.textContent ?? ""),
+    openCatalog(baseElement);
+    const customRow = [...baseElement.querySelectorAll(".settings-catalog-row")].find((r) =>
+      /custom provider/i.test(r.textContent ?? ""),
     )!;
-    fireEvent.click(addBtn);
+    fireEvent.click(customRow);
     const custom = baseElement.querySelector(".settings-custom") as HTMLElement;
     expect(custom).not.toBeNull();
     const inputs = custom.querySelectorAll("input");

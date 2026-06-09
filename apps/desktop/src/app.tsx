@@ -326,6 +326,37 @@ export function App() {
     setAiConfig(await loadAIConfig());
   }
 
+  /** Connect a built-in provider: store its key (keychain) and, when it lists no
+   *  models yet but has a baseURL, fetch + register them so they show up in
+   *  Manage models. Used by the per-provider connect sub-page. */
+  async function connectProvider(input: { providerId: string; apiKey: string }): Promise<void> {
+    const { providerId, apiKey } = input;
+    if (apiKey) await setApiKey(providerId, apiKey);
+    const provider = aiConfig().provider[providerId];
+    if (provider && Object.keys(provider.models).length === 0 && provider.options?.baseURL) {
+      let ids: string[] = [];
+      try {
+        ids = await listAiModels(providerId, apiKey);
+      } catch {
+        ids = [];
+      }
+      if (ids.length) {
+        const user = await loadUserAIConfig();
+        const existing = (user.provider ?? {})[providerId] ?? {};
+        await saveAIConfig(
+          JSON.stringify({
+            ...user,
+            provider: {
+              ...(user.provider ?? {}),
+              [providerId]: { ...existing, models: Object.fromEntries(ids.map((id) => [id, { name: id }])) },
+            },
+          }),
+        );
+      }
+    }
+    setAiConfig(await loadAIConfig());
+  }
+
   // ── MCP servers + in-process tools (chat tool-calling) ─────────────────
   /** Tools the chat may call: in-process app tools (active doc / workspace,
    *  edits via Accept/Reject) plus every connected MCP server's tools. */
@@ -1945,6 +1976,7 @@ export function App() {
       onListModels={listAiModels}
       onSaveAiProvider={saveAiProvider}
       onSaveCustomProvider={saveCustomProvider}
+      onConnectProvider={connectProvider}
       mcpServers={mcpServersView()}
       onSaveMcpServer={saveMcpServer}
       onRemoveMcpServer={removeMcpServer}
