@@ -335,25 +335,40 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
     | { kind: "manage" }
     | { kind: "catalog" }
     | { kind: "custom" }
-    | { kind: "provider"; id: string };
+    | { kind: "provider"; name: string; ids: string[] };
   const [view, setView] = createSignal<AiView>({ kind: "manage" });
-  const providerName = (id: string): string => props.aiProviders.find((p) => p.id === id)?.name ?? id;
-  const providerView = (): string => {
+  const providerViewData = (): { name: string; ids: string[] } | null => {
     const v = view();
-    return v.kind === "provider" ? v.id : "";
+    return v.kind === "provider" ? v : null;
   };
 
-  function enterProvider(id: string): void {
-    selectProvider(id);
+  /** Providers for the Connect catalog, MERGED by base name (e.g. "OpenCode Go"
+   *  + "OpenCode Go (chat)" → one row connecting both ids) and sorted
+   *  alphabetically. Custom is rendered first, separately. */
+  const catalogProviders = createMemo<{ name: string; ids: string[] }[]>(() => {
+    const byBase = new Map<string, { name: string; ids: string[] }>();
+    for (const p of props.aiProviders) {
+      const base = p.name.replace(/\s*\([^)]*\)\s*$/, "").trim() || p.name;
+      const existing = byBase.get(base);
+      if (existing) existing.ids.push(p.id);
+      else byBase.set(base, { name: base, ids: [p.id] });
+    }
+    return [...byBase.values()].sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  function enterProvider(group: { name: string; ids: string[] }): void {
     setApiKey("");
     setError(null);
-    setView({ kind: "provider", id });
+    setView({ kind: "provider", name: group.name, ids: group.ids });
   }
-  async function continueConnect(id: string): Promise<void> {
+  async function continueConnect(): Promise<void> {
+    const v = view();
+    if (v.kind !== "provider") return;
     setError(null);
     setLoading(true);
     try {
-      await props.onConnectProvider?.({ providerId: id, apiKey: apiKey() });
+      // One backend may have several entries (different `kind`); connect each.
+      for (const id of v.ids) await props.onConnectProvider?.({ providerId: id, apiKey: apiKey() });
       setApiKey("");
       setView({ kind: "manage" });
     } catch (e) {
@@ -415,20 +430,20 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
             <h3 class="settings-h3" style={{ margin: "0" }}>{(useLocale(), label("ai_connect_provider"))}</h3>
           </div>
           <div class="settings-catalog">
-            <For each={props.aiProviders}>
-              {(p) => (
-                <button type="button" class="settings-catalog-row" onClick={() => enterProvider(p.id)}>
-                  <span class="settings-catalog-name">{p.name}</span>
-                  <IconChevronRight width={16} height={16} class="settings-catalog-chevron" />
-                </button>
-              )}
-            </For>
             <Show when={props.onSaveCustomProvider}>
               <button type="button" class="settings-catalog-row" onClick={() => setView({ kind: "custom" })}>
                 <span class="settings-catalog-name">{(useLocale(), label("settings_ai_custom_provider"))}</span>
                 <IconChevronRight width={16} height={16} class="settings-catalog-chevron" />
               </button>
             </Show>
+            <For each={catalogProviders()}>
+              {(group) => (
+                <button type="button" class="settings-catalog-row" onClick={() => enterProvider(group)}>
+                  <span class="settings-catalog-name">{group.name}</span>
+                  <IconChevronRight width={16} height={16} class="settings-catalog-chevron" />
+                </button>
+              )}
+            </For>
           </div>
         </Match>
 
@@ -444,7 +459,7 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
               <IconArrowLeft width={16} height={16} />
             </button>
             <h3 class="settings-h3" style={{ margin: "0" }}>
-              {(useLocale(), label("settings_ai_connect"))} {providerName(providerView())}
+              {(useLocale(), label("settings_ai_connect"))} {providerViewData()?.name}
             </h3>
           </div>
           <p class="settings-prose">{(useLocale(), label("settings_ai_connect_desc"))}</p>
@@ -461,7 +476,7 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
             <div class="ai-error">{error()}</div>
           </Show>
           <div class="settings-row settings-row-end">
-            <Button size="sm" onClick={() => void continueConnect(providerView())} disabled={loading()}>
+            <Button size="sm" onClick={() => void continueConnect()} disabled={loading()}>
               {(useLocale(), label("settings_ai_connect_continue"))}
             </Button>
           </div>
