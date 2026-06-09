@@ -1621,12 +1621,14 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   color: hsl(var(--foreground));
   background: hsl(var(--background));
 }
+/* Active accent matches the editor's file tabs: a 2px teal bar on the TOP
+   edge (.tab-bar-item-active::after), not an underline. */
 .rp-tab-active::after {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
+  top: 0;
   height: 2px;
   background: hsl(var(--primary));
 }
