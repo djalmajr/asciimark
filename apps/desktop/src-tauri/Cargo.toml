@@ -46,6 +46,9 @@ rmcp = { version = "1", default-features = false, features = [
 ] }
 # For typed HTTP header names/values when passing custom MCP auth headers.
 http = "1"
+# Percent-decode the path of `htmlpreview://` requests (the custom scheme that
+# serves an HTML file's directory as an isolated origin for SPA previews).
+percent-encoding = "2"
 # Async runtime for the MCP manager: the child-process transport and holding an
 # async Mutex across .await on tool calls need process + multi-thread + time.
 # Promoted from dev-dependency (was rt+macros, test-only) to a runtime dep.

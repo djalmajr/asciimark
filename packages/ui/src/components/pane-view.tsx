@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, type JSX } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, type JSX } from "solid-js";
 import { useDroppable } from "@dnd-kit/solid";
 import type { FSEntry } from "@asciimark/core/types.ts";
 import { fileKind, UNSUPPORTED_CONTENT } from "@asciimark/core/utils.ts";
@@ -69,6 +69,15 @@ export interface PaneViewProps {
   /** Desktop-only: render the embedded Excalidraw editor for a `.excalidraw`
    *  file. The extension leaves this undefined, so it never shows the editor. */
   renderExcalidraw?: (file: FSEntry, rootId: string) => JSX.Element;
+  /** Desktop-only: serve an HTML file's directory as an isolated origin so the
+   *  preview renders real SPAs (root-absolute paths, ES modules, importmaps).
+   *  Undefined (web/extension) → the srcdoc fallback (relative paths only). */
+  htmlPreviewHost?: {
+    scheme: string;
+    register: (rootId: string, fileRelPath: string) => Promise<{ token: string; entryRel: string } | null>;
+    setOverlay: (token: string, relPath: string, content: string) => void | Promise<void>;
+    clearOverlay: (token: string) => void | Promise<void>;
+  };
   onLoadFile?: (entry: FSEntry, rootId: string) => void;
   onOpenInNewTab?: (entry: FSEntry, rootId: string) => void;
   onActivateTab?: (tabId: string) => void;
@@ -162,6 +171,23 @@ export function PaneView(props: PaneViewProps) {
     if (!src) return undefined;
     return `${src.replace(/(%2[fF]|\/)+$/, "")}/`;
   };
+
+  // Desktop SPA preview: a per-file host the HtmlPreview registers to serve the
+  // file's directory as an isolated origin. A NEW object identity per file (the
+  // closure captures f.path/rootId) makes the preview re-register on switch.
+  const htmlFolderRoot = createMemo(() => {
+    if (!isHtml()) return undefined;
+    const host = props.htmlPreviewHost;
+    const f = pane().selectedFile();
+    const rootId = pane().selectedRootId();
+    if (!host || !f || !rootId) return undefined;
+    return {
+      scheme: host.scheme,
+      register: () => host.register(rootId, f.path),
+      setOverlay: host.setOverlay,
+      clearOverlay: host.clearOverlay,
+    };
+  });
 
   // The file-loader writes UNSUPPORTED_CONTENT into html when the file can
   // be neither rendered nor edited (a binary that isn't an image/PDF). Show
@@ -278,7 +304,11 @@ export function PaneView(props: PaneViewProps) {
         />
           }
         >
-          <HtmlPreview content={pane().editorContent()} baseHref={htmlBaseHref()} />
+          <HtmlPreview
+            content={pane().editorContent()}
+            baseHref={htmlBaseHref()}
+            folderRoot={htmlFolderRoot()}
+          />
         </Show>
       </Show>
     );
