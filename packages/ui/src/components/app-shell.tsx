@@ -151,6 +151,8 @@ interface AppShellProps {
     apiKey: string;
     models: Array<{ id: string; name: string }>;
   }) => void | Promise<void>;
+  /** Connect a built-in provider (store key + register its models). */
+  onConnectProvider?: (input: { providerId: string; apiKey: string }) => void | Promise<void>;
   onOpenInNewTab?: (entry: FSEntry, rootId: string) => void;
   /** Resolve a file as an inline "@" reference for the chat (desktop reads the
    *  content). `insert` appends "@file" to the composer (file-tree menu);
@@ -514,6 +516,7 @@ export function AppShell(props: AppShellProps) {
           }
           onSaveProvider={(o) => props.onSaveAiProvider?.(o)}
           onSaveCustomProvider={(i) => props.onSaveCustomProvider?.(i)}
+          onConnectProvider={(i) => props.onConnectProvider?.(i)}
           mcpServers={props.mcpServers ?? []}
           onSaveMcpServer={(s) => props.onSaveMcpServer?.(s)}
           onRemoveMcpServer={(id) => props.onRemoveMcpServer?.(id)}

@@ -12,6 +12,9 @@ import {
 import IconX from "~icons/lucide/x";
 import IconSearch from "~icons/lucide/search";
 import IconTrash from "~icons/lucide/trash-2";
+import IconArrowLeft from "~icons/lucide/arrow-left";
+import IconChevronRight from "~icons/lucide/chevron-right";
+import IconPlus from "~icons/lucide/plus";
 import IconSparkles from "~icons/lucide/sparkles";
 import IconPlug from "~icons/lucide/plug";
 import IconLayers from "~icons/lucide/layers";
@@ -137,6 +140,8 @@ export interface SettingsDialogProps {
     apiKey: string;
     models: Array<{ id: string; name: string }>;
   }) => Promise<void> | void;
+  /** Connect a built-in provider (store key + register its models). */
+  onConnectProvider?: (input: { providerId: string; apiKey: string }) => Promise<void> | void;
   appVersion?: string;
   platform?: Platform;
   /** Configured MCP servers with live connection/tool status. */
@@ -285,7 +290,6 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
   }
 
   // ── Custom provider form (OpenAI-compatible) ────────────────────────────────
-  const [customOpen, setCustomOpen] = createSignal(false);
   const [cpId, setCpId] = createSignal("");
   const [cpName, setCpName] = createSignal("");
   const [cpBaseURL, setCpBaseURL] = createSignal("");
@@ -319,9 +323,43 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
         models: cpModels().filter((mdl) => mdl.id.trim()),
       });
       resetCustom();
-      setCustomOpen(false);
+      setView({ kind: "manage" });
     } catch (e) {
       setCpError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  // ── View router: the main "manage" list, the provider "catalog", a
+  //    per-provider connect sub-page, or the custom-provider form. ─────────────
+  type AiView =
+    | { kind: "manage" }
+    | { kind: "catalog" }
+    | { kind: "custom" }
+    | { kind: "provider"; id: string };
+  const [view, setView] = createSignal<AiView>({ kind: "manage" });
+  const providerName = (id: string): string => props.aiProviders.find((p) => p.id === id)?.name ?? id;
+  const providerView = (): string => {
+    const v = view();
+    return v.kind === "provider" ? v.id : "";
+  };
+
+  function enterProvider(id: string): void {
+    selectProvider(id);
+    setApiKey("");
+    setError(null);
+    setView({ kind: "provider", id });
+  }
+  async function continueConnect(id: string): Promise<void> {
+    setError(null);
+    setLoading(true);
+    try {
+      await props.onConnectProvider?.({ providerId: id, apiKey: apiKey() });
+      setApiKey("");
+      setView({ kind: "manage" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -362,189 +400,107 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
 
   return (
     <div class="settings-section">
-      <h3 class="settings-h3">{(useLocale(), label("settings_nav_ai"))}</h3>
-
-      <label class="settings-label">{(useLocale(), label("settings_ai_provider"))}</label>
-      <div class="settings-provider-list" role="radiogroup">
-        <For each={props.aiProviders}>
-          {(p) => (
+      <Switch>
+        {/* ── Connect provider: catalog of providers + Custom ── */}
+        <Match when={view().kind === "catalog"}>
+          <div class="settings-subpage-header">
             <button
               type="button"
-              role="radio"
-              aria-checked={providerId() === p.id}
-              class="settings-provider"
-              classList={{ "settings-provider-active": providerId() === p.id }}
-              onClick={() => selectProvider(p.id)}
+              class="settings-back"
+              aria-label={(useLocale(), label("settings_ai_back"))}
+              onClick={() => setView({ kind: "manage" })}
             >
-              {p.name}
+              <IconArrowLeft width={16} height={16} />
             </button>
-          )}
-        </For>
-      </div>
+            <h3 class="settings-h3" style={{ margin: "0" }}>{(useLocale(), label("ai_connect_provider"))}</h3>
+          </div>
+          <div class="settings-catalog">
+            <For each={props.aiProviders}>
+              {(p) => (
+                <button type="button" class="settings-catalog-row" onClick={() => enterProvider(p.id)}>
+                  <span class="settings-catalog-name">{p.name}</span>
+                  <IconChevronRight width={16} height={16} class="settings-catalog-chevron" />
+                </button>
+              )}
+            </For>
+            <Show when={props.onSaveCustomProvider}>
+              <button type="button" class="settings-catalog-row" onClick={() => setView({ kind: "custom" })}>
+                <span class="settings-catalog-name">{(useLocale(), label("settings_ai_custom_provider"))}</span>
+                <IconChevronRight width={16} height={16} class="settings-catalog-chevron" />
+              </button>
+            </Show>
+          </div>
+        </Match>
 
-      <label class="settings-label">{(useLocale(), label("settings_ai_api_key"))}</label>
-      <div class="settings-row">
-        <input
-          type="password"
-          class="ai-composer-input settings-input"
-          autocomplete="off"
-          placeholder="sk-…"
-          value={apiKey()}
-          onInput={(e) => setApiKey(e.currentTarget.value)}
-        />
-        <Button size="sm" variant="outline" onClick={() => void loadModels()} disabled={loading()}>
-          {(useLocale(), label("settings_ai_load_models"))}
-        </Button>
-      </div>
-
-      <label class="settings-label">{(useLocale(), label("settings_ai_model"))}</label>
-      <Select<string>
-        value={modelId() || null}
-        onChange={(value) => setModelId(value ?? "")}
-        options={models()}
-        disabled={models().length === 0}
-        placeholder={(useLocale(), label("settings_ai_no_models"))}
-        itemComponent={(itemProps) => (
-          <SelectItem item={itemProps.item}>{itemProps.item.rawValue}</SelectItem>
-        )}
-      >
-        <SelectTrigger class="settings-input settings-select" aria-label={label("settings_ai_model")}>
-          <SelectValue<string>>{(state) => state.selectedOption()}</SelectValue>
-        </SelectTrigger>
-        <SelectContent />
-      </Select>
-
-      <Show when={error()}>
-        <div class="ai-error">{error()}</div>
-      </Show>
-
-      <div class="settings-row settings-row-end">
-        <Show when={saved()}>
-          <span class="settings-saved">{(useLocale(), label("settings_ai_saved"))}</span>
-        </Show>
-        <Button size="sm" onClick={() => void save()} disabled={!providerId() || !modelId()}>
-          {(useLocale(), label("settings_ai_save"))}
-        </Button>
-      </div>
-
-      <Show when={(props.allModels?.length ?? 0) > 0}>
-        <label class="settings-label" style={{ "margin-top": "16px" }}>
-          {(useLocale(), label("settings_ai_manage_models"))}
-        </label>
-        <p class="settings-prose" style={{ margin: "0 0 8px" }}>
-          {(useLocale(), label("settings_ai_manage_models_desc"))}
-        </p>
-        <div class="settings-models-search">
-          <IconSearch width={14} height={14} />
+        {/* ── Per-provider connect: just the API key ── */}
+        <Match when={view().kind === "provider"}>
+          <div class="settings-subpage-header">
+            <button
+              type="button"
+              class="settings-back"
+              aria-label={(useLocale(), label("settings_ai_back"))}
+              onClick={() => setView({ kind: "catalog" })}
+            >
+              <IconArrowLeft width={16} height={16} />
+            </button>
+            <h3 class="settings-h3" style={{ margin: "0" }}>
+              {(useLocale(), label("settings_ai_connect"))} {providerName(providerView())}
+            </h3>
+          </div>
+          <p class="settings-prose">{(useLocale(), label("settings_ai_connect_desc"))}</p>
+          <label class="settings-label">{(useLocale(), label("settings_ai_api_key"))}</label>
           <input
-            type="text"
-            placeholder={(useLocale(), label("ai_model_search"))}
-            value={modelQuery()}
-            onInput={(e) => setModelQuery(e.currentTarget.value)}
+            type="password"
+            autocomplete="off"
+            class="settings-input ai-composer-input"
+            placeholder="sk-…"
+            value={apiKey()}
+            onInput={(e) => setApiKey(e.currentTarget.value)}
           />
-        </div>
-        <div class="settings-models">
-          <For each={filteredGroups()}>
-            {(group) => (
-              <>
-                <div class="settings-models-group">
-                  <span class="settings-models-group-name">{group.name}</span>
-                  <ToggleSwitch
-                    checked={providerAllVisible(group)}
-                    onChange={() => toggleProvider(group)}
-                    aria-label={group.name}
-                  >
-                    <SwitchControl>
-                      <SwitchThumb />
-                    </SwitchControl>
-                  </ToggleSwitch>
-                </div>
-                <For each={group.models}>
-                  {(mdl) => (
-                    <div class="settings-models-row">
-                      <span class="settings-models-name">{mdl.label}</span>
-                      <ToggleSwitch
-                        checked={!hiddenSet().has(mdl.value)}
-                        onChange={() => props.onToggleModel?.(mdl.value)}
-                        aria-label={mdl.label}
-                      >
-                        <SwitchControl>
-                          <SwitchThumb />
-                        </SwitchControl>
-                      </ToggleSwitch>
-                    </div>
-                  )}
-                </For>
-              </>
-            )}
-          </For>
-          <Show when={filteredGroups().length === 0}>
-            <p class="settings-models-empty">{(useLocale(), label("ai_model_none"))}</p>
+          <Show when={error()}>
+            <div class="ai-error">{error()}</div>
           </Show>
-        </div>
-      </Show>
+          <div class="settings-row settings-row-end">
+            <Button size="sm" onClick={() => void continueConnect(providerView())} disabled={loading()}>
+              {(useLocale(), label("settings_ai_connect_continue"))}
+            </Button>
+          </div>
+        </Match>
 
-      <Show when={props.onSaveCustomProvider}>
-        <div class="settings-row" style={{ "margin-top": "16px" }}>
-          <Button size="sm" variant="outline" onClick={() => setCustomOpen((v) => !v)}>
-            {(useLocale(), label("settings_ai_add_custom"))}
-          </Button>
-        </div>
-        <Show when={customOpen()}>
+        {/* ── Custom provider form ── */}
+        <Match when={view().kind === "custom"}>
+          <div class="settings-subpage-header">
+            <button
+              type="button"
+              class="settings-back"
+              aria-label={(useLocale(), label("settings_ai_back"))}
+              onClick={() => setView({ kind: "catalog" })}
+            >
+              <IconArrowLeft width={16} height={16} />
+            </button>
+            <h3 class="settings-h3" style={{ margin: "0" }}>{(useLocale(), label("settings_ai_custom_provider"))}</h3>
+          </div>
+          <p class="settings-prose">{(useLocale(), label("settings_ai_custom_desc"))}</p>
           <div class="settings-custom">
             <label class="settings-label">{(useLocale(), label("settings_ai_custom_id"))}</label>
-            <input
-              class="settings-input ai-composer-input"
-              placeholder="myprovider"
-              value={cpId()}
-              onInput={(e) => setCpId(e.currentTarget.value)}
-            />
+            <input class="settings-input ai-composer-input" placeholder="myprovider" value={cpId()} onInput={(e) => setCpId(e.currentTarget.value)} />
             <label class="settings-label">{(useLocale(), label("settings_ai_custom_name"))}</label>
-            <input
-              class="settings-input ai-composer-input"
-              placeholder="My AI Provider"
-              value={cpName()}
-              onInput={(e) => setCpName(e.currentTarget.value)}
-            />
+            <input class="settings-input ai-composer-input" placeholder="My AI Provider" value={cpName()} onInput={(e) => setCpName(e.currentTarget.value)} />
             <label class="settings-label">{(useLocale(), label("settings_ai_custom_baseurl"))}</label>
-            <input
-              class="settings-input ai-composer-input"
-              placeholder="https://api.myprovider.com/v1"
-              value={cpBaseURL()}
-              onInput={(e) => setCpBaseURL(e.currentTarget.value)}
-            />
+            <input class="settings-input ai-composer-input" placeholder="https://api.myprovider.com/v1" value={cpBaseURL()} onInput={(e) => setCpBaseURL(e.currentTarget.value)} />
             <label class="settings-label">{(useLocale(), label("settings_ai_api_key"))}</label>
-            <input
-              type="password"
-              autocomplete="off"
-              class="settings-input ai-composer-input"
-              placeholder="API key"
-              value={cpKey()}
-              onInput={(e) => setCpKey(e.currentTarget.value)}
-            />
+            <input type="password" autocomplete="off" class="settings-input ai-composer-input" placeholder="API key" value={cpKey()} onInput={(e) => setCpKey(e.currentTarget.value)} />
             <label class="settings-label">{(useLocale(), label("settings_ai_custom_models"))}</label>
             <Index each={cpModels()}>
               {(mdl, i) => (
                 <div class="settings-custom-model">
-                  <input
-                    class="settings-input ai-composer-input"
-                    placeholder="model-id"
-                    value={mdl().id}
-                    onInput={(e) => setCpModel(i, "id", e.currentTarget.value)}
-                  />
-                  <input
-                    class="settings-input ai-composer-input"
-                    placeholder="Display Name"
-                    value={mdl().name}
-                    onInput={(e) => setCpModel(i, "name", e.currentTarget.value)}
-                  />
+                  <input class="settings-input ai-composer-input" placeholder="model-id" value={mdl().id} onInput={(e) => setCpModel(i, "id", e.currentTarget.value)} />
+                  <input class="settings-input ai-composer-input" placeholder="Display Name" value={mdl().name} onInput={(e) => setCpModel(i, "name", e.currentTarget.value)} />
                   <button
                     type="button"
                     class="settings-custom-remove"
                     aria-label={(useLocale(), label("settings_ai_custom_remove_model"))}
-                    onClick={() =>
-                      setCpModels((ms) => (ms.length > 1 ? ms.filter((_, idx) => idx !== i) : ms))
-                    }
+                    onClick={() => setCpModels((ms) => (ms.length > 1 ? ms.filter((_, idx) => idx !== i) : ms))}
                   >
                     <IconTrash width={14} height={14} />
                   </button>
@@ -565,10 +521,78 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
               </Button>
             </div>
           </div>
-        </Show>
+        </Match>
+
+        {/* ── Manage models (main view) ── */}
+        <Match when={view().kind === "manage"}>
+          <h3 class="settings-h3">{(useLocale(), label("settings_nav_ai"))}</h3>
+          <p class="settings-prose" style={{ margin: "0 0 10px" }}>
+            {(useLocale(), label("settings_ai_manage_models_desc"))}
+          </p>
+          <div class="settings-models-search">
+            <IconSearch width={14} height={14} />
+            <input
+              type="text"
+              placeholder={(useLocale(), label("ai_model_search"))}
+              value={modelQuery()}
+              onInput={(e) => setModelQuery(e.currentTarget.value)}
+            />
+            <button
+              type="button"
+              class="ai-mp-icon-btn"
+              title={(useLocale(), label("ai_connect_provider"))}
+              aria-label={(useLocale(), label("ai_connect_provider"))}
+              onClick={() => setView({ kind: "catalog" })}
+            >
+              <IconPlus width={15} height={15} />
+            </button>
+          </div>
+          <Show
+            when={(props.allModels?.length ?? 0) > 0}
+            fallback={<p class="settings-models-empty">{(useLocale(), label("ai_model_none"))}</p>}
+          >
+            <div class="settings-models">
+          <For each={filteredGroups()}>
+            {(group) => (
+              <>
+                <div class="settings-models-group">
+                  <span class="settings-models-group-name">{group.name}</span>
+                  <ToggleSwitch
+                    checked={providerAllVisible(group)}
+                    onChange={() => toggleProvider(group)}
+                    aria-label={group.name}
+                  >
+                    <SwitchControl class="h-4 w-7">
+                      <SwitchThumb class="size-3 data-[checked]:translate-x-3" />
+                    </SwitchControl>
+                  </ToggleSwitch>
+                </div>
+                <For each={group.models}>
+                  {(mdl) => (
+                    <div class="settings-models-row">
+                      <span class="settings-models-name">{mdl.label}</span>
+                      <ToggleSwitch
+                        checked={!hiddenSet().has(mdl.value)}
+                        onChange={() => props.onToggleModel?.(mdl.value)}
+                        aria-label={mdl.label}
+                      >
+                        <SwitchControl class="h-4 w-7">
+                          <SwitchThumb class="size-3 data-[checked]:translate-x-3" />
+                        </SwitchControl>
+                      </ToggleSwitch>
+                    </div>
+                  )}
+                </For>
+              </>
+            )}
+          </For>
+          <Show when={filteredGroups().length === 0}>
+            <p class="settings-models-empty">{(useLocale(), label("ai_model_none"))}</p>
+          </Show>
+        </div>
       </Show>
 
-      <div class="settings-row" style={{ "align-items": "center", gap: "10px", "margin-top": "12px" }}>
+          <div class="settings-row" style={{ "align-items": "center", gap: "10px", "margin-top": "16px" }}>
         <ToggleSwitch
           checked={props.aiStreaming ?? false}
           onChange={(checked) => props.onAiStreamingChange?.(checked)}
@@ -585,8 +609,10 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
           <p class="settings-prose" style={{ margin: "2px 0 0" }}>
             {(useLocale(), label("settings_ai_streaming_desc"))}
           </p>
-        </div>
-      </div>
+            </div>
+          </div>
+        </Match>
+      </Switch>
     </div>
   );
 }
