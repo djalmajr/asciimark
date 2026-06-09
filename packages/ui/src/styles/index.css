@@ -2794,6 +2794,39 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   font-size: 13px;
   color: hsl(var(--muted-foreground));
 }
+
+/* Custom provider form. */
+.settings-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+}
+.settings-custom-model {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.settings-custom-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+.settings-custom-remove:hover {
+  background: hsl(var(--bg-hover));
+  color: hsl(var(--destructive));
+}
 .settings-models-row {
   display: flex;
   align-items: center;

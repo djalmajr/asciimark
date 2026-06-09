@@ -1,5 +1,6 @@
 import {
   For,
+  Index,
   Match,
   Show,
   Switch,
@@ -10,6 +11,7 @@ import {
 } from "solid-js";
 import IconX from "~icons/lucide/x";
 import IconSearch from "~icons/lucide/search";
+import IconTrash from "~icons/lucide/trash-2";
 import IconSparkles from "~icons/lucide/sparkles";
 import IconPlug from "~icons/lucide/plug";
 import IconLayers from "~icons/lucide/layers";
@@ -126,6 +128,14 @@ export interface SettingsDialogProps {
     providerId: string;
     apiKey: string;
     modelId: string;
+  }) => Promise<void> | void;
+  /** Add a custom OpenAI-compatible provider (id/name/baseURL/key/models). */
+  onSaveCustomProvider?: (input: {
+    id: string;
+    name: string;
+    baseURL: string;
+    apiKey: string;
+    models: Array<{ id: string; name: string }>;
   }) => Promise<void> | void;
   appVersion?: string;
   platform?: Platform;
@@ -271,6 +281,47 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
     for (const mdl of group.models) {
       const isHidden = hidden.has(mdl.value);
       if (allVisible ? !isHidden : isHidden) props.onToggleModel?.(mdl.value);
+    }
+  }
+
+  // ── Custom provider form (OpenAI-compatible) ────────────────────────────────
+  const [customOpen, setCustomOpen] = createSignal(false);
+  const [cpId, setCpId] = createSignal("");
+  const [cpName, setCpName] = createSignal("");
+  const [cpBaseURL, setCpBaseURL] = createSignal("");
+  const [cpKey, setCpKey] = createSignal("");
+  const [cpModels, setCpModels] = createSignal<{ id: string; name: string }[]>([{ id: "", name: "" }]);
+  const [cpError, setCpError] = createSignal<string | null>(null);
+
+  function setCpModel(i: number, field: "id" | "name", value: string): void {
+    setCpModels((ms) => ms.map((mdl, idx) => (idx === i ? { ...mdl, [field]: value } : mdl)));
+  }
+  function resetCustom(): void {
+    setCpId("");
+    setCpName("");
+    setCpBaseURL("");
+    setCpKey("");
+    setCpModels([{ id: "", name: "" }]);
+    setCpError(null);
+  }
+  async function submitCustom(): Promise<void> {
+    setCpError(null);
+    if (!cpId().trim() || !cpBaseURL().trim()) {
+      setCpError(label("settings_ai_custom_required"));
+      return;
+    }
+    try {
+      await props.onSaveCustomProvider?.({
+        id: cpId().trim(),
+        name: cpName(),
+        baseURL: cpBaseURL(),
+        apiKey: cpKey(),
+        models: cpModels().filter((mdl) => mdl.id.trim()),
+      });
+      resetCustom();
+      setCustomOpen(false);
+    } catch (e) {
+      setCpError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -431,6 +482,90 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
             <p class="settings-models-empty">{(useLocale(), label("ai_model_none"))}</p>
           </Show>
         </div>
+      </Show>
+
+      <Show when={props.onSaveCustomProvider}>
+        <div class="settings-row" style={{ "margin-top": "16px" }}>
+          <Button size="sm" variant="outline" onClick={() => setCustomOpen((v) => !v)}>
+            {(useLocale(), label("settings_ai_add_custom"))}
+          </Button>
+        </div>
+        <Show when={customOpen()}>
+          <div class="settings-custom">
+            <label class="settings-label">{(useLocale(), label("settings_ai_custom_id"))}</label>
+            <input
+              class="settings-input ai-composer-input"
+              placeholder="myprovider"
+              value={cpId()}
+              onInput={(e) => setCpId(e.currentTarget.value)}
+            />
+            <label class="settings-label">{(useLocale(), label("settings_ai_custom_name"))}</label>
+            <input
+              class="settings-input ai-composer-input"
+              placeholder="My AI Provider"
+              value={cpName()}
+              onInput={(e) => setCpName(e.currentTarget.value)}
+            />
+            <label class="settings-label">{(useLocale(), label("settings_ai_custom_baseurl"))}</label>
+            <input
+              class="settings-input ai-composer-input"
+              placeholder="https://api.myprovider.com/v1"
+              value={cpBaseURL()}
+              onInput={(e) => setCpBaseURL(e.currentTarget.value)}
+            />
+            <label class="settings-label">{(useLocale(), label("settings_ai_api_key"))}</label>
+            <input
+              type="password"
+              autocomplete="off"
+              class="settings-input ai-composer-input"
+              placeholder="API key"
+              value={cpKey()}
+              onInput={(e) => setCpKey(e.currentTarget.value)}
+            />
+            <label class="settings-label">{(useLocale(), label("settings_ai_custom_models"))}</label>
+            <Index each={cpModels()}>
+              {(mdl, i) => (
+                <div class="settings-custom-model">
+                  <input
+                    class="settings-input ai-composer-input"
+                    placeholder="model-id"
+                    value={mdl().id}
+                    onInput={(e) => setCpModel(i, "id", e.currentTarget.value)}
+                  />
+                  <input
+                    class="settings-input ai-composer-input"
+                    placeholder="Display Name"
+                    value={mdl().name}
+                    onInput={(e) => setCpModel(i, "name", e.currentTarget.value)}
+                  />
+                  <button
+                    type="button"
+                    class="settings-custom-remove"
+                    aria-label={(useLocale(), label("settings_ai_custom_remove_model"))}
+                    onClick={() =>
+                      setCpModels((ms) => (ms.length > 1 ? ms.filter((_, idx) => idx !== i) : ms))
+                    }
+                  >
+                    <IconTrash width={14} height={14} />
+                  </button>
+                </div>
+              )}
+            </Index>
+            <div class="settings-row">
+              <Button size="sm" variant="outline" onClick={() => setCpModels((ms) => [...ms, { id: "", name: "" }])}>
+                {(useLocale(), label("settings_ai_custom_add_model"))}
+              </Button>
+            </div>
+            <Show when={cpError()}>
+              <div class="ai-error">{cpError()}</div>
+            </Show>
+            <div class="settings-row settings-row-end">
+              <Button size="sm" onClick={() => void submitCustom()} disabled={!cpId().trim() || !cpBaseURL().trim()}>
+                {(useLocale(), label("settings_ai_custom_submit"))}
+              </Button>
+            </div>
+          </div>
+        </Show>
       </Show>
 
       <div class="settings-row" style={{ "align-items": "center", gap: "10px", "margin-top": "12px" }}>

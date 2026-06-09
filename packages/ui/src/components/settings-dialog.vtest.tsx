@@ -164,6 +164,33 @@ describe("SettingsDialog", () => {
     expect(rows.some((t) => /o1/.test(t))).toBe(false);
   });
 
+  it("Custom provider: fills the form and submits onSaveCustomProvider", () => {
+    const onSaveCustomProvider = vi.fn();
+    const { baseElement } = setup({ onSaveCustomProvider });
+    const addBtn = [...baseElement.querySelectorAll("button")].find((b) =>
+      /add custom provider/i.test(b.textContent ?? ""),
+    )!;
+    fireEvent.click(addBtn);
+    const custom = baseElement.querySelector(".settings-custom") as HTMLElement;
+    expect(custom).not.toBeNull();
+    const inputs = custom.querySelectorAll("input");
+    fireEvent.input(inputs[0]!, { target: { value: "myprov" } }); // id
+    fireEvent.input(inputs[2]!, { target: { value: "https://api.x/v1" } }); // baseURL
+    fireEvent.input(inputs[4]!, { target: { value: "m1" } }); // model id
+    fireEvent.input(inputs[5]!, { target: { value: "Model One" } }); // model name
+    const submit = [...custom.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "Add provider",
+    )!;
+    fireEvent.click(submit);
+    expect(onSaveCustomProvider).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "myprov",
+        baseURL: "https://api.x/v1",
+        models: [{ id: "m1", name: "Model One" }],
+      }),
+    );
+  });
+
   it("selecting a tier calls onTierChange", () => {
     const { baseElement, onTierChange } = setup();
     const indexingTab = [...baseElement.querySelectorAll('[role="tab"]')].find((t) =>

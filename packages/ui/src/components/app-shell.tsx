@@ -143,6 +143,14 @@ interface AppShellProps {
     apiKey: string;
     modelId: string;
   }) => void | Promise<void>;
+  /** Add a custom OpenAI-compatible provider (id/name/baseURL/key/models). */
+  onSaveCustomProvider?: (input: {
+    id: string;
+    name: string;
+    baseURL: string;
+    apiKey: string;
+    models: Array<{ id: string; name: string }>;
+  }) => void | Promise<void>;
   onOpenInNewTab?: (entry: FSEntry, rootId: string) => void;
   /** Resolve a file as an inline "@" reference for the chat (desktop reads the
    *  content). `insert` appends "@file" to the composer (file-tree menu);
@@ -505,6 +513,7 @@ export function AppShell(props: AppShellProps) {
             props.onListModels?.(id, key) ?? Promise.resolve([])
           }
           onSaveProvider={(o) => props.onSaveAiProvider?.(o)}
+          onSaveCustomProvider={(i) => props.onSaveCustomProvider?.(i)}
           mcpServers={props.mcpServers ?? []}
           onSaveMcpServer={(s) => props.onSaveMcpServer?.(s)}
           onRemoveMcpServer={(id) => props.onRemoveMcpServer?.(id)}
