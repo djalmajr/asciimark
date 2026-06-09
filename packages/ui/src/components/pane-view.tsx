@@ -470,7 +470,10 @@ export function PaneView(props: PaneViewProps) {
             ref={previewPanelRef}
             style={pane().editorMode() === "split" ? { flex: 100 - s.editorWidth() } : undefined}
           >
-            <Show when={props.showToolbar && !!pane().selectedFile()}>
+            {/* HTML renders in an isolated iframe with its own styles, so the
+                preview toolbar's font / table-wrap / find controls don't apply
+                — hide it (it also removed an empty band at the top of SPAs). */}
+            <Show when={props.showToolbar && !!pane().selectedFile() && !isHtml()}>
               <ContentToolbar
                 autoRefresh={s.autoRefresh()}
                 fontFamilies={s.FontFamilies}
