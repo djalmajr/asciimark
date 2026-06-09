@@ -1382,6 +1382,24 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   backface-visibility: hidden;
 }
 
+/* The iframe owns its own scrolling, so drop the host pane's reserved gutter
+   (otherwise an empty stable-gutter strip frames the page on the right). */
+.content:has(.html-preview-frame) {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+/* Sandboxed HTML preview — fills the content pane edge-to-edge. White canvas
+   so author pages render as they would in a browser (not against the app's
+   theme background). The frame is isolated (sandbox without same-origin). */
+.html-preview-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+
 /* === Media Viewer (images / PDF) === */
 .media-viewer {
   display: flex;

@@ -369,6 +369,7 @@ export function createAppState(config: AppStateConfig) {
    * Capabilities that drive the edit/split/preview toggle (and the matching
    * command-palette entries — keep the three surfaces in sync). Three tiers:
    *   document (md/adoc)     → edit + preview (split allowed)
+   *   html (.html/.htm)      → edit + sandboxed iframe preview (split allowed)
    *   image / pdf / svg      → preview only (the media viewer; not editable)
    *   other text (txt/json…) → edit only (no rendered preview)
    * With no file selected both are false (the toggle is disabled anyway).
@@ -384,12 +385,12 @@ export function createAppState(config: AppStateConfig) {
   const canEdit = () => {
     if (isUnsupported()) return false;
     const k = viewerKind();
-    return k === "document" || k === "other";
+    return k === "document" || k === "html" || k === "other";
   };
   const canPreview = () => {
     if (isUnsupported()) return false;
     const k = viewerKind();
-    return k === "document" || k === "image" || k === "pdf";
+    return k === "document" || k === "html" || k === "image" || k === "pdf";
   };
 
   // Force the mode that matches the file's capabilities. Media (image/pdf/

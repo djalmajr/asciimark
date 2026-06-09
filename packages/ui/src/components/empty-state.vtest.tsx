@@ -190,7 +190,7 @@ describe("EmptyState", () => {
       expect(
         getByText("Solte uma pasta/arquivo aqui ou clique para abrir"),
       ).not.toBeNull();
-      expect(getByText("Suporta arquivos .adoc, .md e .excalidraw")).not.toBeNull();
+      expect(getByText("Suporta arquivos .adoc, .md, .html e .excalidraw")).not.toBeNull();
       // Reset for the next test in case we add more.
       switchLocale("en");
     });
@@ -201,7 +201,7 @@ describe("EmptyState", () => {
       expect(
         getByText("Suelte una carpeta/archivo aquí o haga clic para abrir"),
       ).not.toBeNull();
-      expect(getByText("Compatible con archivos .adoc, .md y .excalidraw")).not.toBeNull();
+      expect(getByText("Compatible con archivos .adoc, .md, .html y .excalidraw")).not.toBeNull();
       switchLocale("en");
     });
 
@@ -228,7 +228,7 @@ describe("EmptyState", () => {
       expect(
         await findByText("Solte uma pasta/arquivo aqui ou clique para abrir"),
       ).not.toBeNull();
-      expect(await findByText("Suporta arquivos .adoc, .md e .excalidraw")).not.toBeNull();
+      expect(await findByText("Suporta arquivos .adoc, .md, .html e .excalidraw")).not.toBeNull();
 
       switchLocale("en");
     });

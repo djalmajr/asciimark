@@ -115,8 +115,9 @@ function computeVisiblePaths(
           anyVisible = true;
         }
       } else {
+        const kind = fileKind(entry.name);
         const typeAllowed =
-          showAllFiles || isSupportedFile(entry.name) || fileKind(entry.name) === "excalidraw";
+          showAllFiles || isSupportedFile(entry.name) || kind === "excalidraw" || kind === "html";
         const matchesSearch = !lowerSearch || entry.name.toLowerCase().includes(lowerSearch);
         if (typeAllowed && matchesSearch) {
           result.add(entry.path);
