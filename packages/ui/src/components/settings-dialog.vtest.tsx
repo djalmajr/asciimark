@@ -99,6 +99,24 @@ describe("SettingsDialog", () => {
     expect(keyInput.value).toBe("");
   });
 
+  it("Manage models: renders per-model toggles and fires onToggleModel", () => {
+    const onToggleModel = vi.fn();
+    const { baseElement } = setup({
+      allModels: [
+        { id: "openai", name: "OpenAI", models: [{ value: "openai/gpt-4o", label: "GPT-4o" }] },
+      ],
+      hiddenModels: [],
+      onToggleModel,
+    });
+    const row = [...baseElement.querySelectorAll(".settings-models-row")].find((r) =>
+      /GPT-4o/.test(r.textContent ?? ""),
+    );
+    expect(row).not.toBeUndefined();
+    const sw = row!.querySelector('[role="switch"]') as HTMLElement;
+    fireEvent.click(sw);
+    expect(onToggleModel).toHaveBeenCalledWith("openai/gpt-4o");
+  });
+
   it("selecting a tier calls onTierChange", () => {
     const { baseElement, onTierChange } = setup();
     const indexingTab = [...baseElement.querySelectorAll('[role="tab"]')].find((t) =>

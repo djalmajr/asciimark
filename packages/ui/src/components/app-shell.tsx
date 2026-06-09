@@ -102,6 +102,12 @@ interface AppShellProps {
   onSettingsClose?: () => void;
   aiProviders?: SettingsAiProvider[];
   aiSelectedModel?: string | null;
+  /** All configured models grouped by provider — Settings → Manage models. */
+  aiAllModels?: Array<{ id: string; name: string; models: Array<{ value: string; label: string }> }>;
+  /** Model refs hidden from the chat picker. */
+  aiHiddenModels?: string[];
+  /** Toggle a model's visibility in the chat picker. */
+  onToggleModel?: (ref: string) => void;
   /** MCP servers (config + live status) for the Settings → MCP section, plus
    *  add/remove/toggle handlers. Forwarded to SettingsDialog. */
   mcpServers?: Array<{
@@ -490,6 +496,9 @@ export function AppShell(props: AppShellProps) {
           onClose={() => props.onSettingsClose?.()}
           aiProviders={props.aiProviders ?? []}
           selectedModel={props.aiSelectedModel ?? null}
+          allModels={props.aiAllModels ?? []}
+          hiddenModels={props.aiHiddenModels ?? []}
+          onToggleModel={(ref) => props.onToggleModel?.(ref)}
           indexingTier={props.indexingTier ?? "lite"}
           onTierChange={(t) => props.onIndexingTierChange?.(t)}
           onListModels={(id, key) =>

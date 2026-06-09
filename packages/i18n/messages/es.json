@@ -272,6 +272,8 @@
   "settings_ai_model": "Modelo",
   "settings_ai_save": "Guardar",
   "settings_ai_saved": "Guardado",
+  "settings_ai_manage_models": "Gestionar modelos",
+  "settings_ai_manage_models_desc": "Personaliza qué modelos aparecen en el selector del chat.",
   "settings_ai_no_models": "Sin modelos — carga o elige un proveedor",
   "settings_ai_streaming_label": "Respuestas en streaming (beta)",
   "settings_ai_streaming_desc": "Muestra la respuesta token a token a medida que llega. Si se cuelga, desactívalo.",

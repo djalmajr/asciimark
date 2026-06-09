@@ -23,6 +23,7 @@ const MODEL_KEY = "asciimark-ai-model";
 const SMALL_MODEL_KEY = "asciimark-ai-small-model";
 const TIER_KEY = "asciimark-ai-indexing-tier";
 const STREAMING_KEY = "asciimark-ai-streaming";
+const HIDDEN_MODELS_KEY = "asciimark-ai-hidden-models";
 
 function getStoredAiMode(): AIChatMode {
   return localStorage.getItem(MODE_KEY) === "plan" ? "plan" : "build";
@@ -82,6 +83,23 @@ function setStoredAiStreaming(enabled: boolean): void {
   localStorage.setItem(STREAMING_KEY, enabled ? "true" : "false");
 }
 
+/** Model refs ("provider/model") the user hid from the picker ("Manage models").
+ *  Default empty (everything visible); lenient read drops malformed blobs. */
+function getStoredHiddenModels(): string[] {
+  const raw = localStorage.getItem(HIDDEN_MODELS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function setStoredHiddenModels(refs: string[]): void {
+  localStorage.setItem(HIDDEN_MODELS_KEY, JSON.stringify([...new Set(refs)]));
+}
+
 export type { AIChatMode, AIEngineId, IndexingTier };
 export {
   getStoredAiMode,
@@ -90,10 +108,12 @@ export {
   getStoredAiModel,
   getStoredAiSmallModel,
   getStoredAiStreaming,
+  getStoredHiddenModels,
   getStoredIndexingTier,
   setStoredAiEngine,
   setStoredAiModel,
   setStoredAiSmallModel,
   setStoredAiStreaming,
+  setStoredHiddenModels,
   setStoredIndexingTier,
 };
