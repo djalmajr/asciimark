@@ -13,6 +13,7 @@ import type { AiContextItem } from "../composables/ai-context.ts";
 import { Button } from "./ui/button.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "./ui/select.tsx";
+import { ScrollArea } from "./ui/scroll-area.tsx";
 import { ModelPicker, type ModelGroup } from "./model-picker.tsx";
 import { AiMessage } from "./ai-message.tsx";
 
@@ -227,7 +228,11 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
 
   return (
     <div class="ai-panel">
-      <div class="ai-messages" ref={(el) => (scroller = el)}>
+      <ScrollArea
+        class="ai-messages"
+        contentClass="ai-messages-content"
+        viewportRef={(el) => (scroller = el)}
+      >
         <Show when={hasConversation()} fallback={<AiEmptyState {...props} />}>
           <For each={props.store.messages()}>
             {(msg) => <AiMessage role={msg.role} content={msg.content} tools={msg.tools} />}
@@ -248,7 +253,7 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
             </div>
           )}
         </Show>
-      </div>
+      </ScrollArea>
 
       <div
         class="ai-composer"
