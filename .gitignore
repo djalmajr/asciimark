@@ -88,6 +88,9 @@ tools/*/Cargo.lock
 .playwright-mcp/
 mcps/
 
+# Project-local scratch (workflow/agent raw outputs, ad-hoc analysis dumps).
+tmp/
+
 # Agents — track project-owned config + guardrails (the mutation-suggest
 # hook lives here, no secrets). The personal MCP endpoint is registered
 # globally per-operator; the operator-local routing files above are git-ignored,
