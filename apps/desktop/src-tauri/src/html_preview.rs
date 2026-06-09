@@ -24,15 +24,21 @@
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use percent_encoding::percent_decode_str;
+use regex::Regex;
 use tauri::http::{Request, Response};
 use tauri::{AppHandle, Manager, Runtime};
 
 /// The custom URI scheme. App-namespaced to avoid collisions; the frontend
 /// builds `asciimark-preview://<token>/<file>` URLs against this.
 pub const SCHEME: &str = "asciimark-preview";
+
+/// Query marker the CSS-module transform appends to a rewritten import so the
+/// handler serves that `.css` as a constructable-stylesheet JS module instead
+/// of a raw stylesheet. See `rewrite_css_module_imports` / `css_module_js`.
+const CSS_MODULE_MARKER: &str = "asciimark-css-module";
 
 /// Maps preview tokens to the directory they serve, plus an optional in-memory
 /// overlay so the file currently open in the editor previews its UNSAVED buffer
@@ -110,11 +116,16 @@ pub fn serve<R: Runtime>(app: &AppHandle<R>, request: Request<Vec<u8>>) -> Respo
         rel = "index.html".to_string();
     }
 
+    // A rewritten CSS-module import (see rewrite_css_module_imports) asks for
+    // the `.css` as a JS module exporting a constructable stylesheet.
+    let as_css_module = uri.query().is_some_and(|q| q.contains(CSS_MODULE_MARKER));
+
     let inner = state.inner.lock().unwrap();
     let Some(root) = inner.by_token.get(&token).cloned() else {
         return not_found();
     };
-    // Live overlay wins for the open file (shows unsaved edits).
+    // Live overlay wins for the open file (shows unsaved edits). The entry doc
+    // is HTML, never a CSS module or JS, so serve it verbatim.
     if let Some((orel, content)) = inner.overlay.get(&token) {
         if *orel == rel {
             return ok(content.clone().into_bytes(), content_type_for("page.html"));
@@ -131,10 +142,70 @@ pub fn serve<R: Runtime>(app: &AppHandle<R>, request: Request<Vec<u8>>) -> Respo
     if !canon.starts_with(&root) {
         return not_found();
     }
-    match std::fs::read(&canon) {
-        Ok(bytes) => ok(bytes, content_type_for(&rel)),
-        Err(_) => not_found(),
+    let Ok(bytes) = std::fs::read(&canon) else {
+        return not_found();
+    };
+
+    // WKWebView rejects `import … with { type: "css" }`, so the preview acts as
+    // a tiny bundler: CSS imported as a module is served as a JS module that
+    // builds a CSSStyleSheet, and JS files have their CSS-module imports
+    // rewritten to hit that path. Binary/invalid-UTF-8 files pass through.
+    if as_css_module {
+        let css = String::from_utf8_lossy(&bytes);
+        return ok(css_module_js(&css).into_bytes(), content_type_for("m.js"));
     }
+    if is_js_module(&rel) {
+        if let Ok(js) = std::str::from_utf8(&bytes) {
+            return ok(
+                rewrite_css_module_imports(js).into_bytes(),
+                content_type_for(&rel),
+            );
+        }
+    }
+    ok(bytes, content_type_for(&rel))
+}
+
+/// True for files the browser loads as ES modules (where CSS-module imports may
+/// appear and need rewriting).
+fn is_js_module(rel: &str) -> bool {
+    let lower = rel.to_ascii_lowercase();
+    lower.ends_with(".js") || lower.ends_with(".mjs") || lower.ends_with(".cjs")
+}
+
+/// Rewrite `import x from "y.css" with { type: "css" }` (and the legacy
+/// `assert { type: "css" }`) into `import x from "y.css?asciimark-css-module"`,
+/// dropping the unsupported import attribute. The marked URL is served by
+/// `serve` as a JS module (see `css_module_js`). Best-effort and conservative:
+/// it only touches imports that carry a `type: "css"` attribute, so ordinary
+/// code is untouched. Files without such imports return unchanged (cheap).
+fn rewrite_css_module_imports(js: &str) -> String {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(
+            r#"(?s)\bimport\s+([A-Za-z_$][\w$]*)\s+from\s+(?:"([^"]+)"|'([^']+)')\s*(?:with|assert)\s*\{\s*type\s*:\s*(?:"css"|'css')\s*,?\s*\}"#,
+        )
+        .expect("valid css-module import regex")
+    });
+    re.replace_all(js, |caps: &regex::Captures| {
+        let binding = &caps[1];
+        let spec = caps
+            .get(2)
+            .or_else(|| caps.get(3))
+            .map(|m| m.as_str())
+            .unwrap_or("");
+        let sep = if spec.contains('?') { '&' } else { '?' };
+        format!("import {binding} from \"{spec}{sep}{CSS_MODULE_MARKER}\"")
+    })
+    .into_owned()
+}
+
+/// Wrap CSS text as a JS module exporting a constructable CSSStyleSheet — the
+/// runtime shape `import sheet from "x.css" with { type: "css" }` would have
+/// produced. The CSS is embedded as a JSON string literal (valid JS), so any
+/// quotes/newlines/unicode are escaped safely.
+fn css_module_js(css: &str) -> String {
+    let literal = serde_json::to_string(css).unwrap_or_else(|_| "\"\"".to_string());
+    format!("const sheet = new CSSStyleSheet();\nsheet.replaceSync({literal});\nexport default sheet;\n")
 }
 
 /// Lexically normalize a URL path into a safe relative path: percent-decoded
@@ -232,5 +303,62 @@ mod tests {
         assert_eq!(content_type_for("index.html"), "text/html; charset=utf-8");
         assert_eq!(content_type_for("s.css"), "text/css; charset=utf-8");
         assert_eq!(content_type_for("blob.bin"), "application/octet-stream");
+    }
+
+    #[test]
+    fn rewrites_css_module_import_with_attribute() {
+        // Mutation: leaving `with { type: "css" }` makes WKWebView throw
+        // `Import attribute type "css" is not valid` and abort the module.
+        let out = rewrite_css_module_imports(
+            r#"import sheet from "./z-proto.css" with { type: "css" };"#,
+        );
+        assert_eq!(
+            out,
+            r#"import sheet from "./z-proto.css?asciimark-css-module";"#
+        );
+        assert!(!out.contains("type"));
+    }
+
+    #[test]
+    fn rewrites_legacy_assert_and_single_quotes() {
+        let out = rewrite_css_module_imports(
+            "import s from './a/b.css' assert { type: 'css' }\n",
+        );
+        assert_eq!(out, "import s from \"./a/b.css?asciimark-css-module\"\n");
+    }
+
+    #[test]
+    fn css_import_keeps_existing_query_with_ampersand() {
+        let out = rewrite_css_module_imports(
+            r#"import s from "./x.css?v=2" with { type: "css" };"#,
+        );
+        assert!(out.contains(r#""./x.css?v=2&asciimark-css-module""#), "{out}");
+    }
+
+    #[test]
+    fn leaves_unrelated_imports_untouched() {
+        // Mutation: an over-broad regex would corrupt ordinary imports or
+        // JSON-module imports (which WKWebView DOES support).
+        let src = "import x from \"./m.js\";\nimport d from \"./d.json\" with { type: \"json\" };\n";
+        assert_eq!(rewrite_css_module_imports(src), src);
+    }
+
+    #[test]
+    fn css_module_js_exports_a_constructable_sheet() {
+        let js = css_module_js(".a{content:\"x\"}\n");
+        assert!(js.contains("new CSSStyleSheet()"));
+        assert!(js.contains("replaceSync("));
+        assert!(js.contains("export default sheet"));
+        // CSS embedded as a JSON string literal → quotes/newlines escaped.
+        assert!(js.contains(r#"".a{content:\"x\"}\n""#), "{js}");
+    }
+
+    #[test]
+    fn is_js_module_matches_module_extensions() {
+        assert!(is_js_module("a.js"));
+        assert!(is_js_module("dir/b.mjs"));
+        assert!(is_js_module("c.cjs"));
+        assert!(!is_js_module("style.css"));
+        assert!(!is_js_module("page.html"));
     }
 }
