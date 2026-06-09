@@ -59,7 +59,11 @@ import { createFileLoader } from "./lib/file-loader.ts";
 import { createNavigation } from "./lib/navigation.ts";
 import { createFolder } from "./lib/folder.ts";
 import { ExcalidrawFrame } from "./components/excalidraw-frame.tsx";
-import { isSupportedFile } from "@asciimark/core/utils.ts";
+import { fileKind, isSupportedFile } from "@asciimark/core/utils.ts";
+import {
+  excalidrawSelectionToContext,
+  type ExcalidrawScene,
+} from "@asciimark/ui/composables/ai-context.ts";
 import { buildBacklinkIndex } from "@asciimark/core/backlinks.ts";
 import { flattenWorkspace } from "@asciimark/core/file-index.ts";
 import { readFileContent } from "./lib/fs.ts";
@@ -1054,6 +1058,35 @@ export function App() {
       invoke("html_preview_clear_overlay", { token }) as Promise<void>,
   };
 
+  // Live scene getters for mounted Excalidraw frames, keyed by absolute file
+  // path (so ⌘I on the active pane can read THAT diagram's selection even with
+  // split panes). Registered/cleared by each <ExcalidrawFrame> via onSceneApi.
+  const excalidrawScenes = new Map<string, () => Promise<ExcalidrawScene | null>>();
+  function registerExcalidrawScene(
+    filePath: string,
+    getScene: (() => Promise<ExcalidrawScene | null>) | null,
+  ): void {
+    if (getScene) excalidrawScenes.set(filePath, getScene);
+    else excalidrawScenes.delete(filePath);
+  }
+
+  // ⌘I over an open `.excalidraw`: attach the current diagram selection to the
+  // chat as a context chip. Returns false (→ caller falls back to the editor
+  // text selection) when the active view isn't an Excalidraw with a selection.
+  async function addExcalidrawSelectionToChat(): Promise<boolean> {
+    const pane = state.paneManager.activePane();
+    const file = pane.selectedFile();
+    const rootId = pane.selectedRootId();
+    if (!file || fileKind(file.name) !== "excalidraw" || !rootId) return false;
+    const abs = `${rootPaths().get(rootId) ?? ""}/${file.path}`;
+    const getScene = excalidrawScenes.get(abs);
+    if (!getScene) return false;
+    const item = excalidrawSelectionToContext(await getScene(), file);
+    if (!item) return false;
+    state.addAiContext(item);
+    return true;
+  }
+
   async function handleOpenRecentFile(recentFile: RecentFile) {
     const opened = await folder.openFolderPath(recentFile.rootPath);
     if (!opened) {
@@ -1935,10 +1968,13 @@ export function App() {
           state.focusAiComposer();
         },
         "ai.inlineAction": (ev) => {
-          // ⌘I attaches the current editor selection to the chat as a chip —
-          // only acts when there IS a selection (otherwise a no-op).
+          // ⌘I attaches the current selection to the chat as a chip — the
+          // Excalidraw diagram selection over an `.excalidraw`, else the editor
+          // text selection. No-op when there's nothing selected.
           ev.preventDefault();
-          if (addSelectionToChat()) state.focusAiComposer();
+          void addExcalidrawSelectionToChat().then((attached) => {
+            if (attached || addSelectionToChat()) state.focusAiComposer();
+          });
         },
         "app.settings": (ev) => {
           ev.preventDefault();
@@ -2106,7 +2142,9 @@ export function App() {
       htmlPreviewHost={htmlPreviewHost}
       renderExcalidraw={(file, rootId) => {
         const root = rootPaths().get(rootId);
-        return root ? <ExcalidrawFrame filePath={`${root}/${file.path}`} /> : null;
+        return root ? (
+          <ExcalidrawFrame filePath={`${root}/${file.path}`} onSceneApi={registerExcalidrawScene} />
+        ) : null;
       }}
       onToggleShowHiddenEntries={() => folder.refreshAllRoots()}
       onToggleRespectGitignore={() => folder.refreshAllRoots()}
