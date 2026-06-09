@@ -291,6 +291,41 @@ export function App() {
     setAiConfig(await loadAIConfig());
   }
 
+  /** Add a custom OpenAI-compatible provider to ai.json (+ key → keychain).
+   *  Keys never touch ai.json; sibling config (other providers, MCP) survives. */
+  async function saveCustomProvider(input: {
+    id: string;
+    name: string;
+    baseURL: string;
+    apiKey: string;
+    models: { id: string; name: string }[];
+  }): Promise<void> {
+    const id = input.id.trim();
+    if (!id) throw new Error("Provider ID is required.");
+    if (input.apiKey) await setApiKey(id, input.apiKey); // key → OS keychain only
+    const models: Record<string, { name: string }> = {};
+    for (const mdl of input.models) {
+      const mid = mdl.id.trim();
+      if (mid) models[mid] = { name: mdl.name.trim() || mid };
+    }
+    const user = await loadUserAIConfig();
+    await saveAIConfig(
+      JSON.stringify({
+        ...user,
+        provider: {
+          ...(user.provider ?? {}),
+          [id]: {
+            kind: "openai-compatible",
+            name: input.name.trim() || id,
+            options: { baseURL: input.baseURL.trim() },
+            models,
+          },
+        },
+      }),
+    );
+    setAiConfig(await loadAIConfig());
+  }
+
   // ── MCP servers + in-process tools (chat tool-calling) ─────────────────
   /** Tools the chat may call: in-process app tools (active doc / workspace,
    *  edits via Accept/Reject) plus every connected MCP server's tools. */
@@ -1909,6 +1944,7 @@ export function App() {
       }}
       onListModels={listAiModels}
       onSaveAiProvider={saveAiProvider}
+      onSaveCustomProvider={saveCustomProvider}
       mcpServers={mcpServersView()}
       onSaveMcpServer={saveMcpServer}
       onRemoveMcpServer={removeMcpServer}
