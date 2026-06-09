@@ -40,9 +40,7 @@ export interface AiPanelProps {
   contextLimit?: number;
   /** Persist a model selection. */
   onSelectModel?: (modelRef: string) => void;
-  /** "+" in the picker — connect/add a provider (opens Settings → AI). */
-  onAddProvider?: () => void;
-  /** "⚙" in the picker — manage models (opens Settings → AI). */
+  /** "⚙" in the picker — open Settings → AI (manage models / connect providers). */
   onManageModels?: () => void;
   /** Explicit context items (attached files / selections) shown as chips. */
   contextItems?: AiContextItem[];
@@ -384,7 +382,6 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
               current={props.currentModel}
               currentLabel={currentModelLabel()}
               onSelect={(v) => props.onSelectModel?.(v)}
-              onAddProvider={props.onAddProvider}
               onManage={props.onManageModels}
             />
           </Show>

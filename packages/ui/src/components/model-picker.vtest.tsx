@@ -71,8 +71,7 @@ describe("ModelPicker", () => {
     expect(onSelect).toHaveBeenCalledWith("openai/gpt-5");
   });
 
-  it("shows the connect / manage buttons and fires their callbacks", () => {
-    const onAddProvider = vi.fn();
+  it("shows a single manage button (⚙) and fires its callback", () => {
     const onManage = vi.fn();
     const { baseElement } = render(() => (
       <ModelPicker
@@ -80,14 +79,12 @@ describe("ModelPicker", () => {
         current="opencode/minimax-m3"
         currentLabel="MiniMax M3"
         onSelect={() => {}}
-        onAddProvider={onAddProvider}
         onManage={onManage}
       />
     ));
     open(baseElement);
-    fireEvent.click(screen.getByLabelText("Connect provider"));
-    expect(onAddProvider).toHaveBeenCalledTimes(1);
-    open(baseElement);
+    // The "+" connect button is gone — manage (Settings) is the single entry.
+    expect(screen.queryByLabelText("Connect provider")).toBeNull();
     fireEvent.click(screen.getByLabelText("Manage models"));
     expect(onManage).toHaveBeenCalledTimes(1);
   });

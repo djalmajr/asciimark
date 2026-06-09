@@ -854,7 +854,6 @@ export function AppShell(props: AppShellProps) {
                 currentModel={props.aiCurrentModel}
                 contextLimit={props.aiContextLimit}
                 onSelectModel={props.onSelectAiModel}
-                onAddProvider={props.onOpenSettings}
                 onManageModels={props.onOpenSettings}
                 contextItems={s.aiContextItems()}
                 activeFileContext={s.activeFileContext()}

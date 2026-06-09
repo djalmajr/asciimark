@@ -562,8 +562,8 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
                     onChange={() => toggleProvider(group)}
                     aria-label={group.name}
                   >
-                    <SwitchControl class="h-4 w-7">
-                      <SwitchThumb class="size-3 data-[checked]:translate-x-3" />
+                    <SwitchControl size="sm">
+                      <SwitchThumb size="sm" />
                     </SwitchControl>
                   </ToggleSwitch>
                 </div>
@@ -576,8 +576,8 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
                         onChange={() => props.onToggleModel?.(mdl.value)}
                         aria-label={mdl.label}
                       >
-                        <SwitchControl class="h-4 w-7">
-                          <SwitchThumb class="size-3 data-[checked]:translate-x-3" />
+                        <SwitchControl size="sm">
+                          <SwitchThumb size="sm" />
                         </SwitchControl>
                       </ToggleSwitch>
                     </div>
@@ -598,8 +598,8 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
           onChange={(checked) => props.onAiStreamingChange?.(checked)}
           aria-label={(useLocale(), label("settings_ai_streaming_label"))}
         >
-          <SwitchControl>
-            <SwitchThumb />
+          <SwitchControl size="sm">
+            <SwitchThumb size="sm" />
           </SwitchControl>
         </ToggleSwitch>
         <div>
@@ -715,8 +715,8 @@ function McpSection(props: SettingsDialogProps): JSX.Element {
                     }
                     aria-label={(useLocale(), label("settings_mcp_connected"))}
                   >
-                    <SwitchControl>
-                      <SwitchThumb />
+                    <SwitchControl size="sm">
+                      <SwitchThumb size="sm" />
                     </SwitchControl>
                   </ToggleSwitch>
                   <Button
