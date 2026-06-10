@@ -1,8 +1,8 @@
 // Built-in provider catalog (engine-neutral; see config-schema.ts `kind`).
 // The user's ai.json is deep-merged over this — known providers inherit
 // kind/name/models and let the user override options (baseURL) and add models;
-// local providers (Ollama) ship with no models so the user lists the ones they
-// have installed. Mirrors the Figma "Manage providers" cards.
+// local providers (Ollama, LM Studio) ship with no models so the user lists the
+// ones they have installed. Mirrors the Figma "Manage providers" cards.
 
 import type { AIConfig, ProviderConfig, UserAIConfig } from "./config-schema.ts";
 import { mergeConfigs } from "./config-schema.ts";
@@ -39,10 +39,44 @@ export const BUILTIN_PROVIDERS: Record<string, ProviderConfig> = {
     options: { baseURL: "https://openrouter.ai/api/v1" },
     models: {}, // 200+ models — the user lists the ones they use
   },
-  opencode: {
+  // OpenCode Go (https://opencode.ai/zen/go/v1) — one service, one key, but its
+  // catalog spans two API shapes, so it is two provider entries (the `kind`
+  // decides both the SDK and the endpoint: anthropic → /messages, openai-compatible
+  // → /chat/completions). The settings Connect catalog merges them by base name
+  // into a single "OpenCode Go" row. Model ids per opencode.ai/zen/go/v1/models.
+  "opencode-go": {
+    kind: "anthropic", // /messages
+    name: "OpenCode Go",
+    options: { baseURL: "https://opencode.ai/zen/go/v1" },
+    models: {
+      "minimax-m3": { name: "MiniMax M3" },
+      "minimax-m2.7": { name: "MiniMax M2.7" },
+      "minimax-m2.5": { name: "MiniMax M2.5" },
+      "qwen3.7-max": { name: "Qwen3.7 Max" },
+      "qwen3.7-plus": { name: "Qwen3.7 Plus" },
+      "qwen3.6-plus": { name: "Qwen3.6 Plus" },
+    },
+  },
+  "opencode-go-chat": {
+    kind: "openai-compatible", // /chat/completions
+    name: "OpenCode Go (chat)",
+    options: { baseURL: "https://opencode.ai/zen/go/v1" },
+    models: {
+      "glm-5.1": { name: "GLM-5.1" },
+      "glm-5": { name: "GLM-5" },
+      "kimi-k2.6": { name: "Kimi K2.6" },
+      "kimi-k2.5": { name: "Kimi K2.5" },
+      "deepseek-v4-pro": { name: "DeepSeek V4 Pro" },
+      "deepseek-v4-flash": { name: "DeepSeek V4 Flash" },
+      "mimo-v2.5-pro": { name: "MiMo-V2.5-Pro" },
+      "mimo-v2.5": { name: "MiMo-V2.5" },
+    },
+  },
+  // OpenCode Zen (https://opencode.ai/zen/v1) — distinct catalog; models live from /models.
+  "opencode-zen": {
     kind: "openai-compatible",
     name: "OpenCode Zen",
-    options: { baseURL: "https://opencode.ai/zen/go/v1" },
+    options: { baseURL: "https://opencode.ai/zen/v1" },
     models: {}, // fetched live from /models (see model-catalog.ts)
   },
   ollama: {
@@ -50,6 +84,12 @@ export const BUILTIN_PROVIDERS: Record<string, ProviderConfig> = {
     name: "Ollama (local)",
     options: { baseURL: "http://localhost:11434/v1" },
     models: {}, // the user lists installed models (e.g. "llama3.1:8b")
+  },
+  lmstudio: {
+    kind: "openai-compatible",
+    name: "LM Studio (local)",
+    options: { baseURL: "http://localhost:1234/v1" },
+    models: {}, // the user lists models loaded in LM Studio's local server
   },
 };
 
