@@ -44,7 +44,13 @@ export default defineConfig({
       // reads — they're data, not frontend modules, so watching them only causes
       // spurious reloads-to-home when you edit a doc there. (Prefer opening docs
       // OUTSIDE the repo in dev.) `target/` is build output.
-      ignored: ["**/src-tauri/**", "**/e2e/**", "**/target/**"],
+      // `paraglide/` is GENERATED i18n output, rewritten in bulk by the
+      // lefthook typecheck (git commits) while dev runs. The triggered page
+      // reload races the write and the module graph caches a half-written
+      // runtime.js ("does not provide an export named 'baseLocale'") that only
+      // a dev-server restart evicts — so don't watch it; after regenerating
+      // i18n on purpose, reload the app manually (Ctrl+R).
+      ignored: ["**/src-tauri/**", "**/e2e/**", "**/target/**", "**/src/paraglide/**"],
     },
   },
   build: {
