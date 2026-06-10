@@ -771,7 +771,9 @@ function McpServerCard(props: {
 }
 
 function McpSection(props: SettingsDialogProps): JSX.Element {
-  const [formOpen, setFormOpen] = createSignal(false);
+  // Same sub-page pattern as the AI section: the add form is a dedicated view
+  // entered from the "New MCP Server" row, with a back arrow to the list.
+  const [view, setView] = createSignal<"add" | "list">("list");
   const [id, setId] = createSignal("");
   const [name, setName] = createSignal("");
   const [transport, setTransport] = createSignal<McpTransport>("stdio");
@@ -830,47 +832,67 @@ function McpSection(props: SettingsDialogProps): JSX.Element {
     };
     void props.onSaveMcpServer?.(server);
     resetForm();
-    setFormOpen(false);
+    setView("list");
   }
 
   return (
     <div class="settings-section">
-      <h3 class="settings-h3">{(useLocale(), label("settings_mcp_title"))}</h3>
+      <Switch>
+        <Match when={view() === "list"}>
+          <h3 class="settings-h3">{(useLocale(), label("settings_mcp_title"))}</h3>
 
-      <Show
-        when={(props.mcpServers ?? []).length > 0}
-        fallback={
-          <p class="settings-prose">{(useLocale(), label("settings_mcp_empty"))}</p>
-        }
-      >
-        <div class="settings-mcp-list">
-          <For each={props.mcpServers}>
-            {(server) => (
-              <McpServerCard
-                server={server}
-                onRemove={() => void props.onRemoveMcpServer?.(server.id)}
-                onToggle={(checked) => void props.onToggleMcpServer?.(server.id, checked)}
-              />
-            )}
-          </For>
-        </div>
-      </Show>
+          <Show
+            when={(props.mcpServers ?? []).length > 0}
+            fallback={
+              <p class="settings-prose">{(useLocale(), label("settings_mcp_empty"))}</p>
+            }
+          >
+            <div class="settings-mcp-list">
+              <For each={props.mcpServers}>
+                {(server) => (
+                  <McpServerCard
+                    server={server}
+                    onRemove={() => void props.onRemoveMcpServer?.(server.id)}
+                    onToggle={(checked) => void props.onToggleMcpServer?.(server.id, checked)}
+                  />
+                )}
+              </For>
+            </div>
+          </Show>
 
-      <button
-        type="button"
-        class="settings-mcp-new-row"
-        onClick={() => setFormOpen((open) => !open)}
-      >
-        <span class="settings-mcp-avatar" aria-hidden="true">
-          <IconPlus width={15} height={15} />
-        </span>
-        <span class="settings-mcp-new-text">
-          <span class="settings-mcp-card-name">{(useLocale(), label("settings_mcp_new_server"))}</span>
-          <span class="settings-mcp-new-hint">{(useLocale(), label("settings_mcp_new_server_hint"))}</span>
-        </span>
-      </button>
+          <button
+            type="button"
+            class="settings-mcp-new-row"
+            onClick={() => setView("add")}
+          >
+            <span class="settings-mcp-avatar" aria-hidden="true">
+              <IconPlus width={15} height={15} />
+            </span>
+            <span class="settings-mcp-new-text">
+              <span class="settings-mcp-card-name">{(useLocale(), label("settings_mcp_new_server"))}</span>
+              <span class="settings-mcp-new-hint">{(useLocale(), label("settings_mcp_new_server_hint"))}</span>
+            </span>
+          </button>
+        </Match>
 
-      <Show when={formOpen()}>
+        <Match when={view() === "add"}>
+          {/* Back arrow mirrors the AI section's sub-pages (shared aria label). */}
+          <div class="settings-subpage-header">
+            <button
+              type="button"
+              class="settings-back"
+              aria-label={(useLocale(), label("settings_ai_back"))}
+              onClick={() => {
+                resetForm();
+                setView("list");
+              }}
+            >
+              <IconArrowLeft width={16} height={16} />
+            </button>
+            <h3 class="settings-h3" style={{ margin: "0" }}>
+              {(useLocale(), label("settings_mcp_new_server"))}
+            </h3>
+          </div>
       <label class="settings-label">{(useLocale(), label("settings_mcp_id"))}</label>
       <input
         class="ai-composer-input settings-input"
@@ -947,7 +969,8 @@ function McpSection(props: SettingsDialogProps): JSX.Element {
           {(useLocale(), label("settings_mcp_add"))}
         </Button>
       </div>
-      </Show>
+        </Match>
+      </Switch>
     </div>
   );
 }

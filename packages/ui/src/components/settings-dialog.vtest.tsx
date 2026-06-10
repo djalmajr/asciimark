@@ -215,6 +215,26 @@ describe("SettingsDialog", () => {
     expect(baseElement.querySelector(".settings-input.ai-composer-input")).not.toBeNull();
   });
 
+  it("the add view replaces the list (AI-style sub-page) and back returns discarding the draft", () => {
+    const { baseElement } = setup();
+    openMcpSection(baseElement);
+    openAddForm(baseElement);
+    // Sub-page: the list/new-row give way to the form + back header.
+    expect(baseElement.querySelector(".settings-mcp-new-row")).toBeNull();
+    const idInput = baseElement.querySelector(
+      ".settings-input.ai-composer-input",
+    ) as HTMLInputElement;
+    fireEvent.input(idInput, { target: { value: "draft-id" } });
+    fireEvent.click(baseElement.querySelector(".settings-back") as HTMLElement);
+    // Back on the list view; reopening shows a clean form (draft discarded).
+    expect(baseElement.querySelector(".settings-mcp-new-row")).not.toBeNull();
+    openAddForm(baseElement);
+    const reopened = baseElement.querySelector(
+      ".settings-input.ai-composer-input",
+    ) as HTMLInputElement;
+    expect(reopened.value).toBe("");
+  });
+
   it("filling id + selecting http transport + Add calls onSaveMcpServer with the right shape", async () => {
     const onSaveMcpServer = vi.fn();
     const { baseElement } = setup({ onSaveMcpServer });
