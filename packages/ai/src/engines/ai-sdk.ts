@@ -11,6 +11,8 @@
 // network / rate-limit errors reach the UI instead of a silent empty reply.
 
 import type { LanguageModel } from "ai";
+import { withApproval } from "../approval-policy.ts";
+import { compactMessages } from "../compaction.ts";
 import type { AIEngine, AIEngineOptions, CredentialResolver } from "../engine.ts";
 import type { ResolvedModel } from "../resolve-model.ts";
 import type {
@@ -22,6 +24,22 @@ import type {
   CompleteOptions,
 } from "../types.ts";
 import { NotSupportedError } from "../types.ts";
+
+/**
+ * Context compaction threshold, in MESSAGES. Before each provider call the
+ * history is capped at this many messages, dropping the oldest at a
+ * `safeCutIndex` boundary (leading system messages are always kept).
+ *
+ * Why a message count and not a char/token budget: the engine receives plain
+ * `AIMessage[]` turns (one string per user/assistant turn, built by the chat
+ * store), so a count is cheap, deterministic and model-agnostic — a real token
+ * budget would need a per-model tokenizer this package deliberately avoids.
+ * 200 messages ≈ 100 turns, generous enough that compaction only kicks in on
+ * truly long sessions. The SDK's `pruneMessages` was evaluated and does not
+ * fit: it prunes message CONTENT by kind (reasoning / tool parts), not the
+ * oldest N turns (see compaction.ts).
+ */
+export const MAX_CONTEXT_MESSAGES = 200;
 
 async function buildModel(
   resolved: ResolvedModel,
@@ -158,7 +176,9 @@ export async function* mapFullStream(
         return;
       case "tool-output-denied":
         // Only emitted if a tool sets the SDK's loop-level `needsApproval`, which
-        // AsciiMark does NOT (approval is the execute-wrapper in approval-policy.ts).
+        // AsciiMark does NOT (approval is the execute-wrapper in approval-policy.ts,
+        // applied by the engine when ChatOptions.onApprovalRequest is set — see
+        // the gating note in chat() for why native needsApproval is deferred).
         // Mapped defensively so a denial is never invisible if that ever changes.
         yield {
           type: "tool-result",
@@ -222,13 +242,42 @@ function createProvider(
     let steps: ReadonlyArray<ToolStep> = [];
     const toolList = chatOpts?.tools ?? [];
     const sourceByName = new Map(toolList.map((t) => [t.name, t.source]));
+    // Engine-level human-in-the-loop (DJA F3): when the host supplies
+    // `onApprovalRequest`, the engine gates every prompt-tier tool itself via
+    // the same pure `withApproval` wrapper hosts used to apply — auto-tier
+    // tools pass through untouched and a denial resolves to the model-visible
+    // `{ rejected: true, error }` result the chat UI already renders. Without
+    // the callback, tools run exactly as given (hosts that still pre-wrap keep
+    // today's behavior; no double-gating).
+    //
+    // Why not the SDK's native `needsApproval` (ai@6 / @ai-sdk/provider-utils):
+    // `Tool.needsApproval: boolean | ToolNeedsApprovalFunction` makes
+    // generateText/streamText HALT the loop with a `tool-approval-request`
+    // content part; execution resumes only when the caller appends a tool
+    // message carrying a `tool-approval-response` part and issues a NEW
+    // generate call (the UI-side `lastAssistantMessageIsCompleteWithApproval
+    // Responses` helper exists precisely to drive that resubmission). Our
+    // `AIProvider.chat` is a single-call contract over plain-text AIMessages —
+    // approval parts cannot round-trip through the host history — and a native
+    // denial surfaces as `tool-output-denied` instead of the `{ rejected }`
+    // result shape the chat store expects. The in-execute gate is the smaller
+    // correct step until the contract carries structured history.
+    const onApprovalRequest = chatOpts?.onApprovalRequest;
+    const gatedTools = onApprovalRequest
+      ? toolList.map((t) => withApproval(t, onApprovalRequest))
+      : toolList;
+    // Compaction: cap the history BEFORE the provider call, dropping the
+    // oldest messages at a boundary that never splits a tool call from its
+    // result (and pinning leading system messages). See MAX_CONTEXT_MESSAGES
+    // for why the budget is a message count.
+    const history = compactMessages(messages, MAX_CONTEXT_MESSAGES);
     try {
       const apiKey = await getApiKey();
       const model = await buildModel(resolved, apiKey, opts?.fetch);
       const ai = await import("ai");
-      const tools = toolList.length
+      const tools = gatedTools.length
         ? Object.fromEntries(
-            toolList.map((t) => [
+            gatedTools.map((t) => [
               t.name,
               ai.dynamicTool({
                 description: t.description ?? "",
@@ -242,7 +291,7 @@ function createProvider(
       const common = {
         model,
         ...(chatOpts?.system ? { system: chatOpts.system } : {}),
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: history.map((m) => ({ role: m.role, content: m.content })),
         ...(chatOpts?.signal ? { abortSignal: chatOpts.signal } : {}),
         ...(chatOpts?.temperature != null ? { temperature: chatOpts.temperature } : {}),
         ...(tools ? { tools, stopWhen: ai.stepCountIs(chatOpts?.maxSteps ?? 8) } : {}),

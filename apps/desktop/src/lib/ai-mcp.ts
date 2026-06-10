@@ -4,6 +4,7 @@
 
 import { invoke } from "./chaos-invoke.ts";
 import { getApiKey } from "./ai-credentials.ts";
+import { createReconnectBreaker } from "./reconnect-breaker.ts";
 import type { MCPBridge, MCPToolDescriptor } from "@asciimark/ai/mcp-tools.ts";
 import type { MCPServerConfig } from "@asciimark/ai/config-schema.ts";
 import { expandRecord, type HostResolvers } from "@asciimark/ai/resolve-credential.ts";
@@ -14,9 +15,59 @@ export interface McpServerStatus {
   toolCount: number;
 }
 
+/** Last-known config per server id — what auto-reconnect replays. Captured on
+ *  every (re)connect, so secrets are the already-resolved values. */
+const knownConfigs = new Map<string, MCPServerConfig>();
+
+/** Reconnects are capped (5 per 30s sliding window, exponential backoff): a
+ *  crash-looping stdio server must not become a spawn loop (the omp project's
+ *  issue #1592). */
+const reconnectBreaker = createReconnectBreaker();
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** One reconnect-and-retry pass for a call that failed with "not connected".
+ *  Returns null when the breaker is open or no config is known (caller
+ *  rethrows the original error). */
+async function tryReconnect(server: string): Promise<boolean> {
+  const config = knownConfigs.get(server);
+  if (!config) return false;
+  const delay = reconnectBreaker.nextDelay(server);
+  if (delay === null) return false;
+  await sleep(delay);
+  try {
+    await invoke<McpServerStatus>("ai_mcp_connect", { config });
+    reconnectBreaker.reset(server);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isNotConnectedError(e: unknown): boolean {
+  return /not connected/i.test(e instanceof Error ? e.message : String(e));
+}
+
 /** Invoke one MCP tool, threading the run's abort signal: a `callId` lets Rust
- *  cancel the in-flight call when the user stops the turn. */
+ *  cancel the in-flight call when the user stops the turn. A call that fails
+ *  because the server dropped gets ONE reconnect-and-retry pass, guarded by
+ *  the circuit breaker. */
 async function callMcpTool(
+  server: string,
+  name: string,
+  args: unknown,
+  opts?: { signal?: AbortSignal },
+): Promise<unknown> {
+  try {
+    return await callMcpToolOnce(server, name, args, opts);
+  } catch (e) {
+    if (!isNotConnectedError(e) || opts?.signal?.aborted) throw e;
+    if (!(await tryReconnect(server))) throw e;
+    return callMcpToolOnce(server, name, args, opts);
+  }
+}
+
+async function callMcpToolOnce(
   server: string,
   name: string,
   args: unknown,
@@ -80,10 +131,17 @@ async function resolveServerSecrets(config: MCPServerConfig): Promise<MCPServerC
  *  `env`/`headers` secret references are resolved first (see config-schema). */
 export async function connectMcpServer(config: MCPServerConfig): Promise<McpServerStatus> {
   const resolved = await resolveServerSecrets(config);
-  return invoke<McpServerStatus>("ai_mcp_connect", { config: resolved });
+  // Remember the resolved config so a dropped server can be transparently
+  // reconnected by the tool-call retry path (breaker-guarded).
+  knownConfigs.set(config.id, resolved);
+  const status = await invoke<McpServerStatus>("ai_mcp_connect", { config: resolved });
+  reconnectBreaker.reset(config.id);
+  return status;
 }
 
 export function disconnectMcpServer(id: string): Promise<void> {
+  // Deliberate disconnects (toggle off / remove) must not auto-reconnect.
+  knownConfigs.delete(id);
   return invoke<void>("ai_mcp_disconnect", { id });
 }
 

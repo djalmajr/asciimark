@@ -101,6 +101,41 @@ describe("createAiChatStore", () => {
     expect(store.streaming()).toBe(false);
   });
 
+  it("steering: a message sent while streaming queues, then auto-sends", async () => {
+    const store = createAiChatStore({ getProvider: () => pausingProvider() });
+    const pending = store.sendMessage("first");
+    // Mid-stream: the second send must queue, not interleave a turn.
+    await store.sendMessage("second");
+    expect(store.queued()).toBe("second");
+    await pending;
+    // The queue drained into a full second turn after the first settled.
+    expect(store.queued()).toBeNull();
+    expect(store.messages().map((t) => t.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(store.messages()[2]).toEqual({ role: "user", content: "second" });
+  });
+
+  it("steering: cancelQueued drops the pending message; Stop clears it too", async () => {
+    const store = createAiChatStore({ getProvider: () => pausingProvider() });
+    const pending = store.sendMessage("first");
+    await store.sendMessage("queued-then-dropped");
+    store.cancelQueued();
+    expect(store.queued()).toBeNull();
+    await pending;
+    expect(store.messages()).toHaveLength(2);
+
+    const second = store.sendMessage("again");
+    await store.sendMessage("queued-then-stopped");
+    expect(store.queued()).toBe("queued-then-stopped");
+    store.cancel(); // Stop aborts the turn AND the queue
+    await second;
+    expect(store.queued()).toBeNull();
+  });
+
   it("clear() resets history and error", async () => {
     const store = createAiChatStore({
       getProvider: () => stubProvider([{ type: "text-delta", text: "x" }, { type: "done" }]),

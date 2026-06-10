@@ -148,14 +148,12 @@ interface AppShellProps {
   /** Disconnect a provider group (every id behind a merged base name). */
   onRemoveProvider?: (ids: string[]) => void | Promise<void>;
   onOpenInNewTab?: (entry: FSEntry, rootId: string) => void;
-  /** Resolve a file or folder as an inline "@" reference for the chat (desktop
-   *  reads the file content, or builds a subtree listing for `kind: "dir"` —
-   *  `path: ""` means the workspace root itself). `insert` appends "@label" to
-   *  the composer (file-tree menu); @-mentions type the text themselves so they
-   *  pass false. */
+  /** Resolve a file or folder as a chat context chip (desktop reads the file
+   *  content, or builds a subtree listing for `kind: "dir"` — `path: ""` means
+   *  the workspace root itself). Shared by the composer's @-mention and the
+   *  file-tree "Add to chat". */
   onAddFileMention?: (
     file: { kind?: "dir" | "file"; label: string; path: string; rootId: string },
-    insert: boolean,
   ) => void;
   onDoubleClickFile?: (entry: FSEntry, rootId: string) => void;
   onNavigate: (path: string, fragment?: string | null) => void;
@@ -711,9 +709,11 @@ export function AppShell(props: AppShellProps) {
                 onReorderRoots={props.onReorderRoots}
                 onSelect={(entry, rootId) => props.onLoadFile(entry, rootId)}
                 onOpenInNewTab={props.onOpenInNewTab}
-                onAddToChat={(entry, rootId) =>
-                  props.onAddFileMention?.({ label: entry.name, path: entry.path, rootId }, true)
-                }
+                onAddToChat={(entry, rootId) => {
+                  // Registers a context chip; front the chat so the chip is seen.
+                  props.onAddFileMention?.({ label: entry.name, path: entry.path, rootId });
+                  s.focusAiComposer();
+                }}
                 onDoubleClickFile={props.onDoubleClickFile}
                 onToggleRootCollapsed={(id) => s.toggleRootCollapsed(id)}
                 onToggleShowHiddenEntries={props.onToggleShowHiddenEntries
@@ -886,9 +886,7 @@ export function AppShell(props: AppShellProps) {
                 onRemoveContext={s.removeAiContext}
                 onDismissActiveFile={s.dismissActiveFileContext}
                 mentionFiles={mentionFiles()}
-                onMention={(f) => props.onAddFileMention?.(f, false)}
-                insertRequest={s.composerInsert()}
-                onMentionLabelsChange={s.setActiveMentionLabels}
+                onMention={(f) => props.onAddFileMention?.(f)}
                 onOpenExternal={props.onOpenExternal}
                 onOpenSettings={props.onOpenSettings}
                 mode={s.aiMode()}

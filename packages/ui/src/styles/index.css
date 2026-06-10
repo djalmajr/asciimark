@@ -195,6 +195,15 @@
   user-select: text;
 }
 
+/* Chat replies and expanded tool output are content too — selectable so text
+   can be copied by hand, not only via the per-message Copy button. */
+.app .ai-message-text,
+.app .ai-message-text *,
+.app .ai-tool-output {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .app.drag-over {
   box-shadow: inset 0 0 0 3px hsl(var(--primary));
 }
@@ -4704,4 +4713,68 @@ kbd.shortcuts-help-key {
 .ai-msg-action-btn:hover {
   color: hsl(var(--foreground));
   background: hsl(var(--muted));
+}
+
+/* ── Settings: provider danger action + clickable group name — appended ── */
+
+.settings-danger-btn {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, hsl(var(--destructive)) 35%, transparent);
+  border-radius: 6px;
+  color: hsl(var(--destructive));
+  cursor: pointer;
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+.settings-danger-btn:hover {
+  background: color-mix(in srgb, hsl(var(--destructive)) 8%, transparent);
+}
+
+/* The Manage-models group header name is now a button that opens the
+   per-provider sub-page; give it a subtle hover affordance. */
+button.settings-models-group-name {
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  margin: -2px -6px;
+  padding: 2px 6px;
+  text-align: left;
+}
+
+button.settings-models-group-name:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+/* ── Steering queue bar (one pending message while a turn streams) ───────── */
+.ai-queued-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: hsl(var(--muted));
+  border: 1px dashed hsl(var(--border));
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.ai-queued-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 9px;
+}
+
+.ai-queued-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: hsl(var(--foreground));
 }

@@ -146,7 +146,7 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
     name: "app__propose_edit",
     source: APP,
     description:
-      "Propose an edit to the active document by replacing the first exact occurrence of `find` with `replace`. The change is NOT applied until the user approves it (Accept/Reject).",
+      "Propose an edit to the ACTIVE document by replacing the first exact occurrence of `find` with `replace`. The change is NOT applied until the user approves it (Accept/Reject). Only works on the document open in the editor — for any other workspace file use app__edit_file.",
     inputSchema: {
       type: "object",
       properties: {
@@ -313,7 +313,65 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
       },
     };
 
-    tools.push(readFile, createFolder, createFile);
+    const editFile: AITool = {
+      name: "app__edit_file",
+      source: APP,
+      approval: "prompt",
+      description:
+        "Edit ANY workspace file by replacing an exact occurrence of `find` with `replace`. Read the file first (app__read_file) and copy `find` exactly — whitespace included. Use `all: true` to replace every occurrence. The user approves each call.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          all: { type: "boolean", description: "Replace every occurrence (default: only the first, which must be unique)." },
+          find: { type: "string", description: "Exact text to locate in the file." },
+          path: { type: "string", description: "Workspace-relative file path." },
+          replace: { type: "string", description: "Replacement text." },
+        },
+        required: ["find", "path", "replace"],
+        additionalProperties: false,
+      },
+      execute: async (args) => {
+        const a = args as { all?: unknown; find?: unknown; path?: unknown; replace?: unknown };
+        const path = String(a?.path ?? "").trim();
+        const find = typeof a?.find === "string" ? a.find : "";
+        const replace = typeof a?.replace === "string" ? a.replace : "";
+        if (!path || !find) return { status: "error", message: "`path` and `find` are required." };
+        const root = requireRoot();
+        if (!root) return { status: "error", message: "No workspace is open." };
+        const content = await fs.readFileRelative(root, path);
+        if (content === null) {
+          return {
+            status: "error",
+            message: `File not found: ${path}. Use app__list_files to discover valid paths, or app__create_file for a new file.`,
+          };
+        }
+        const occurrences = content.split(find).length - 1;
+        if (occurrences === 0) {
+          // Instructional no-match (omp-style): point at a near miss when one
+          // exists so the model fixes its `find` instead of flailing.
+          const fuzzyAt = content.toLowerCase().indexOf(find.toLowerCase());
+          const hint =
+            fuzzyAt >= 0
+              ? ` A similar passage exists at line ${content.slice(0, fuzzyAt).split("\n").length} but differs in casing or whitespace — re-read the file with app__read_file and copy it exactly.`
+              : " Re-read the file with app__read_file and copy the text exactly.";
+          return { status: "error", message: `No occurrence of \`find\` in ${path}.${hint}` };
+        }
+        if (occurrences > 1 && a?.all !== true) {
+          return {
+            status: "error",
+            message: `\`find\` matches ${occurrences} places in ${path}. Add more surrounding lines to make it unique, or pass all: true to replace every occurrence.`,
+          };
+        }
+        const next =
+          a?.all === true
+            ? content.split(find).join(replace)
+            : content.replace(find, replace);
+        await fs.writeFileAbs(`${root}/${path}`, next);
+        return { path, replacements: a?.all === true ? occurrences : 1, status: "edited" };
+      },
+    };
+
+    tools.push(readFile, createFolder, createFile, editFile);
   }
 
   return tools;

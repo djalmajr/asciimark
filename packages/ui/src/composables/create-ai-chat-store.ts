@@ -49,6 +49,10 @@ export interface AiChatStore {
   error: () => AiChatError | null;
   /** Whether a provider is configured (drives the empty-state vs ready UI). */
   providerReady: () => boolean;
+  /** Steering: the message queued while a turn streams (one slot), or null. */
+  queued: () => string | null;
+  /** Drop the queued steering message without sending it. */
+  cancelQueued(): void;
   /** Re-run the trailing user turn: drops the last assistant reply (when one is
    *  trailing) and streams a fresh one in its place. No-op while streaming or
    *  when there is no trailing conversation to retry. */
@@ -90,6 +94,14 @@ export interface AiChatStoreConfig {
   /** Called when an assistant turn finalizes with non-empty text (used by Plan
    *  mode to persist the produced plan). */
   onAssistantTurn?: (content: string) => void;
+  /** Engine-level Accept/Reject gate for prompt-tier tools, forwarded into
+   *  ChatOptions. When set, pass UNWRAPPED tools (the engine enforces). */
+  onApprovalRequest?: (req: {
+    args: unknown;
+    signal?: AbortSignal;
+    source?: string;
+    toolName: string;
+  }) => Promise<boolean>;
 }
 
 export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
@@ -98,10 +110,20 @@ export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
   const [toolActivity, setToolActivity] = createSignal<ToolActivity[]>([]);
   const [streaming, setStreaming] = createSignal(false);
   const [error, setError] = createSignal<AiChatError | null>(null);
+  const [queued, setQueued] = createSignal<string | null>(null);
   let controller: AbortController | null = null;
 
   function providerReady(): boolean {
     return config.getProvider() !== null;
+  }
+
+  /** Dispatch the steering queue once the current turn settled. One slot:
+   *  sending again while streaming replaces the pending message. */
+  async function drainQueue(): Promise<void> {
+    const next = queued();
+    if (next === null || streaming()) return;
+    setQueued(null);
+    await sendMessage(next);
   }
 
   async function sendMessage(
@@ -109,7 +131,13 @@ export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
     opts?: { system?: string },
   ): Promise<void> {
     const trimmed = text.trim();
-    if (!trimmed || streaming()) return;
+    if (!trimmed) return;
+    // Steering: typing during a turn queues the message instead of dropping
+    // it — it auto-sends when the in-flight turn finishes.
+    if (streaming()) {
+      setQueued(trimmed);
+      return;
+    }
 
     // The no-provider check lives here (not only in runTurn) so the typed
     // message is NOT pushed into history when nothing can answer it.
@@ -122,6 +150,7 @@ export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
     const history: ChatTurn[] = [...messages(), { role: "user", content: trimmed }];
     setMessages(history);
     await runTurn(history, opts);
+    await drainQueue();
   }
 
   /** Re-run the trailing user turn: drops the last assistant reply (when one is
@@ -144,6 +173,7 @@ export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
     setError(null);
     setMessages(history);
     await runTurn(history);
+    await drainQueue();
   }
 
   /** Streams one assistant turn for `history` (which must end with the user
@@ -186,7 +216,15 @@ export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
         system: opts?.system ?? config.system?.(),
         signal: controller.signal,
         ...(tools && tools.length
-          ? { tools, ...(config.maxSteps != null ? { maxSteps: config.maxSteps } : {}) }
+          ? {
+              tools,
+              ...(config.maxSteps != null ? { maxSteps: config.maxSteps } : {}),
+              // Engine-level approval gate (F3): tools arrive unwrapped and
+              // the engine asks before running prompt-tier ones.
+              ...(config.onApprovalRequest
+                ? { onApprovalRequest: config.onApprovalRequest }
+                : {}),
+            }
           : {}),
       });
       for await (const part of stream) {
@@ -254,7 +292,13 @@ export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
   }
 
   function cancel(): void {
+    // Stop means stop: a queued steering message must not fire right after.
+    setQueued(null);
     controller?.abort();
+  }
+
+  function cancelQueued(): void {
+    setQueued(null);
   }
 
   function clear(): void {
@@ -284,6 +328,8 @@ export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
     streaming,
     error,
     providerReady,
+    queued,
+    cancelQueued,
     retryLast,
     sendMessage,
     cancel,

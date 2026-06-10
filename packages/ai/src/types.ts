@@ -71,6 +71,19 @@ export interface AITool {
 /** Approval tier for a tool call. */
 export type ApprovalTier = "auto" | "prompt";
 
+/** What the host's approval prompt is shown about when the ENGINE enforces
+ *  approval (`ChatOptions.onApprovalRequest`). Structurally identical to
+ *  approval-policy's `ApprovalRequest`, so a host gate built with
+ *  `createApprovalGate` can be passed straight through. */
+export interface ToolApprovalRequest {
+  args: unknown;
+  /** The run's abort signal — lets the host auto-deny and hide a pending
+   *  prompt when the user stops the turn. */
+  signal?: AbortSignal;
+  source?: string;
+  toolName: string;
+}
+
 /** Options the engine passes to {@link AITool.execute}. */
 export interface ToolExecuteOptions {
   /** Aborts the in-flight tool call (threaded from the chat run's signal). */
@@ -92,6 +105,14 @@ export interface ChatOptions {
   /** Max steps in the tool-calling loop (AI SDK `stopWhen: stepCountIs`).
    *  Defaults to 8. Ignored when `tools` is empty. */
   maxSteps?: number;
+  /** Engine-level human-in-the-loop: when provided, the ENGINE gates every
+   *  `prompt`-tier tool (per `resolveApprovalTier`) behind this callback before
+   *  executing — hosts no longer need to pre-wrap tools with `withApproval`.
+   *  Resolve `true` to run the tool, `false` to deny it (the model sees a
+   *  `{ rejected: true, error }` result). When omitted, tools run exactly as
+   *  given — hosts that still pass pre-wrapped tools keep today's behavior
+   *  (no double-gating). */
+  onApprovalRequest?: (req: ToolApprovalRequest) => Promise<boolean>;
 }
 
 export type CompleteOptions = ChatOptions;

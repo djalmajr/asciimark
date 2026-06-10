@@ -114,14 +114,15 @@ export type MoveClipboard = {
   mode: "cut" | "copy";
 };
 
-/** An inline "@label" chat reference: a file's text, or — for `kind: "folder"`
- *  — a subtree listing the host built from the workspace tree. Injected only
- *  while its "@label" is still present in the composer. */
-export interface AiMentionRef {
+/** A resolved file/folder reference attached to the chat as a context chip
+ *  (@-mention and the file-tree "Add to chat" share this single path). For
+ *  `kind: "folder"` the content is a subtree listing the host built from the
+ *  workspace tree; otherwise it's the file's text. */
+export interface AiMentionContext {
   /** The resolved text injected into the prompt (file content / folder listing). */
   content: string;
   kind?: "file" | "folder";
-  /** The "@label" text tracked in the composer (folders end with "/"). */
+  /** Chip label — the file name, or "dir/" for a folder listing. */
   label: string;
   path?: string;
   rootId?: string;
@@ -152,6 +153,14 @@ interface AppStateConfig {
   onPlanComplete?: (content: string) => void;
   /** Export a chat transcript (the host shows a Save dialog + writes the file). */
   onExportChat?: (payload: { title: string; markdown: string }) => void;
+  /** Host Accept/Reject gate for prompt-tier tool calls, enforced by the
+   *  engine (ChatOptions.onApprovalRequest) — tools are passed unwrapped. */
+  onToolApprovalRequest?: (req: {
+    args: unknown;
+    signal?: AbortSignal;
+    source?: string;
+    toolName: string;
+  }) => Promise<boolean>;
 }
 
 export { FontFamilies, FontSizes };
@@ -532,15 +541,16 @@ export function createAppState(config: AppStateConfig) {
     setActiveFileContextDismissed(true);
   }
 
-  // Selection popover (Add to chat / Quick Edit) — the editor emits the current
-  // selection + its screen coords; the AppShell renders a small floating menu.
-  const [selectionPopover, setSelectionPopover] = createSignal<{
-    from: number;
-    to: number;
-    text: string;
-    left: number;
-    bottom: number;
-  } | null>(null);
+  // Selection popover (Add to chat / Quick Edit) — the editor (CodeMirror
+  // offsets) and the rendered preview (a DOM selection over `.doc-body`,
+  // tagged `source: "preview"`) both emit the current selection + its screen
+  // coords; the AppShell renders a small floating menu fed by whichever
+  // source selected last.
+  const [selectionPopover, setSelectionPopover] = createSignal<
+    | { from: number; to: number; text: string; left: number; bottom: number }
+    | { bottom: number; left: number; source: "preview"; text: string }
+    | null
+  >(null);
 
   /** Add an editor selection to the chat as a context chip (labelled file:lines). */
   function addSelectionToContext(sel: { from: number; to: number; text: string }): void {
@@ -558,25 +568,35 @@ export function createAppState(config: AppStateConfig) {
     });
   }
 
-  // File/folder references (@mention + file-tree "Add to chat") — these appear
-  // INLINE as "@label" in the composer text (not a top chip). Their content is
-  // injected only while the "@label" is still present in the composer (the
-  // AiPanel parses the text and reports the active labels), so deleting the
-  // text drops the ref. `kind: "folder"` entries carry a subtree listing.
-  const [aiMentions, setAiMentions] = createSignal<AiMentionRef[]>([]);
-  const [aiActiveMentionLabels, setAiActiveMentionLabels] = createSignal<string[]>([]);
-  let composerInsertNonce = 0;
-  const [composerInsert, setComposerInsert] = createSignal<{ text: string; nonce: number } | null>(null);
-
-  /** Resolve a file (or folder listing) as an inline reference. `insert`
-   *  appends "@label" to the composer (used by the file-tree menu, where the
-   *  cursor isn't in the input; the @-mention already typed the text itself). */
-  function addFileMention(file: AiMentionRef, opts?: { insert?: boolean }): void {
-    setAiMentions((prev) => (prev.some((mn) => mn.label === file.label) ? prev : [...prev, file]));
-    if (opts?.insert) setComposerInsert({ text: `@${file.label} `, nonce: ++composerInsertNonce });
+  /** Add a rendered-preview (DOM) selection to the chat as a context chip.
+   *  No editor offsets exist for the rendered article, so the label is a
+   *  short snippet of the selected text instead of file:lines. */
+  function addPreviewSelectionToContext(text: string): void {
+    const flat = text.trim().replace(/\s+/g, " ");
+    if (!flat) return;
+    const label = flat.length > 30 ? `${flat.slice(0, 30)}…` : flat;
+    addAiContext({
+      id: `selection:preview:${flat.slice(0, 60)}:${text.length}`,
+      kind: "selection",
+      label,
+      content: text,
+    });
   }
-  function setActiveMentionLabels(labels: string[]): void {
-    setAiActiveMentionLabels(labels);
+
+  /** Attach a resolved file (or folder listing) to the chat as a context chip
+   *  — the single canonical channel shared by the composer's @-mention and the
+   *  file-tree "Add to chat". Deduped by id via addAiContext; the chip's ×
+   *  (removeAiContext) drops the reference. */
+  function addFileMention(file: AiMentionContext): void {
+    const kind = file.kind ?? "file";
+    addAiContext({
+      id: `${kind === "folder" ? "folder" : "mention"}:${file.rootId ?? ""}:${file.path ?? ""}`,
+      kind,
+      label: file.label,
+      content: file.content,
+      ...(file.path ? { path: file.path } : {}),
+      ...(file.rootId ? { rootId: file.rootId } : {}),
+    });
   }
 
   // Chat mode: "build" (full tools) vs "plan" (no editing tools — produce a
@@ -610,23 +630,12 @@ export function createAppState(config: AppStateConfig) {
     onAssistantTurn: (content) => {
       if (aiMode() === "plan") config.onPlanComplete?.(content);
     },
-    getContext: () => {
-      const active = aiActiveMentionLabels();
-      const mentionItems: AiContextItem[] = aiMentions()
-        .filter((mn) => active.includes(mn.label))
-        .map((mn) => ({
-          id:
-            mn.kind === "folder"
-              ? `folder:${mn.rootId ?? ""}:${mn.path ?? ""}`
-              : `mention:${mn.label}`,
-          kind: mn.kind ?? "file",
-          label: mn.label,
-          content: mn.content,
-          ...(mn.path ? { path: mn.path } : {}),
-          ...(mn.rootId ? { rootId: mn.rootId } : {}),
-        }));
-      return buildContextPreamble([...aiContextItems(), ...mentionItems]);
-    },
+    getContext: () => buildContextPreamble(aiContextItems()),
+    // Engine-level approval (F3): the host's Accept/Reject gate rides the
+    // ChatOptions instead of pre-wrapping every tool.
+    ...(config.onToolApprovalRequest
+      ? { onApprovalRequest: config.onToolApprovalRequest }
+      : {}),
   });
   // Restore persisted chats (open tabs + active) on boot, while this owner is
   // live so each rebuilt session store nests under it.
@@ -864,11 +873,13 @@ export function createAppState(config: AppStateConfig) {
     config.onExportChat?.({ title, markdown: formatChatTranscript(title, turns) });
   }
 
-  /** Selection popover → "Add to chat": chip the selection + front the chat. */
+  /** Selection popover → "Add to chat": chip the selection + front the chat.
+   *  Preview-sourced selections (no editor offsets) get the snippet label. */
   function addSelectionContextFromPopover(): void {
     const info = selectionPopover();
     if (!info) return;
-    addSelectionToContext(info);
+    if ("source" in info) addPreviewSelectionToContext(info.text);
+    else addSelectionToContext(info);
     setSelectionPopover(null);
     focusAiComposer();
   }
@@ -1330,9 +1341,8 @@ export function createAppState(config: AppStateConfig) {
     removeAiContext,
     dismissActiveFileContext,
     addSelectionToContext,
+    addPreviewSelectionToContext,
     addFileMention,
-    setActiveMentionLabels,
-    composerInsert,
     selectionPopover,
     setSelectionPopover,
     addSelectionContextFromPopover,

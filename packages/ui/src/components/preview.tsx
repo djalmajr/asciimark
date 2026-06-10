@@ -640,6 +640,17 @@ function resolveRelativePath(currentFilePath: string, target: string): string {
   return dirParts.join("/");
 }
 
+/** A non-collapsed DOM selection inside the rendered article, with the screen
+ *  coords of its end for anchoring the selection popover. `source: "preview"`
+ *  lets the host's shared popover state tell it apart from an editor
+ *  selection (which carries CodeMirror offsets instead). */
+export interface PreviewSelectionInfo {
+  bottom: number;
+  left: number;
+  source: "preview";
+  text: string;
+}
+
 interface PreviewProps {
   findTrigger: number;
   html: string;
@@ -682,6 +693,11 @@ interface PreviewProps {
   resolveImageSrc?: (src: string) => string | null;
   onScrollRatioChange: (ratio: number) => void;
   onSearchOpenChange: (open: boolean) => void;
+  /** Fired after a mouseup over a non-collapsed DOM selection anchored inside
+   *  the rendered article (`.doc-body`), and with `null` when that selection
+   *  collapses (click elsewhere / Escape). Mirrors the editor's
+   *  onSelectionPopover contract; only wired by hosts with a chat panel. */
+  onSelectionPopover?: (info: PreviewSelectionInfo | null) => void;
   /** Called after content swap to report whether the new content has a TOC */
   onTocChange: (hasToc: boolean) => void;
 }
@@ -735,6 +751,60 @@ export function Preview(props: PreviewProps) {
     };
     window.addEventListener("keydown", handleCtrlF);
     onCleanup(() => window.removeEventListener("keydown", handleCtrlF));
+  });
+
+  // ── Preview selection → "Add to chat" popover ─────────────────────────
+  // Mirrors the editor's selection tracking for the rendered article: a
+  // mouseup with a non-collapsed DOM selection anchored inside `.doc-body`
+  // shows the popover at the selection end; collapsing that selection
+  // (clicking elsewhere, Escape) hides it. `props.onSelectionPopover` is read
+  // per-event so the active-pane wiring in PaneView stays reactive, and the
+  // handlers early-return when no consumer is wired.
+  onMount(() => {
+    let popoverShown = false;
+
+    const readSelectionInfo = (): PreviewSelectionInfo | null => {
+      if (!articleRef) return null;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+      if (!sel.anchorNode || !articleRef.contains(sel.anchorNode)) return null;
+      const text = sel.toString();
+      if (!text.trim()) return null;
+      // Coords are best-effort: jsdom zeroes Range.getBoundingClientRect(),
+      // so fall back to the article's own rect — zeroed coords must not
+      // suppress the popover (it clamps into the viewport anyway).
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      const fallback = articleRef.getBoundingClientRect();
+      return {
+        bottom: rect.bottom || fallback.bottom,
+        left: rect.left || fallback.left,
+        source: "preview",
+        text,
+      };
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (!props.onSelectionPopover) return;
+      if (!(e.target instanceof Node) || !articleRef?.contains(e.target)) return;
+      const info = readSelectionInfo();
+      if (!info) return;
+      popoverShown = true;
+      props.onSelectionPopover(info);
+    };
+
+    const handleSelectionChange = () => {
+      if (!popoverShown || readSelectionInfo()) return;
+      popoverShown = false;
+      props.onSelectionPopover?.(null);
+    };
+
+    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("selectionchange", handleSelectionChange);
+    onCleanup(() => {
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      if (popoverShown) props.onSelectionPopover?.(null);
+    });
   });
 
   createEffect(() => {

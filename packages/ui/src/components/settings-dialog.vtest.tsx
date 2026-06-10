@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@solidjs/testing-library";
 import { SettingsDialog } from "./settings-dialog.tsx";
+import { ConfirmDialog } from "./confirm-dialog.tsx";
 
 afterEach(cleanup);
 
@@ -13,18 +14,23 @@ function setup(overrides: Record<string, unknown> = {}) {
   const onTierChange = vi.fn();
   const onListModels = vi.fn(async () => ["m1", "m2"]);
   const onSaveProvider = vi.fn();
+  // ConfirmDialog is mounted alongside (as the app shell does) so imperative
+  // confirm() calls render a real in-DOM dialog the tests can interact with.
   const result = render(() => (
-    <SettingsDialog
-      open
-      onClose={() => {}}
-      aiProviders={PROVIDERS}
-      selectedModel={null}
-      indexingTier="lite"
-      onTierChange={onTierChange}
-      onListModels={onListModels as never}
-      onSaveProvider={onSaveProvider as never}
-      {...overrides}
-    />
+    <>
+      <SettingsDialog
+        open
+        onClose={() => {}}
+        aiProviders={PROVIDERS}
+        selectedModel={null}
+        indexingTier="lite"
+        onTierChange={onTierChange}
+        onListModels={onListModels as never}
+        onSaveProvider={onSaveProvider as never}
+        {...overrides}
+      />
+      <ConfirmDialog />
+    </>
   ));
   return { ...result, onTierChange, onListModels, onSaveProvider };
 }
@@ -121,8 +127,9 @@ describe("SettingsDialog", () => {
     expect(onToggleModel).toHaveBeenCalledWith("openai/b");
   });
 
-  it("Manage models: each group header has a remove button firing onRemoveProvider with the group's ids", () => {
+  it("Manage models: group name opens the provider sub-page; Remove provider confirms then fires onRemoveProvider", async () => {
     const onRemoveProvider = vi.fn();
+    const onToggleModel = vi.fn();
     const { baseElement } = setup({
       allModels: [
         {
@@ -139,17 +146,42 @@ describe("SettingsDialog", () => {
       ],
       hiddenModels: [],
       onRemoveProvider,
-      onToggleModel: vi.fn(),
+      onToggleModel,
     });
-    const buttons = [
-      ...baseElement.querySelectorAll('.settings-models-group button[aria-label="Remove provider"]'),
-    ];
-    // One remove button per rendered provider group header.
-    expect(buttons.length).toBe(2);
-    fireEvent.click(buttons[0] as HTMLElement);
-    expect(onRemoveProvider).toHaveBeenCalledWith(["opencode-go", "opencode-go-chat"]);
-    fireEvent.click(buttons[1] as HTMLElement);
-    expect(onRemoveProvider).toHaveBeenCalledWith(["openai"]);
+    // Headers no longer carry a remove button — just the name + group toggle.
+    expect(
+      baseElement.querySelectorAll('.settings-models-group button[aria-label="Remove provider"]')
+        .length,
+    ).toBe(0);
+    const nameBtn = [
+      ...baseElement.querySelectorAll("button.settings-models-group-name"),
+    ].find((b) => /OpenCode Go/i.test(b.textContent ?? "")) as HTMLElement;
+    fireEvent.click(nameBtn);
+    // Navigating via the name must not flip the group toggle.
+    expect(onToggleModel).not.toHaveBeenCalled();
+    // Provider sub-page: connect controls + the separated destructive action.
+    expect(baseElement.querySelector('input[type="password"]')).not.toBeNull();
+    const removeBtn = [...baseElement.querySelectorAll("button.settings-danger-btn")].find(
+      (b) => (b.textContent ?? "").trim() === "Remove provider",
+    ) as HTMLElement;
+    expect(removeBtn).not.toBeUndefined();
+    fireEvent.click(removeBtn);
+    // The real ConfirmDialog (mounted by setup) opens in the DOM; confirm it.
+    const confirmBtn = await waitFor(() => {
+      const found = [...baseElement.querySelectorAll("button")].find(
+        (b) => (b.textContent ?? "").trim() === "Confirm",
+      );
+      expect(found).toBeTruthy();
+      return found as HTMLElement;
+    });
+    fireEvent.click(confirmBtn);
+    await waitFor(() => {
+      expect(onRemoveProvider).toHaveBeenCalledWith(["opencode-go", "opencode-go-chat"]);
+    });
+    // After removal the view returns to Manage models.
+    await waitFor(() => {
+      expect(baseElement.querySelector(".settings-models-search")).not.toBeNull();
+    });
   });
 
   it("Manage models: the search box filters the list", () => {

@@ -15,7 +15,7 @@ import { slugifyTitle } from "@asciimark/ui/lib/chat-export.ts";
 import { createMockProvider } from "@asciimark/ai/mock-provider.ts";
 import type { AIConfig, MCPServerConfig } from "@asciimark/ai/config-schema.ts";
 import type { AIProvider, AITool } from "@asciimark/ai/types.ts";
-import { createApprovalGate, withApproval } from "@asciimark/ai/approval-policy.ts";
+import { createApprovalGate } from "@asciimark/ai/approval-policy.ts";
 import { resolveModel } from "@asciimark/ai/resolve-model.ts";
 import { resolveCredential } from "@asciimark/ai/resolve-credential.ts";
 import { createProvider as createAiProvider } from "@asciimark/ai/adapter.ts";
@@ -46,6 +46,7 @@ import {
 import { buildInProcessTools } from "./lib/ai-tools.ts";
 import { deleteApiKey, getApiKey, hasApiKey, setApiKey } from "./lib/ai-credentials.ts";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { streamingFetch } from "./lib/ai-sse-fetch.ts";
 import type { TabStore } from "@asciimark/ui/composables/create-tab-store.ts";
 import { AppShell } from "@asciimark/ui/components/app-shell.tsx";
 import type { EditorApi } from "@asciimark/ui/components/editor.tsx";
@@ -151,11 +152,14 @@ export function App() {
             ? {}
             : { keychain: (id) => getApiKey(id).then((k) => k ?? undefined) },
         ),
-      // Route provider HTTP through Rust (Tauri HTTP plugin) to avoid the
-      // WKWebView CORS wall on direct cross-origin calls. `streaming` is the
-      // opt-in beta path (default off = the buffered kill-switch).
+      // Route provider HTTP through Rust to avoid the webview CORS wall.
+      // Streaming ON swaps in the Rust SSE transport (ai_http.rs → Channel →
+      // streaming Response), which actually delivers deltas — tauri-plugin-http
+      // buffers whole bodies, so it stays the buffered default only.
       {
-        fetch: tauriFetch as unknown as typeof globalThis.fetch,
+        fetch: getStoredAiStreaming()
+          ? streamingFetch
+          : (tauriFetch as unknown as typeof globalThis.fetch),
         streaming: getStoredAiStreaming(),
       },
     );
@@ -180,6 +184,9 @@ export function App() {
     createAIProvider: () => buildAIProvider(),
     // Tools for the chat tool-calling loop: in-process app tools + MCP servers.
     getAITools,
+    // Engine-enforced Accept/Reject for prompt-tier tools (arrow defers the
+    // read — the gate is defined further down in this component).
+    onToolApprovalRequest: (req) => requestToolApproval(req),
     // Plan mode persists each produced plan under the workspace's .asciimark/plans.
     onPlanComplete: handlePlanComplete,
     // Chat tab "Export" → native Save As, defaulting to .asciimark/chats.
@@ -470,9 +477,10 @@ export function App() {
     } catch {
       mcp = [];
     }
-    // Gate prompt-tier tools (MCP/unknown) behind an Accept/Reject; in-process
-    // app tools auto-run (reads; the edit tool runs its own approval).
-    return [...inProcess, ...mcp].map((t) => withApproval(t, requestToolApproval));
+    // Tools go UNWRAPPED: the engine enforces the Accept/Reject gate now
+    // (ChatOptions.onApprovalRequest, threaded via createAppState below).
+    // Wrapping here too would double-gate every prompt-tier call.
+    return [...inProcess, ...mcp];
   }
 
   /** Persist a Plan-mode result to `<root>/.asciimark/plans/plan-<stamp>.md`.
@@ -1460,32 +1468,25 @@ export function App() {
     return `Folder listing of ${label}:\n${lines.join("\n")}\n\nUse app__read_file with one of these paths to read a specific file.`;
   }
 
-  /** Resolve a file or folder as an inline "@" reference for the chat
-   *  (file-tree "Add to chat" / @-mention). Files carry their text; `kind:
-   *  "dir"` entries carry a subtree listing so the model can pick files to
-   *  read. Either way the reference registers through the same
-   *  `state.addFileMention` path, so its content follows the "@label" text in
-   *  the composer. `insert` appends "@label" (file-tree) and fronts the chat. */
+  /** Resolve a file or folder as a chat context chip (file-tree "Add to
+   *  chat" / @-mention). Files carry their text; `kind: "dir"` entries carry
+   *  a subtree listing so the model can pick files to read. Either way the
+   *  reference registers through the same `state.addFileMention` chip path
+   *  (deduped by id; the chip's × removes it). */
   async function addFileMention(
     file: { kind?: "dir" | "file"; label: string; path: string; rootId: string },
-    insert: boolean,
   ) {
     if (file.kind === "dir") {
       const content = buildFolderListing(file.rootId, file.path, file.label);
       if (content === null) return;
-      state.addFileMention(
-        { content, kind: "folder", label: file.label, path: file.path, rootId: file.rootId },
-        { insert },
-      );
-      if (insert) state.focusAiComposer();
+      state.addFileMention({ content, kind: "folder", label: file.label, path: file.path, rootId: file.rootId });
       return;
     }
     const rootPath = rootPaths().get(file.rootId);
     if (!rootPath) return;
     try {
       const content = await readFileContent(`${rootPath}/${file.path}`);
-      state.addFileMention({ label: file.label, path: file.path, content }, { insert });
-      if (insert) state.focusAiComposer();
+      state.addFileMention({ content, label: file.label, path: file.path, rootId: file.rootId });
     } catch {
       // Unreadable (binary / deleted) — silently skip.
     }
@@ -1500,6 +1501,22 @@ export function App() {
     const sel = pane.editorApi?.getSelection();
     if (!sel || !sel.text.trim()) return false;
     state.addSelectionToContext(sel);
+    return true;
+  }
+
+  /** ⌘I fallback for the rendered preview: attach a non-collapsed DOM
+   *  selection anchored inside `.doc-body` to the chat as a snippet-labelled
+   *  chip. Returns false when no such selection exists (sandboxed `.html`
+   *  previews live in an iframe, so their selections never match here). */
+  function addPreviewSelectionToChat(): boolean {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+    const anchor = sel.anchorNode;
+    const anchorEl = anchor instanceof Element ? anchor : (anchor?.parentElement ?? null);
+    if (!anchorEl?.closest(".doc-body")) return false;
+    const text = sel.toString();
+    if (!text.trim()) return false;
+    state.addPreviewSelectionToContext(text);
     return true;
   }
 
@@ -2135,10 +2152,13 @@ export function App() {
         "ai.inlineAction": (ev) => {
           // ⌘I attaches the current selection to the chat as a chip — the
           // Excalidraw diagram selection over an `.excalidraw`, else the editor
-          // text selection. No-op when there's nothing selected.
+          // text selection, else a DOM selection in the rendered preview
+          // (`.doc-body`). No-op when there's nothing selected.
           ev.preventDefault();
           void addExcalidrawSelectionToChat().then((attached) => {
-            if (attached || addSelectionToChat()) state.focusAiComposer();
+            if (attached || addSelectionToChat() || addPreviewSelectionToChat()) {
+              state.focusAiComposer();
+            }
           });
         },
         "app.settings": (ev) => {
@@ -2269,7 +2289,7 @@ export function App() {
       onGoForward={navigation.handleGoForward}
       onLoadFile={handleLoadFileWithTab}
       onOpenInNewTab={handleOpenInNewTab}
-      onAddFileMention={(f, insert) => void addFileMention(f, insert)}
+      onAddFileMention={(f) => void addFileMention(f)}
       onDoubleClickFile={handleOpenInNewTab}
       onNavigate={navigation.handleNavigate}
       onOpenExternal={(url) => openUrl(url)}

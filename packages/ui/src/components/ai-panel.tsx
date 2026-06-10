@@ -66,14 +66,8 @@ export interface AiPanelProps {
    *  autocomplete in the composer. */
   mentionFiles?: AiMentionEntry[];
   /** An entry was @-mentioned — host resolves it (file content / folder
-   *  listing) + tracks it as an inline reference. */
+   *  listing) + attaches it as a context chip. */
   onMention?: (file: AiMentionEntry) => void;
-  /** Host request to insert text into the composer (file-tree "Add to chat"):
-   *  inserts at the cursor, or appends when the textarea isn't focused. */
-  insertRequest?: { text: string; nonce: number } | null;
-  /** Reports which "@label" references are currently present in the composer so
-   *  the host injects only those files' content. */
-  onMentionLabelsChange?: (labels: string[]) => void;
   /** Opens Settings → AI (empty-state CTA). */
   onOpenSettings?: () => void;
   /** Open an http(s) link from a chat reply in the OS browser. Clicks on chat
@@ -111,45 +105,11 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
     });
   });
 
-  // Which "@label" file references are present in the composer (so the host
-  // injects only those files' content; deleting the text drops the reference).
-  function activeMentionLabels(text: string): string[] {
-    const labels = props.mentionFiles?.map((f) => f.label) ?? [];
-    const found = new Set<string>();
-    for (const match of text.matchAll(/@([^\s@]+)/g)) {
-      if (labels.includes(match[1]!)) found.add(match[1]!);
-    }
-    return [...found];
-  }
-  function syncMentionLabels(text: string): void {
-    props.onMentionLabelsChange?.(activeMentionLabels(text));
-  }
-
-  // Host-driven insert (file-tree "Add to chat"): at the cursor when the
-  // composer is focused, else appended.
-  let lastInsertNonce = 0;
-  createEffect(() => {
-    const req = props.insertRequest;
-    if (!req || req.nonce === lastInsertNonce) return;
-    lastInsertNonce = req.nonce;
-    const ta = textarea;
-    const cur = input();
-    const focused = !!ta && document.activeElement === ta && ta.selectionStart != null;
-    const at = focused ? ta!.selectionStart! : cur.length;
-    const sep = !focused && cur && !cur.endsWith(" ") ? " " : "";
-    const next = cur.slice(0, at) + sep + req.text + cur.slice(at);
-    setInput(next);
-    syncMentionLabels(next);
-    const caret = at + sep.length + req.text.length;
-    queueMicrotask(() => {
-      ta?.focus();
-      ta?.setSelectionRange(caret, caret);
-    });
-  });
-
   function submit(): void {
     const text = input();
-    if (!text.trim() || props.store.streaming()) return;
+    if (!text.trim()) return;
+    // While a turn streams, the store queues the message (steering) — the
+    // composer clears either way so the user keeps typing.
     setInput("");
     void props.store.sendMessage(text);
   }
@@ -181,17 +141,22 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
     }
   }
 
+  // Selecting a mention REMOVES the "@query" token from the composer (the
+  // reference lives as a context chip, not inline text) and hands the entry to
+  // the host, which resolves + attaches it.
   function selectMention(file: AiMentionEntry): void {
     const ta = textarea;
     if (!ta) return;
     const caret = ta.selectionStart ?? input().length;
-    const before = input().slice(0, caret).replace(MENTION_RE, (_full, pre: string) => `${pre}@${file.label} `);
+    const before = input().slice(0, caret).replace(MENTION_RE, (_full, pre: string) => pre);
     const next = before + input().slice(caret);
     setInput(next);
     setMentionQuery(null);
     props.onMention?.(file);
-    syncMentionLabels(next);
-    queueMicrotask(() => ta.focus());
+    queueMicrotask(() => {
+      ta.focus();
+      ta.setSelectionRange(before.length, before.length);
+    });
   }
 
   function onKeyDown(e: KeyboardEvent): void {
@@ -317,6 +282,24 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
           props.onContextDrop?.(e);
         }}
       >
+        <Show when={props.store.queued()}>
+          {(queuedText) => (
+            <div class="ai-queued-bar">
+              <span class="ai-queued-label">{(useLocale(), m.ai_queued())}</span>
+              <span class="ai-queued-text" title={queuedText()}>
+                {queuedText()}
+              </span>
+              <button
+                type="button"
+                class="ai-context-chip-x"
+                aria-label={(useLocale(), m.ai_context_remove())}
+                onClick={() => props.store.cancelQueued()}
+              >
+                <IconX width={11} height={11} />
+              </button>
+            </div>
+          )}
+        </Show>
         <Show when={hasContext()}>
           <div class="ai-context-bar">
             <Show when={props.activeFileContext}>
@@ -395,7 +378,6 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
           onInput={(e) => {
             setInput(e.currentTarget.value);
             syncMention(e.currentTarget);
-            syncMentionLabels(e.currentTarget.value);
           }}
           onKeyDown={onKeyDown}
         />

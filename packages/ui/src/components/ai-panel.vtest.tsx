@@ -117,6 +117,10 @@ describe("AiPanel", () => {
     expect(items[0]!.textContent).toContain("alpha.md");
     fireEvent.mouseDown(items[0]!);
     expect(onMention).toHaveBeenCalledWith({ label: "alpha.md", path: "a/alpha.md", rootId: "r" });
+    // The reference lives as a context chip now — the "@al" token is REMOVED
+    // from the composer (no inline "@alpha.md" text) and the list closes.
+    expect(ta.value).toBe("");
+    expect(baseElement.querySelectorAll(".ai-mention-item")).toHaveLength(0);
   });
 
   it("offers folders (and the workspace root itself) in the @-mention list with a trailing slash", () => {
@@ -142,9 +146,11 @@ describe("AiPanel", () => {
     expect(items).toHaveLength(1); // filtered to the "notes/" dir
     expect(items[0]!.querySelector(".ai-mention-name")?.textContent).toBe("notes/");
     // Selecting a dir fires onMention with the full dir entry (kind included),
-    // so the host knows to attach a listing instead of file content.
+    // so the host knows to attach a listing instead of file content. The
+    // "@no" token is removed — folder refs are chips, not inline text.
     fireEvent.mouseDown(items[0]!);
     expect(onMention).toHaveBeenCalledWith({ kind: "dir", label: "notes/", path: "notes", rootId: "r" });
+    expect(ta.value).toBe("");
     // The root entry is mentionable too.
     ta.value = "@wk";
     ta.setSelectionRange(3, 3);

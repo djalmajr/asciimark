@@ -300,6 +300,9 @@ export function PaneView(props: PaneViewProps) {
           onNavigate={props.onNavigate ?? (() => {})}
           onOpenExternal={props.onOpenExternal}
           onSearchOpenChange={s.setPreviewSearchOpen}
+          onSelectionPopover={
+            props.isActive ? (info) => s.setSelectionPopover(info) : undefined
+          }
           onTocChange={(has) => s.setHasToc(has)}
         />
           }

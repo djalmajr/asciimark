@@ -59,6 +59,7 @@ import {
   SwitchThumb,
 } from "./ui/switch.tsx";
 import { TierCard } from "./settings/tier-card.tsx";
+import { confirm } from "./confirm-dialog.tsx";
 
 const messages = m as unknown as Record<string, () => string>;
 const label = (key: string): string => messages[key]?.() ?? key;
@@ -333,8 +334,9 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
     group.models.every((mdl) => !hiddenSet().has(mdl.value));
   /** Provider ids behind a merged group. Groups arrive keyed by base name (the
    *  app merges e.g. "OpenCode Go" + "OpenCode Go (chat)") so the id set is
-   *  recovered from each model ref's "provider/model" prefix — the remove
-   *  button must disconnect every backing id, mirroring how connect set them. */
+   *  recovered from each model ref's "provider/model" prefix — the provider
+   *  sub-page's remove action must disconnect every backing id, mirroring how
+   *  connect set them. */
   const groupProviderIds = (group: { models: { value: string }[] }): string[] => [
     ...new Set(group.models.map((mdl) => mdl.value.slice(0, mdl.value.indexOf("/")))),
   ];
@@ -394,12 +396,22 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
     | { kind: "manage" }
     | { kind: "catalog" }
     | { kind: "custom" }
-    | { kind: "provider"; name: string; ids: string[] };
+    | { kind: "provider"; from: "catalog" | "manage"; ids: string[]; name: string };
   const [view, setView] = createSignal<AiView>({ kind: "manage" });
-  const providerViewData = (): { name: string; ids: string[] } | null => {
+  const providerViewData = (): { from: "catalog" | "manage"; ids: string[]; name: string } | null => {
     const v = view();
     return v.kind === "provider" ? v : null;
   };
+
+  /** Provider ids with at least one model in the (connected-only) Manage list —
+   *  the dialog's notion of "connected", gating the destructive remove action. */
+  const connectedProviderIds = createMemo<Set<string>>(() => {
+    const ids = new Set<string>();
+    for (const group of props.allModels ?? []) {
+      for (const mdl of group.models) ids.add(mdl.value.slice(0, mdl.value.indexOf("/")));
+    }
+    return ids;
+  });
 
   /** Providers for the Connect catalog, MERGED by base name (e.g. "OpenCode Go"
    *  + "OpenCode Go (chat)" → one row connecting both ids) and sorted
@@ -415,10 +427,13 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
     return [...byBase.values()].sort((a, b) => a.name.localeCompare(b.name));
   });
 
-  function enterProvider(group: { name: string; ids: string[] }): void {
+  function enterProvider(
+    group: { name: string; ids: string[] },
+    from: "catalog" | "manage" = "catalog",
+  ): void {
     setApiKey("");
     setError(null);
-    setView({ kind: "provider", name: group.name, ids: group.ids });
+    setView({ kind: "provider", from, ids: group.ids, name: group.name });
   }
   async function continueConnect(): Promise<void> {
     const v = view();
@@ -434,6 +449,25 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
+    }
+  }
+  /** Destructive action on the provider sub-page: confirm, then disconnect
+   *  every backing id and return to Manage models. Errors render in the same
+   *  inline slot the connect flow uses. */
+  async function removeCurrentProvider(): Promise<void> {
+    const v = view();
+    if (v.kind !== "provider") return;
+    const ok = await confirm({
+      title: label("settings_ai_disconnect"),
+      description: label("settings_ai_disconnect_confirm"),
+      variant: "destructive",
+    });
+    if (!ok) return;
+    try {
+      await props.onRemoveProvider?.(v.ids);
+      setView({ kind: "manage" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -513,7 +547,7 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
               type="button"
               class="settings-back"
               aria-label={(useLocale(), label("settings_ai_back"))}
-              onClick={() => setView({ kind: "catalog" })}
+              onClick={() => setView({ kind: providerViewData()?.from ?? "catalog" })}
             >
               <IconArrowLeft width={16} height={16} />
             </button>
@@ -539,6 +573,28 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
               {(useLocale(), label("settings_ai_connect_continue"))}
             </Button>
           </div>
+          <Show
+            when={
+              props.onRemoveProvider &&
+              providerViewData()?.ids.some((id) => connectedProviderIds().has(id))
+            }
+          >
+            {/* Destructive zone, clearly separated from the connect controls —
+                only for CONNECTED providers (there's no key to delete before
+                connecting, and the confirm copy promises a keychain removal). */}
+            <div
+              class="settings-row"
+              style={{ "border-top": "1px solid hsl(var(--border))", "margin-top": "16px", "padding-top": "12px" }}
+            >
+              <button
+                class="settings-danger-btn"
+                type="button"
+                onClick={() => void removeCurrentProvider()}
+              >
+                {(useLocale(), label("settings_ai_disconnect"))}
+              </button>
+            </div>
+          </Show>
         </Match>
 
         {/* ── Custom provider form ── */}
@@ -630,30 +686,27 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
             {(group) => (
               <>
                 <div class="settings-models-group">
-                  <span class="settings-models-group-name">{group.name}</span>
-                  {/* The header is space-between; keep remove + toggle together. */}
-                  <span style={{ "align-items": "center", display: "inline-flex", gap: "6px" }}>
-                    <Show when={props.onRemoveProvider}>
-                      <button
-                        aria-label={(useLocale(), label("settings_ai_disconnect"))}
-                        class="settings-mcp-remove"
-                        title={(useLocale(), label("settings_ai_disconnect"))}
-                        type="button"
-                        onClick={() => void props.onRemoveProvider?.(groupProviderIds(group))}
-                      >
-                        <IconTrash width={13} height={13} />
-                      </button>
-                    </Show>
-                    <ToggleSwitch
-                      checked={providerAllVisible(group)}
-                      onChange={() => toggleProvider(group)}
-                      aria-label={group.name}
-                    >
-                      <SwitchControl size="sm">
-                        <SwitchThumb size="sm" />
-                      </SwitchControl>
-                    </ToggleSwitch>
-                  </span>
+                  {/* The name navigates to the provider sub-page (connect /
+                      remove); the toggle stays a separate control, so clicking
+                      the name never flips visibility. */}
+                  <button
+                    class="settings-models-group-name"
+                    type="button"
+                    onClick={() =>
+                      enterProvider({ name: group.name, ids: groupProviderIds(group) }, "manage")
+                    }
+                  >
+                    {group.name}
+                  </button>
+                  <ToggleSwitch
+                    checked={providerAllVisible(group)}
+                    onChange={() => toggleProvider(group)}
+                    aria-label={group.name}
+                  >
+                    <SwitchControl size="sm">
+                      <SwitchThumb size="sm" />
+                    </SwitchControl>
+                  </ToggleSwitch>
                 </div>
                 <For each={group.models}>
                   {(mdl) => (

@@ -74,6 +74,13 @@ export interface AiChatSessionsConfig {
   onAssistantTurn?: (content: string) => void;
   /** Title generation from the first user message; injected for purity/testing. */
   deriveTitle?: (firstUserMessage: string) => string;
+  /** Engine-level Accept/Reject gate, forwarded to every session store. */
+  onApprovalRequest?: (req: {
+    args: unknown;
+    signal?: AbortSignal;
+    source?: string;
+    toolName: string;
+  }) => Promise<boolean>;
 }
 
 /** Derive a short tab title from the first user message (≤40 chars, one line). */
@@ -179,6 +186,7 @@ export function createAiChatSessions(config: AiChatSessionsConfig): AiChatSessio
           ...(config.maxSteps != null ? { maxSteps: config.maxSteps } : {}),
           ...(config.getContext ? { getContext: config.getContext } : {}),
           ...(config.onAssistantTurn ? { onAssistantTurn: config.onAssistantTurn } : {}),
+          ...(config.onApprovalRequest ? { onApprovalRequest: config.onApprovalRequest } : {}),
           initialMessages: initial,
         });
 

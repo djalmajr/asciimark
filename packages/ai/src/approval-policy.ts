@@ -1,7 +1,10 @@
 // Decides whether a tool call runs automatically or asks the user first
 // (human-in-the-loop). This is a tiny pure policy, separate from how the prompt
-// is rendered: the host wraps `prompt`-tier tools so their `execute` awaits an
+// is rendered: `prompt`-tier tools are wrapped so their `execute` awaits an
 // Accept/Reject before running (the omp two-tier model, applied to AsciiMark).
+// The wrap is applied by the ENGINE when the host passes
+// `ChatOptions.onApprovalRequest` (engines/ai-sdk.ts — the single enforcement
+// point); hosts that pre-wrap tools themselves keep working unchanged.
 //
 // Why a default policy instead of requiring every tool to declare a tier: MCP
 // servers expose arbitrary tools we don't control, so the safe default for an

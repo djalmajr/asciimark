@@ -212,3 +212,57 @@ describe("filesystem tools (app__read_file / app__create_*)", () => {
     expect(res.status).toBe("error");
   });
 });
+
+describe("app__edit_file tool", () => {
+  it("is prompt-gated and replaces the single occurrence", async () => {
+    const { calls, deps, files } = depsWithFsSpy();
+    files.set("doc.md", "# Title\nold line\nend");
+    const tool = toolByName(deps, "app__edit_file");
+    expect(tool.approval).toBe("prompt");
+    const res = await tool.execute({ find: "old line", path: "doc.md", replace: "new line" });
+    expect(res).toEqual({ path: "doc.md", replacements: 1, status: "edited" });
+    expect(calls.at(-1)).toEqual({
+      op: "writeFileAbs",
+      args: ["/ws/doc.md", "# Title\nnew line\nend"],
+    });
+  });
+
+  it("no-match is instructional and points at a near miss (casing)", async () => {
+    const { deps, files } = depsWithFsSpy();
+    files.set("doc.md", "alpha\nBeta Line\ngamma");
+    const res = (await toolByName(deps, "app__edit_file").execute({
+      find: "beta line",
+      path: "doc.md",
+      replace: "x",
+    })) as { status: string; message: string };
+    expect(res.status).toBe("error");
+    expect(res.message).toContain("line 2");
+    expect(res.message).toContain("app__read_file");
+  });
+
+  it("refuses an ambiguous find without all:true, replaces all with it", async () => {
+    const { calls, deps, files } = depsWithFsSpy();
+    files.set("doc.md", "x ho x ho x");
+    const tool = toolByName(deps, "app__edit_file");
+    const ambiguous = (await tool.execute({ find: "x", path: "doc.md", replace: "y" })) as {
+      status: string;
+      message: string;
+    };
+    expect(ambiguous.status).toBe("error");
+    expect(ambiguous.message).toContain("3 places");
+    const res = await tool.execute({ all: true, find: "x", path: "doc.md", replace: "y" });
+    expect(res).toEqual({ path: "doc.md", replacements: 3, status: "edited" });
+    expect(calls.at(-1)?.args[1]).toBe("y ho y ho y");
+  });
+
+  it("missing file points the model at discovery/creation tools", async () => {
+    const { deps } = depsWithFsSpy();
+    const res = (await toolByName(deps, "app__edit_file").execute({
+      find: "a",
+      path: "ghost.md",
+      replace: "b",
+    })) as { status: string; message: string };
+    expect(res.status).toBe("error");
+    expect(res.message).toContain("app__create_file");
+  });
+});

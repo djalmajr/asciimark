@@ -441,17 +441,51 @@ describe("AppState — AI multi-chat tab routing", () => {
     }, aiConfig);
   });
 
-  it("addFileMention(insert) pulses composerInsert; mentions are NOT top chips", () => {
+  it("addPreviewSelectionToContext adds a snippet-labelled chip (no editor offsets)", () => {
     withState((state) => {
-      expect(state.composerInsert()).toBeNull();
-      state.addFileMention({ label: "a.md", content: "x" }, { insert: true });
-      expect(state.composerInsert()?.text).toBe("@a.md ");
-      // File references are inline, not top context chips.
+      const text = "This is a long preview selection that needs truncating";
+      state.addPreviewSelectionToContext(text);
+      const items = state.aiContextItems();
+      expect(items).toHaveLength(1);
+      expect(items[0]!.kind).toBe("selection");
+      expect(items[0]!.content).toBe(text);
+      // Label is the first ~30 chars + an ellipsis, not file:lines.
+      expect(items[0]!.label).toBe("This is a long preview selecti…");
+      // Whitespace-only selections are ignored.
+      state.addPreviewSelectionToContext("   \n ");
+      expect(state.aiContextItems()).toHaveLength(1);
+    }, aiConfig);
+  });
+
+  it("addSelectionContextFromPopover routes a preview-sourced popover to the snippet path", () => {
+    withState((state) => {
+      state.setSelectionPopover({ bottom: 0, left: 0, source: "preview", text: "short text" });
+      state.addSelectionContextFromPopover();
+      const items = state.aiContextItems();
+      expect(items).toHaveLength(1);
+      expect(items[0]!.kind).toBe("selection");
+      expect(items[0]!.label).toBe("short text");
+      expect(items[0]!.content).toBe("short text");
+      // Same post-add behavior as the editor path: popover closes.
+      expect(state.selectionPopover()).toBeNull();
+    }, aiConfig);
+  });
+
+  it("addFileMention adds a file context CHIP, deduped by id", () => {
+    withState((state) => {
+      state.addFileMention({ content: "x", label: "a.md", path: "a.md", rootId: "r" });
+      state.addFileMention({ content: "x", label: "a.md", path: "a.md", rootId: "r" });
+      const items = state.aiContextItems();
+      expect(items).toHaveLength(1);
+      expect(items[0]!.id).toBe("mention:r:a.md");
+      expect(items[0]!.kind).toBe("file");
+      // The chip's × removes the reference.
+      state.removeAiContext("mention:r:a.md");
       expect(state.aiContextItems()).toHaveLength(0);
     }, aiConfig);
   });
 
-  it("injects only ACTIVE @-mention content into the sent message", async () => {
+  it("injects mention chips into the sent message; removing a chip drops its content", async () => {
     let sent: { role: string; content: string }[] | undefined;
     const provider = {
       async *chat(messages: { role: string; content: string }[]) {
@@ -466,9 +500,10 @@ describe("AppState — AI multi-chat tab routing", () => {
       },
     };
     await withState(async (state) => {
-      state.addFileMention({ label: "a.md", content: "ALPHA" }, {});
-      state.addFileMention({ label: "b.md", content: "BETA" }, {});
-      state.setActiveMentionLabels(["a.md"]); // only a.md is present in the composer
+      state.addFileMention({ content: "ALPHA", label: "a.md", path: "a.md", rootId: "r" });
+      state.addFileMention({ content: "BETA", label: "b.md", path: "b.md", rootId: "r" });
+      // Removing b.md's chip (its ×) drops it from the next send.
+      state.removeAiContext("mention:r:b.md");
       const id = state.newChat();
       await state.aiSessions.storeFor(id)!.sendMessage("hi");
       expect(sent?.at(-1)?.content).toContain("ALPHA");
@@ -477,7 +512,7 @@ describe("AppState — AI multi-chat tab routing", () => {
     }, { createAIProvider: () => provider });
   });
 
-  it("injects a folder mention as a kind=\"folder\" context block, tracked by its @label", async () => {
+  it("injects a folder mention chip as a kind=\"folder\" context block until its chip is removed", async () => {
     let sent: { role: string; content: string }[] | undefined;
     const provider = {
       async *chat(messages: { role: string; content: string }[]) {
@@ -493,18 +528,15 @@ describe("AppState — AI multi-chat tab routing", () => {
     };
     await withState(async (state) => {
       // Folder mentions ride the exact same registration path as files — only
-      // the kind/id mapping differs, so label tracking stays shared.
-      state.addFileMention(
-        { content: "- src/a.md", kind: "folder", label: "src/", path: "src", rootId: "r" },
-        {},
-      );
-      state.setActiveMentionLabels(["src/"]);
+      // the kind/id mapping differs.
+      state.addFileMention({ content: "- src/a.md", kind: "folder", label: "src/", path: "src", rootId: "r" });
+      expect(state.aiContextItems()[0]!.id).toBe("folder:r:src");
       const id = state.newChat();
       await state.aiSessions.storeFor(id)!.sendMessage("hi");
       expect(sent?.at(-1)?.content).toContain('<context kind="folder" source="src/">');
       expect(sent?.at(-1)?.content).toContain("- src/a.md");
-      // Deleting "@src/" from the composer drops the listing from the next send.
-      state.setActiveMentionLabels([]);
+      // Removing the chip drops the listing from the next send.
+      state.removeAiContext("folder:r:src");
       await state.aiSessions.storeFor(id)!.sendMessage("again");
       expect(sent?.at(-1)?.content).not.toContain("- src/a.md");
     }, { createAIProvider: () => provider });

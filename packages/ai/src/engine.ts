@@ -24,9 +24,12 @@ export type AIEngineId = "ai-sdk" | "tanstack";
 export type CredentialResolver = () => Promise<string | undefined>;
 
 /** A `fetch`-compatible implementation. On desktop the host injects the
- *  Tauri HTTP plugin's fetch so requests go through Rust and avoid the
- *  WKWebView CORS wall; in tests/extension the global fetch is used. */
-export type FetchImpl = typeof globalThis.fetch;
+ *  Tauri HTTP plugin's fetch (buffered) or the Rust SSE shim (streaming) so
+ *  requests go through Rust and avoid the webview CORS wall; tests/extension
+ *  use the global fetch. Structural on purpose: Node's `typeof fetch` carries
+ *  extras like `preconnect` that no injected implementation provides and the
+ *  AI SDK never calls. */
+export type FetchImpl = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export interface AIEngineOptions {
   /** Custom fetch (e.g. Tauri HTTP plugin) to dodge webview CORS. */
