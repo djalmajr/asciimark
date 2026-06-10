@@ -28,6 +28,7 @@ import * as m from "@asciimark/i18n";
 import { useLocale } from "@asciimark/i18n/solid";
 import {
   SHORTCUTS,
+  detectPlatform,
   groupShortcuts,
   type Platform,
 } from "@asciimark/core/keyboard-shortcuts.ts";
@@ -231,7 +232,14 @@ export function SettingsDialog(props: SettingsDialogProps): JSX.Element {
                 <IndexingSection {...props} />
               </Match>
               <Match when={section() === "keybindings"}>
-                <KeybindingsSection platform={props.platform ?? "mac"} />
+                {/* Same detected-platform fallback as ShortcutsHelp/CommandPalette —
+                    a hardcoded "mac" default rendered ⌘ glyphs on Windows. */}
+                <KeybindingsSection
+                  platform={
+                    props.platform ??
+                    detectPlatform(typeof navigator === "undefined" ? "" : navigator.platform)
+                  }
+                />
               </Match>
               <Match when={section() === "privacy"}>
                 <p class="settings-prose">{(useLocale(), label("settings_privacy_body"))}</p>

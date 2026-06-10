@@ -21,6 +21,8 @@ import IconLogOut from "~icons/lucide/log-out";
 import IconMinimize2 from "~icons/lucide/minimize-2";
 import * as m from "@asciimark/i18n";
 import { useLocale } from "@asciimark/i18n/solid";
+import { detectPlatform } from "@asciimark/core/keyboard-shortcuts.ts";
+import { effectiveKeys, formatBinding } from "@asciimark/core/keybindings.ts";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx";
 import { Toggle } from "./ui/toggle.tsx";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip.tsx";
@@ -36,6 +38,13 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
+
+/** Display hint for the `app.settings` binding, resolved at render time so a
+ *  user override (Settings → Keybindings) shows without a reload. */
+function settingsShortcutHint(): string {
+  const platform = detectPlatform(typeof navigator === "undefined" ? "" : navigator.platform);
+  return formatBinding(effectiveKeys("app.settings", platform), platform);
+}
 
 interface ToolbarProps {
   canGoBack?: boolean;
@@ -328,6 +337,9 @@ export function Toolbar(props: ToolbarProps) {
           <DropdownMenuItem onSelect={props.onOpenSettings}>
             <IconSettings width={14} height={14} />
             {(useLocale(), m.menu_settings())}
+            {/* Resolved through the keybindings catalog (not hardcoded) so a
+                user override shows here too — ⌘, on macOS, Ctrl+, elsewhere. */}
+            <kbd class="ml-auto pl-4 text-[10px] opacity-60">{settingsShortcutHint()}</kbd>
           </DropdownMenuItem>
         </Show>
         <Show when={props.hasFile && props.onExportPdf}>

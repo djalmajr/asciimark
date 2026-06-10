@@ -3,6 +3,11 @@ import IconSparkles from "~icons/lucide/sparkles";
 import * as m from "@asciimark/i18n";
 import { useLocale } from "@asciimark/i18n/solid";
 
+// Platform-correct hint for the ⌘I/Ctrl+I binding (same detection style as
+// editor-diff's MOD_LABEL — a hardcoded ⌘ read wrong on Windows).
+const AI_HINT_KBD =
+  typeof navigator !== "undefined" && navigator.platform.startsWith("Mac") ? "⌘I" : "Ctrl+I";
+
 export interface SelectionPopoverProps {
   /** Screen coords of the selection end, or null when hidden. */
   info: { left: number; bottom: number } | null;
@@ -30,7 +35,7 @@ export function SelectionPopover(props: SelectionPopoverProps): JSX.Element {
           <button type="button" class="selection-popover-btn" onClick={() => props.onAddToChat()}>
             <IconSparkles width={13} height={13} />
             <span>{(useLocale(), m.ai_add_to_chat())}</span>
-            <kbd class="selection-popover-kbd">⌘I</kbd>
+            <kbd class="selection-popover-kbd">{AI_HINT_KBD}</kbd>
           </button>
         </div>
       )}
