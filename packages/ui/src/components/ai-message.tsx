@@ -1,4 +1,4 @@
-import { For, Show, type JSX } from "solid-js";
+import { createSignal, For, Show, type JSX } from "solid-js";
 import * as m from "@asciimark/i18n";
 import { useLocale } from "@asciimark/i18n/solid";
 import type { ToolActivity } from "../composables/create-ai-chat-store.ts";
@@ -20,26 +20,57 @@ function toolDisplayName(name: string): string {
   return idx >= 0 ? name.slice(idx + 2) : name;
 }
 
+/** Terminal-friendly text for an expanded tool call: strings verbatim,
+ *  everything else pretty-printed JSON. */
+function formatToolValue(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 /** Compact chips summarizing tool calls made during a turn. Shared by completed
- *  assistant messages and the in-flight streaming reply. */
+ *  assistant messages and the in-flight streaming reply. Clicking a chip
+ *  expands the raw call (args while running, result when settled) in a
+ *  terminal-style block. */
 export function AiToolChips(props: { tools: ToolActivity[] }): JSX.Element {
+  const [expandedId, setExpandedId] = createSignal<string | null>(null);
+  const expandedTool = (): ToolActivity | undefined =>
+    props.tools.find((t) => t.toolCallId === expandedId());
+  const expandedText = (): string => {
+    const tool = expandedTool();
+    if (!tool) return "";
+    const result = formatToolValue(tool.result);
+    if (result) return result;
+    const args = formatToolValue(tool.args);
+    return args ? `${toolDisplayName(tool.toolName)} ${args}` : toolDisplayName(tool.toolName);
+  };
   return (
     <div class="ai-tool-chips">
       <For each={props.tools}>
         {(tool) => (
-          <span
+          <button
+            type="button"
             class="ai-tool-chip"
             classList={{
               "ai-tool-chip-running": tool.status === "running",
               "ai-tool-chip-done": tool.status === "done",
               "ai-tool-chip-error": tool.status === "error",
+              "ai-tool-chip-open": expandedId() === tool.toolCallId,
             }}
+            aria-expanded={expandedId() === tool.toolCallId}
             title={
               tool.status === "running"
                 ? (useLocale(), m.ai_tool_running())
                 : tool.status === "error"
                   ? (useLocale(), m.ai_tool_error())
                   : (useLocale(), m.ai_tool_used())
+            }
+            onClick={() =>
+              setExpandedId((cur) => (cur === tool.toolCallId ? null : tool.toolCallId))
             }
           >
             <span class="ai-tool-chip-icon" aria-hidden="true">
@@ -51,9 +82,12 @@ export function AiToolChips(props: { tools: ToolActivity[] }): JSX.Element {
             <Show when={tool.source && tool.source !== "app"}>
               <span class="ai-tool-chip-source">· {tool.source}</span>
             </Show>
-          </span>
+          </button>
         )}
       </For>
+      <Show when={expandedTool()}>
+        <pre class="ai-tool-output">{expandedText()}</pre>
+      </Show>
     </div>
   );
 }

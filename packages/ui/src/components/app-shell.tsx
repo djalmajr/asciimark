@@ -28,6 +28,7 @@ import {
   SettingsDialog,
   type IndexingTier,
   type SettingsAiProvider,
+  type SettingsMcpServer,
 } from "./settings-dialog.tsx";
 import { QuickOpen } from "./quick-open.tsx";
 import { ShortcutsHelp } from "./shortcuts-help.tsx";
@@ -109,18 +110,9 @@ interface AppShellProps {
   /** Toggle a model's visibility in the chat picker. */
   onToggleModel?: (ref: string) => void;
   /** MCP servers (config + live status) for the Settings → MCP section, plus
-   *  add/remove/toggle handlers. Forwarded to SettingsDialog. */
-  mcpServers?: Array<{
-    id: string;
-    name?: string;
-    transport: "stdio" | "http";
-    enabled: boolean;
-    connected: boolean;
-    toolCount: number;
-    command?: string;
-    url?: string;
-    error?: string;
-  }>;
+   *  add/remove/toggle handlers. Forwarded to SettingsDialog — typed by the
+   *  dialog's own contract so new fields (args/tools) can't silently drop. */
+  mcpServers?: SettingsMcpServer[];
   onSaveMcpServer?: (server: {
     id: string;
     name?: string;
@@ -869,6 +861,7 @@ export function AppShell(props: AppShellProps) {
                 onMention={(f) => props.onAddFileMention?.(f, false)}
                 insertRequest={s.composerInsert()}
                 onMentionLabelsChange={s.setActiveMentionLabels}
+                onOpenExternal={props.onOpenExternal}
                 onOpenSettings={props.onOpenSettings}
                 mode={s.aiMode()}
                 onModeChange={s.setAiMode}

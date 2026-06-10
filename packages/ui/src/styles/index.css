@@ -2163,13 +2163,97 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 }
 
 .ai-message-user .ai-message-text {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
+  /* The chat lives on a --muted panel, so the prompt bubble darkens that same
+     base a notch (and its border a notch further) to read as a layer above it
+     in both themes. */
+  background: color-mix(in srgb, hsl(var(--muted)) 95%, black);
+  color: hsl(var(--foreground));
+  border: 1px solid color-mix(in srgb, hsl(var(--muted)) 87%, black);
 }
 
 .ai-message-assistant .ai-message-text {
   background: hsl(var(--secondary));
   color: hsl(var(--foreground));
+}
+
+/* Tool-call chips on assistant turns (AiToolChips): compact pills naming the
+   tool + source server, with running/error accents. */
+.ai-tool-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ai-tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-family: inherit;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 9999px;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+
+.ai-tool-chip:hover,
+.ai-tool-chip-open {
+  border-color: color-mix(in srgb, hsl(var(--border)) 70%, hsl(var(--foreground)));
+}
+
+/* Expanded tool call — raw args/result in a terminal-style block (dark in both
+   themes on purpose: it is machine output, not prose). */
+.ai-tool-output {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: hsl(234 20% 12%);
+  border: 1px solid hsl(233 16% 22%);
+  color: hsl(226 40% 86%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.ai-tool-chip-icon {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.ai-tool-chip-name {
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.ai-tool-chip-source {
+  color: hsl(var(--muted-foreground));
+}
+
+.ai-tool-chip-running {
+  animation: ai-tool-chip-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes ai-tool-chip-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.ai-tool-chip-error {
+  border-color: hsl(var(--destructive) / 0.45);
+  color: hsl(var(--destructive));
+}
+
+.ai-tool-chip-error .ai-tool-chip-name {
+  color: hsl(var(--destructive));
 }
 
 /* Rendered assistant markdown — reset the plain-text `pre-wrap` and give the
@@ -4434,4 +4518,162 @@ kbd.shortcuts-help-key {
   border: 0;
   border-top: 1px solid hsl(var(--border));
   margin: 12px 0;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Settings → MCP: Claude-Desktop-like server cards (avatar + status dot, mono
+   command line, tool chips, collapsed add form). Appended as a self-contained
+   block — the legacy .settings-mcp-row* markup is gone from the TSX but any
+   pre-existing rules above stay untouched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.settings-mcp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+}
+
+.settings-mcp-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-mcp-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-mcp-status-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  border: 1.5px solid hsl(var(--background));
+  background: hsl(var(--muted-foreground));
+}
+
+.settings-mcp-status-dot-connected {
+  background: hsl(142 70% 45%);
+}
+
+.settings-mcp-status-dot-error {
+  background: hsl(var(--destructive));
+}
+
+.settings-mcp-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-mcp-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.settings-mcp-cmd {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-mcp-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.settings-mcp-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-mcp-remove:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--destructive));
+}
+
+.settings-mcp-tool-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.settings-mcp-tool-chip {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, hsl(var(--muted)) 95%, black);
+  border: 1px solid color-mix(in srgb, hsl(var(--muted)) 87%, black);
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-mcp-show-toggle {
+  align-self: flex-start;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-mcp-show-toggle:hover {
+  color: hsl(var(--foreground));
+}
+
+.settings-mcp-new-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-top: 10px;
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-mcp-new-row:hover {
+  background: hsl(var(--muted));
+}
+
+.settings-mcp-new-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.settings-mcp-new-hint {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
 }

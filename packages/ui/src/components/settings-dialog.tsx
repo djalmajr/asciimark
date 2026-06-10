@@ -44,7 +44,6 @@ import {
   AlertDialogDescription,
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx";
-import { Badge } from "./ui/badge.tsx";
 import { Button } from "./ui/button.tsx";
 import {
   Select,
@@ -76,15 +75,17 @@ export type SettingsSection =
 export type McpTransport = "stdio" | "http";
 
 export interface SettingsMcpServer {
+  args?: string[];
+  command?: string;
+  connected: boolean;
+  enabled: boolean;
+  error?: string;
   id: string;
   name?: string;
-  transport: McpTransport;
-  enabled: boolean;
-  connected: boolean;
   toolCount: number;
-  command?: string;
+  tools?: string[];
+  transport: McpTransport;
   url?: string;
-  error?: string;
 }
 
 export interface SaveMcpServerInput {
@@ -672,7 +673,97 @@ function AiSection(props: SettingsDialogProps): JSX.Element {
   );
 }
 
+// Tool chips above this count collapse behind a "Show more (N)" toggle, so a
+// large server (dozens of tools) doesn't dominate the settings list.
+const MCP_TOOLS_VISIBLE = 6;
+
+function McpServerCard(props: {
+  server: SettingsMcpServer;
+  onRemove: () => void;
+  onToggle: (enabled: boolean) => void;
+}): JSX.Element {
+  const [expanded, setExpanded] = createSignal(false);
+
+  const tools = createMemo(() => props.server.tools ?? []);
+  const visibleTools = createMemo(() =>
+    expanded() ? tools() : tools().slice(0, MCP_TOOLS_VISIBLE),
+  );
+  /** stdio → the spawn line; http → the endpoint. Both read best in mono. */
+  const subtitle = (): string =>
+    props.server.transport === "stdio"
+      ? [props.server.command ?? "", ...(props.server.args ?? [])]
+          .filter(Boolean)
+          .join(" ")
+      : props.server.url ?? "";
+  const dotClass = (): string =>
+    props.server.error
+      ? "settings-mcp-status-dot settings-mcp-status-dot-error"
+      : props.server.connected
+        ? "settings-mcp-status-dot settings-mcp-status-dot-connected"
+        : "settings-mcp-status-dot";
+
+  return (
+    <div class="settings-mcp-card">
+      <div class="settings-mcp-card-header">
+        <span class="settings-mcp-avatar" aria-hidden="true">
+          {(props.server.name || props.server.id).charAt(0).toUpperCase()}
+          <span class={dotClass()} />
+        </span>
+        <div class="settings-mcp-card-info">
+          <span class="settings-mcp-card-name">{props.server.name || props.server.id}</span>
+          <span class="settings-mcp-cmd" title={subtitle()}>{subtitle()}</span>
+        </div>
+        <div class="settings-mcp-card-actions">
+          <ToggleSwitch
+            aria-label={(useLocale(), label("settings_mcp_connected"))}
+            checked={props.server.enabled}
+            onChange={(checked) => props.onToggle(checked)}
+          >
+            <SwitchControl size="sm">
+              <SwitchThumb size="sm" />
+            </SwitchControl>
+          </ToggleSwitch>
+          <button
+            type="button"
+            aria-label={(useLocale(), label("settings_mcp_remove"))}
+            class="settings-mcp-remove"
+            onClick={() => props.onRemove()}
+          >
+            <IconTrash width={14} height={14} />
+          </button>
+        </div>
+      </div>
+      <Show when={tools().length > 0}>
+        <div class="settings-mcp-tool-chips">
+          <For each={visibleTools()}>
+            {(tool) => <span class="settings-mcp-tool-chip">{tool}</span>}
+          </For>
+        </div>
+        <Show when={tools().length > MCP_TOOLS_VISIBLE}>
+          <button
+            type="button"
+            class="settings-mcp-show-toggle"
+            onClick={() => setExpanded((open) => !open)}
+          >
+            <Show
+              when={expanded()}
+              fallback={(useLocale(),
+              m.settings_mcp_show_more({ count: tools().length - MCP_TOOLS_VISIBLE }))}
+            >
+              {(useLocale(), label("settings_mcp_show_less"))}
+            </Show>
+          </button>
+        </Show>
+      </Show>
+      <Show when={props.server.error}>
+        <span class="ai-error">{props.server.error}</span>
+      </Show>
+    </div>
+  );
+}
+
 function McpSection(props: SettingsDialogProps): JSX.Element {
+  const [formOpen, setFormOpen] = createSignal(false);
   const [id, setId] = createSignal("");
   const [name, setName] = createSignal("");
   const [transport, setTransport] = createSignal<McpTransport>("stdio");
@@ -731,6 +822,7 @@ function McpSection(props: SettingsDialogProps): JSX.Element {
     };
     void props.onSaveMcpServer?.(server);
     resetForm();
+    setFormOpen(false);
   }
 
   return (
@@ -746,50 +838,31 @@ function McpSection(props: SettingsDialogProps): JSX.Element {
         <div class="settings-mcp-list">
           <For each={props.mcpServers}>
             {(server) => (
-              <div class="settings-mcp-row">
-                <div class="settings-mcp-row-main">
-                  <span class="settings-mcp-name">{server.name || server.id}</span>
-                  <Badge variant="outline">{server.transport}</Badge>
-                  <Show
-                    when={!server.error}
-                    fallback={<span class="ai-error">{server.error}</span>}
-                  >
-                    <Show when={server.connected}>
-                      <span class="settings-mcp-status">
-                        <span class="settings-mcp-dot" aria-hidden="true" />
-                        {server.toolCount} {(useLocale(), label("settings_mcp_tools_count"))}
-                      </span>
-                    </Show>
-                  </Show>
-                </div>
-                <div class="settings-mcp-row-actions">
-                  <ToggleSwitch
-                    checked={server.enabled}
-                    onChange={(checked) =>
-                      void props.onToggleMcpServer?.(server.id, checked)
-                    }
-                    aria-label={(useLocale(), label("settings_mcp_connected"))}
-                  >
-                    <SwitchControl size="sm">
-                      <SwitchThumb size="sm" />
-                    </SwitchControl>
-                  </ToggleSwitch>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void props.onRemoveMcpServer?.(server.id)}
-                  >
-                    {(useLocale(), label("settings_mcp_remove"))}
-                  </Button>
-                </div>
-              </div>
+              <McpServerCard
+                server={server}
+                onRemove={() => void props.onRemoveMcpServer?.(server.id)}
+                onToggle={(checked) => void props.onToggleMcpServer?.(server.id, checked)}
+              />
             )}
           </For>
         </div>
       </Show>
 
-      <h3 class="settings-h3">{(useLocale(), label("settings_mcp_add"))}</h3>
+      <button
+        type="button"
+        class="settings-mcp-new-row"
+        onClick={() => setFormOpen((open) => !open)}
+      >
+        <span class="settings-mcp-avatar" aria-hidden="true">
+          <IconPlus width={15} height={15} />
+        </span>
+        <span class="settings-mcp-new-text">
+          <span class="settings-mcp-card-name">{(useLocale(), label("settings_mcp_new_server"))}</span>
+          <span class="settings-mcp-new-hint">{(useLocale(), label("settings_mcp_new_server_hint"))}</span>
+        </span>
+      </button>
 
+      <Show when={formOpen()}>
       <label class="settings-label">{(useLocale(), label("settings_mcp_id"))}</label>
       <input
         class="ai-composer-input settings-input"
@@ -866,6 +939,7 @@ function McpSection(props: SettingsDialogProps): JSX.Element {
           {(useLocale(), label("settings_mcp_add"))}
         </Button>
       </div>
+      </Show>
     </div>
   );
 }

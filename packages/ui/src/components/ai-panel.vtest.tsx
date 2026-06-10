@@ -184,6 +184,74 @@ describe("AiPanel", () => {
     expect(chip.querySelector(".ai-tool-chip-source")).toBeNull();
   });
 
+  it("expands a tool chip into a terminal block with the result, and collapses on re-click", () => {
+    const { baseElement } = render(() => (
+      <AiMessage
+        role="assistant"
+        content="done"
+        tools={[
+          {
+            toolCallId: "t1",
+            toolName: "fs__list_directory",
+            source: "fs",
+            status: "done",
+            result: "[DIR] diagramas\n[FILE] notes.md",
+          },
+        ]}
+      />
+    ));
+    expect(baseElement.querySelector(".ai-tool-output")).toBeNull();
+    const chip = baseElement.querySelector(".ai-tool-chip") as HTMLButtonElement;
+    fireEvent.click(chip);
+    const out = baseElement.querySelector(".ai-tool-output");
+    expect(out?.textContent).toContain("[DIR] diagramas");
+    expect(chip.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(chip);
+    expect(baseElement.querySelector(".ai-tool-output")).toBeNull();
+  });
+
+  it("expands a still-running tool chip showing its args", () => {
+    const { baseElement } = render(() => (
+      <AiMessage
+        role="assistant"
+        content=""
+        tools={[
+          {
+            toolCallId: "t1",
+            toolName: "e2e-echo__add",
+            source: "e2e-echo",
+            status: "running",
+            args: { a: 17, b: 25 },
+          },
+        ]}
+      />
+    ));
+    fireEvent.click(baseElement.querySelector(".ai-tool-chip") as HTMLElement);
+    const out = baseElement.querySelector(".ai-tool-output");
+    expect(out?.textContent).toContain("add");
+    expect(out?.textContent).toContain('"a": 17');
+  });
+
+  it("intercepts reply links: opens http(s) externally and never navigates the webview", () => {
+    const store = createAiChatStore({
+      getProvider: () => null,
+      initialMessages: [
+        { role: "assistant", content: "see [site](https://example.com) and README.md" },
+      ],
+    });
+    const onOpenExternal = vi.fn();
+    const { baseElement } = render(() => (
+      <AiPanel store={store} providerLabel="Mock" onOpenExternal={onOpenExternal} />
+    ));
+    // Fuzzy linkify is off — the bare file name must not have become a link.
+    const links = [...baseElement.querySelectorAll(".ai-markdown a")];
+    expect(links).toHaveLength(1);
+    // The click is cancelled (no webview navigation) and routed to the host.
+    const notCancelled = fireEvent.click(links[0]!);
+    expect(notCancelled).toBe(false);
+    expect(onOpenExternal).toHaveBeenCalledWith("https://example.com");
+  });
+
   it("hides the Build/Plan mode picker when onModeChange is absent", () => {
     const store = readyStore();
     render(() => <AiPanel store={store} providerLabel="Mock" />);

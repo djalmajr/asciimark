@@ -16,6 +16,11 @@ const md = new MarkdownIt({
   breaks: true, // treat single newlines as <br> (chat-friendly)
 });
 
+// Fuzzy linkify treats anything shaped like a domain as a URL — and `.md` is
+// Moldova's TLD, so plain file names like `README.md` became live links to
+// parked spam domains. Require an explicit scheme (https://…) instead.
+md.linkify.set({ fuzzyLink: false });
+
 /** Render assistant markdown to a safe HTML string. */
 export function renderChatMarkdown(source: string): string {
   return md.render(source ?? "");

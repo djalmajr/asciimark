@@ -112,6 +112,8 @@ export function App() {
   // `mcpStatuses` mirrors live connection state for the settings UI.
   const mcpBridge = createMcpBridge();
   const [mcpStatuses, setMcpStatuses] = createSignal<McpServerStatus[]>([]);
+  // Tool names grouped by server id — feeds the settings card tool chips.
+  const [mcpTools, setMcpTools] = createSignal<Record<string, string[]>>({});
 
   // A prompt-tier tool call (MCP / unknown) awaiting Accept/Reject before it
   // runs. Human-in-the-loop gating on top of the current non-streaming loop.
@@ -481,6 +483,11 @@ export function App() {
   async function refreshMcpStatuses(): Promise<void> {
     try {
       setMcpStatuses(await listMcpServers());
+      const grouped: Record<string, string[]> = {};
+      for (const tool of await mcpBridge.listTools()) {
+        (grouped[tool.server] ??= []).push(tool.name);
+      }
+      setMcpTools(grouped);
     } catch {
       // best-effort UI state
     }
@@ -571,7 +578,9 @@ export function App() {
         enabled: s.enabled !== false,
         connected: st?.connected ?? false,
         toolCount: st?.toolCount ?? 0,
+        tools: mcpTools()[s.id],
         command: s.command,
+        args: s.args,
         url: s.url,
       };
     });

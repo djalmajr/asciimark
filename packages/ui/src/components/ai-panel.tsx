@@ -63,6 +63,10 @@ export interface AiPanelProps {
   onMentionLabelsChange?: (labels: string[]) => void;
   /** Opens Settings → AI (empty-state CTA). */
   onOpenSettings?: () => void;
+  /** Open an http(s) link from a chat reply in the OS browser. Clicks on chat
+   *  links are ALWAYS intercepted — without this the webview itself would
+   *  navigate away to the link target (hijacking the whole app). */
+  onOpenExternal?: (url: string) => void;
   /** Active chat mode (Plan = no tools, saves a plan; Build = implements).
    *  When provided the composer shows a Build/Plan toggle. */
   mode?: AIChatMode;
@@ -226,12 +230,28 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
     return cur?.label ?? props.providerLabel ?? (useLocale(), m.ai_provider_none());
   };
 
+  // Chat replies must never navigate the webview: a reply link is untrusted
+  // model output, and an uncaught click would replace the whole app with the
+  // link target. Delegated on the scroll viewport so it covers completed and
+  // streaming messages alike; http(s) goes to the OS browser, anything else
+  // (relative paths, odd schemes) is inert.
+  function onMessagesClick(e: MouseEvent): void {
+    const link = (e.target as Element | null)?.closest?.("a[href]");
+    if (!link) return;
+    e.preventDefault();
+    const href = link.getAttribute("href") ?? "";
+    if (/^https?:\/\//i.test(href)) props.onOpenExternal?.(href);
+  }
+
   return (
     <div class="ai-panel">
       <ScrollArea
         class="ai-messages"
         contentClass="ai-messages-content"
-        viewportRef={(el) => (scroller = el)}
+        viewportRef={(el) => {
+          scroller = el;
+          el.addEventListener("click", onMessagesClick);
+        }}
       >
         <Show when={hasConversation()} fallback={<AiEmptyState {...props} />}>
           <For each={props.store.messages()}>

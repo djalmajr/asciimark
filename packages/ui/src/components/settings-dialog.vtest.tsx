@@ -191,19 +191,35 @@ describe("SettingsDialog", () => {
     fireEvent.click(mcpTab!);
   }
 
+  function openAddForm(baseElement: HTMLElement) {
+    fireEvent.click(baseElement.querySelector(".settings-mcp-new-row") as HTMLElement);
+  }
+
   it("renders the MCP add-server form (id field + transport select)", () => {
     const { baseElement } = setup();
     openMcpSection(baseElement);
+    openAddForm(baseElement);
     // id field is the first settings input in the form
     expect(baseElement.querySelector(".settings-input.ai-composer-input")).not.toBeNull();
     // transport select uses the Kobalte listbox trigger
     expect(baseElement.querySelector('[aria-haspopup="listbox"]')).not.toBeNull();
   });
 
+  it("the add form is collapsed until the New MCP Server row is clicked", () => {
+    const { baseElement } = setup();
+    openMcpSection(baseElement);
+    expect(baseElement.querySelector(".settings-input.ai-composer-input")).toBeNull();
+    const newRow = baseElement.querySelector(".settings-mcp-new-row") as HTMLElement;
+    expect(newRow.textContent).toContain("New MCP Server");
+    fireEvent.click(newRow);
+    expect(baseElement.querySelector(".settings-input.ai-composer-input")).not.toBeNull();
+  });
+
   it("filling id + selecting http transport + Add calls onSaveMcpServer with the right shape", async () => {
     const onSaveMcpServer = vi.fn();
     const { baseElement } = setup({ onSaveMcpServer });
     openMcpSection(baseElement);
+    openAddForm(baseElement);
     const idInput = baseElement.querySelector(
       ".settings-input.ai-composer-input",
     ) as HTMLInputElement;
@@ -261,10 +277,63 @@ describe("SettingsDialog", () => {
       ],
     });
     openMcpSection(baseElement);
-    const removeBtn = [...baseElement.querySelectorAll("button")].find(
-      (b) => (b.textContent ?? "").trim() === "Remove",
-    );
-    fireEvent.click(removeBtn!);
+    const removeBtn = baseElement.querySelector(
+      '.settings-mcp-card button[aria-label="Remove"]',
+    ) as HTMLElement;
+    fireEvent.click(removeBtn);
     expect(onRemoveMcpServer).toHaveBeenCalledWith("memory");
+  });
+
+  it("a stdio server card renders the name and the mono command subtitle", () => {
+    const { baseElement } = setup({
+      mcpServers: [
+        {
+          id: "memory",
+          name: "Memory",
+          transport: "stdio",
+          enabled: true,
+          connected: true,
+          toolCount: 2,
+          command: "bunx",
+          args: ["@modelcontextprotocol/server-memory"],
+        },
+      ],
+    });
+    openMcpSection(baseElement);
+    const card = baseElement.querySelector(".settings-mcp-card") as HTMLElement;
+    expect(card.querySelector(".settings-mcp-card-name")?.textContent).toBe("Memory");
+    expect(card.querySelector(".settings-mcp-cmd")?.textContent).toBe(
+      "bunx @modelcontextprotocol/server-memory",
+    );
+    // Avatar shows the first letter of the name, with the status dot inside.
+    const avatar = card.querySelector(".settings-mcp-avatar") as HTMLElement;
+    expect(avatar.textContent).toContain("M");
+    expect(avatar.querySelector(".settings-mcp-status-dot-connected")).not.toBeNull();
+  });
+
+  it("tool chips collapse past 6 and expand via Show more / Show less", () => {
+    const tools = ["t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8"];
+    const { baseElement } = setup({
+      mcpServers: [
+        {
+          id: "search",
+          transport: "http",
+          enabled: true,
+          connected: true,
+          toolCount: tools.length,
+          tools,
+          url: "https://mcp.example.com",
+        },
+      ],
+    });
+    openMcpSection(baseElement);
+    expect(baseElement.querySelectorAll(".settings-mcp-tool-chip").length).toBe(6);
+    const toggle = baseElement.querySelector(".settings-mcp-show-toggle") as HTMLElement;
+    expect(toggle.textContent).toContain("Show more (2)");
+    fireEvent.click(toggle);
+    expect(baseElement.querySelectorAll(".settings-mcp-tool-chip").length).toBe(8);
+    expect(toggle.textContent).toContain("Show less");
+    fireEvent.click(toggle);
+    expect(baseElement.querySelectorAll(".settings-mcp-tool-chip").length).toBe(6);
   });
 });

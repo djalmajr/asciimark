@@ -30,4 +30,12 @@ describe("renderChatMarkdown", () => {
     expect(renderChatMarkdown("")).toBe("");
     expect(renderChatMarkdown(undefined as unknown as string)).toBe("");
   });
+
+  it("links explicit URLs but not bare file names (.md is Moldova's TLD)", () => {
+    const html = renderChatMarkdown("See https://example.com and README.md plus notes.md");
+    expect(html).toContain('href="https://example.com"');
+    // Fuzzy linkify is off: file-looking names must stay plain text.
+    expect(html).not.toMatch(/href=["'][^"']*readme\.md/i);
+    expect(html).not.toMatch(/href=["'][^"']*notes\.md/i);
+  });
 });
