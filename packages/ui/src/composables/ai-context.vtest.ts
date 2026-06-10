@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildContextPreamble,
+  excalidrawSceneToOutline,
   excalidrawSelectionToContext,
   type AiContextItem,
 } from "./ai-context.ts";
@@ -83,5 +84,51 @@ describe("excalidrawSelectionToContext", () => {
     expect(item.content).toContain("1 element");
     expect(item.content).not.toContain("Dead");
     expect(item.id).toBe("excalidraw-selection:/d/diagram.excalidraw:r1");
+  });
+});
+
+describe("excalidrawSceneToOutline", () => {
+  it("outlines ALL live elements in the selection-chip style (shapes + arrow bindings)", () => {
+    const scene = {
+      appState: { selectedElementIds: {} }, // outline ignores selection — it reads the whole scene
+      elements: [
+        { id: "b1", type: "rectangle", boundElements: [{ id: "lb1", type: "text" }] },
+        { id: "lb1", type: "text", text: "Login" },
+        { id: "b2", type: "rectangle", boundElements: [{ id: "lb2", type: "text" }] },
+        { id: "lb2", type: "text", text: "API" },
+        { id: "a1", type: "arrow", startBinding: { elementId: "b1" }, endBinding: { elementId: "b2" } },
+      ],
+    };
+    const out = excalidrawSceneToOutline(scene, "flow.excalidraw")!;
+    expect(out).toContain("5 elements in flow.excalidraw");
+    expect(out).toContain('Rectangle "Login"');
+    expect(out).toContain('Arrow: "Login" → "API"');
+  });
+
+  it("returns null for an empty scene (caller signals 'nothing to read' instead of faking text)", () => {
+    expect(excalidrawSceneToOutline(null, "d.excalidraw")).toBeNull();
+    expect(excalidrawSceneToOutline({ elements: [] }, "d.excalidraw")).toBeNull();
+    // Deleted elements don't count as content either.
+    expect(
+      excalidrawSceneToOutline(
+        { elements: [{ id: "x", type: "rectangle", isDeleted: true }] },
+        "d.excalidraw",
+      ),
+    ).toBeNull();
+  });
+
+  it("caps the outline at 200 elements with a '(+N more)' tail", () => {
+    // Mutation: dropping the cap would let a huge canvas blow the prompt budget;
+    // dropping the tail would silently hide that elements were omitted.
+    const elements = Array.from({ length: 205 }, (_, i) => ({
+      id: `r${i}`,
+      type: "rectangle",
+      text: undefined,
+    }));
+    const out = excalidrawSceneToOutline({ elements }, "big.excalidraw")!;
+    const lines = out.split("\n");
+    expect(out).toContain("205 elements");
+    expect(lines).toHaveLength(1 + 200 + 1); // header + capped list + tail
+    expect(lines.at(-1)).toBe("- (+5 more)");
   });
 });

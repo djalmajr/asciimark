@@ -18,6 +18,11 @@ export interface InProcessToolDeps {
   getActiveDoc: () => string;
   /** Active document's path (or null when an untitled/empty tab is focused). */
   getActiveDocPath: () => string | null;
+  /** Compact text outline of the active `.excalidraw` scene (the canvas lives
+   *  in a guest frame, so the editor buffer is empty). Resolves to null when
+   *  the active view isn't an Excalidraw, the frame isn't ready, or the scene
+   *  is empty. Optional so non-Excalidraw hosts can omit it. */
+  getActiveExcalidrawOutline?: () => Promise<string | null>;
   /** Absolute paths of the open workspace roots. */
   getWorkspaceRoots: () => string[];
   /** Stage an edit proposal for the user to Accept/Reject. Resolves to a short
@@ -46,16 +51,34 @@ interface DirEntryLite {
 const APP = "app";
 const SEARCH_RESULT_CAP = 50;
 
+// Steers the model away from app__propose_edit (a text-replace that can't touch
+// the canvas) and toward the Excalidraw write tool when reading a diagram.
+const EXCALIDRAW_READ_NOTE =
+  "This is an Excalidraw diagram (scene outline, not editable text). Use " +
+  "app__excalidraw_write to draw or update it; app__propose_edit does not apply.";
+
 export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
   const readActiveDoc: AITool = {
     name: "app__read_active_doc",
     source: APP,
     description: "Read the full text of the document the user is currently editing.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    execute: async () => ({
-      path: deps.getActiveDocPath(),
-      content: deps.getActiveDoc(),
-    }),
+    execute: async () => {
+      // An open `.excalidraw` has an empty editor buffer (the canvas lives in a
+      // guest frame) — serve a scene outline instead of pretending it's blank.
+      const outline = await deps.getActiveExcalidrawOutline?.();
+      const path = deps.getActiveDocPath();
+      if (typeof outline === "string") {
+        return { content: outline, kind: "excalidraw", note: EXCALIDRAW_READ_NOTE, path };
+      }
+      if (path?.toLowerCase().endsWith(".excalidraw")) {
+        // Diagram active but no outline (frame not ready, or empty scene): the
+        // note still tells the model what it's looking at — silently returning
+        // "" would read as a blank text document.
+        return { content: "", kind: "excalidraw", note: EXCALIDRAW_READ_NOTE, path };
+      }
+      return { path, content: deps.getActiveDoc() };
+    },
   };
 
   const searchWorkspace: AITool = {

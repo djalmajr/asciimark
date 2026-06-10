@@ -65,7 +65,7 @@ import {
   type ExcalidrawWriteResult,
 } from "./components/excalidraw-frame.tsx";
 import { fileKind, isSupportedFile } from "@asciimark/core/utils.ts";
-import { excalidrawSelectionToContext } from "@asciimark/ui/composables/ai-context.ts";
+import { excalidrawSceneToOutline, excalidrawSelectionToContext } from "@asciimark/ui/composables/ai-context.ts";
 import { buildBacklinkIndex } from "@asciimark/core/backlinks.ts";
 import { flattenWorkspace } from "@asciimark/core/file-index.ts";
 import { readFileContent } from "./lib/fs.ts";
@@ -382,6 +382,14 @@ export function App() {
     const inProcess = buildInProcessTools({
       getActiveDoc: () => state.editorContent(),
       getActiveDocPath: () => state.selectedFile()?.path ?? null,
+      // Same frame-handle path ⌘I uses (activeExcalidrawFrame) — null when the
+      // active view isn't a mounted `.excalidraw`, so the read tool falls back.
+      getActiveExcalidrawOutline: async () => {
+        const api = activeExcalidrawFrame();
+        const file = state.paneManager.activePane().selectedFile();
+        if (!api || !file) return null;
+        return excalidrawSceneToOutline(await api.getScene(), file.name);
+      },
       getWorkspaceRoots: () => Array.from(rootPaths().values()),
       proposeEdit: proposeAiEdit,
       applyExcalidrawMermaid,

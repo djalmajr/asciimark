@@ -50,20 +50,13 @@ interface ExcalidrawElement {
 }
 
 /**
- * Turn an Excalidraw selection into an AI context item — a compact, readable
- * text outline (shapes + their text + arrow connections), NOT raw element JSON
- * (verbose + the model reads structure poorly). Returns null when nothing is
- * selected, so ⌘I stays a no-op on an empty canvas (mirrors the editor path).
+ * Build a one-element describer over the FULL element list — text labels and
+ * arrow bindings resolve against every element in the scene, not just the
+ * subset being rendered (a selected arrow may point at an unselected box).
+ * Shared by the selection chip and the whole-scene outline so both speak the
+ * same compact language ('Rectangle "Login"', 'Arrow: "A" → "B"').
  */
-export function excalidrawSelectionToContext(
-  scene: ExcalidrawScene | null | undefined,
-  file: { name: string; path: string },
-): AiContextItem | null {
-  const elements = (scene?.elements ?? []).filter((e) => !e.isDeleted);
-  const selectedIds = scene?.appState?.selectedElementIds ?? {};
-  const selected = elements.filter((e) => selectedIds[e.id]);
-  if (selected.length === 0) return null;
-
+function createElementDescriber(elements: ExcalidrawElement[]): (el: ExcalidrawElement) => string {
   const byId = new Map(elements.map((e) => [e.id, e]));
   const textOf = (el: ExcalidrawElement): string | undefined => {
     if (el.type === "text") return el.text?.trim() || undefined;
@@ -72,7 +65,7 @@ export function excalidrawSelectionToContext(
     return inner || undefined;
   };
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  const describe = (el: ExcalidrawElement): string => {
+  return (el: ExcalidrawElement): string => {
     if (el.type === "arrow" || el.type === "line") {
       const from = el.startBinding?.elementId ? byId.get(el.startBinding.elementId) : undefined;
       const to = el.endBinding?.elementId ? byId.get(el.endBinding.elementId) : undefined;
@@ -87,7 +80,24 @@ export function excalidrawSelectionToContext(
     const t = textOf(el);
     return t ? `${cap(el.type)} "${t}"` : cap(el.type);
   };
+}
 
+/**
+ * Turn an Excalidraw selection into an AI context item — a compact, readable
+ * text outline (shapes + their text + arrow connections), NOT raw element JSON
+ * (verbose + the model reads structure poorly). Returns null when nothing is
+ * selected, so ⌘I stays a no-op on an empty canvas (mirrors the editor path).
+ */
+export function excalidrawSelectionToContext(
+  scene: ExcalidrawScene | null | undefined,
+  file: { name: string; path: string },
+): AiContextItem | null {
+  const elements = (scene?.elements ?? []).filter((e) => !e.isDeleted);
+  const selectedIds = scene?.appState?.selectedElementIds ?? {};
+  const selected = elements.filter((e) => selectedIds[e.id]);
+  if (selected.length === 0) return null;
+
+  const describe = createElementDescriber(elements);
   const lines = selected.map((e) => `- ${describe(e)}`);
   const content = `Excalidraw selection — ${selected.length} element${selected.length === 1 ? "" : "s"} from ${file.name}:\n${lines.join("\n")}`;
   return {
@@ -97,4 +107,32 @@ export function excalidrawSelectionToContext(
     path: file.path,
     content,
   };
+}
+
+/** Bound the prompt cost of huge canvases — beyond this the outline tails off
+ *  with "(+N more)" instead of listing every element. */
+const SCENE_OUTLINE_CAP = 200;
+
+/**
+ * Outline an ENTIRE Excalidraw scene as compact text — the read-side companion
+ * to {@link excalidrawSelectionToContext}, in the same describe style. Used by
+ * the desktop's `app__read_active_doc` tool so the model gets real content for
+ * an open `.excalidraw` (whose editor buffer is empty — the canvas lives in a
+ * guest frame). Returns null when the scene has no live elements, so the caller
+ * can signal "diagram open but nothing to read" instead of faking empty text.
+ */
+export function excalidrawSceneToOutline(
+  scene: ExcalidrawScene | null | undefined,
+  fileLabel: string,
+): string | null {
+  const elements = (scene?.elements ?? []).filter((e) => !e.isDeleted);
+  if (elements.length === 0) return null;
+
+  const describe = createElementDescriber(elements);
+  const lines = elements.slice(0, SCENE_OUTLINE_CAP).map((e) => `- ${describe(e)}`);
+  if (elements.length > SCENE_OUTLINE_CAP) {
+    lines.push(`- (+${elements.length - SCENE_OUTLINE_CAP} more)`);
+  }
+  const count = `${elements.length} element${elements.length === 1 ? "" : "s"}`;
+  return `Excalidraw scene — ${count} in ${fileLabel}:\n${lines.join("\n")}`;
 }

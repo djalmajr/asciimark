@@ -311,6 +311,46 @@ describe("AppState — viewer capabilities (edit/preview por tipo)", () => {
   });
 });
 
+describe("AppState — active-file context chip (gate by file kind)", () => {
+  const f = (name: string): FSEntry => ({ name, path: name, kind: "file" });
+
+  it("admits a document (md/adoc) as the active-file chip", () => {
+    withState((state) => {
+      state.setSelectedFile(f("notes.md"));
+      expect(state.activeFileContext()).toEqual({ label: "notes.md", path: "notes.md" });
+    });
+  });
+
+  it("admits an .excalidraw diagram (label-only chip; the read tool serves a scene outline)", () => {
+    // Mutation: reverting the gate to `kind === "document"` would hide the chip
+    // for an open diagram even though app__read_active_doc can now describe it.
+    withState((state) => {
+      state.setSelectedFile(f("flow.excalidraw"));
+      expect(state.activeFileContext()).toEqual({ label: "flow.excalidraw", path: "flow.excalidraw" });
+    });
+  });
+
+  it("stays hidden for media and plain-text kinds (nothing useful to read)", () => {
+    withState((state) => {
+      for (const name of ["pic.png", "scan.pdf", "data.json"]) {
+        state.setSelectedFile(f(name));
+        expect(state.activeFileContext()).toBeNull();
+      }
+    });
+  });
+
+  it("dismiss hides the chip; switching files re-shows it", () => {
+    // Assert OUTSIDE the root body so the re-show effect (selectedFile → reset
+    // dismissed) has flushed before we read the memo back.
+    const state = withState((s) => s);
+    state.setSelectedFile(f("a.md"));
+    state.dismissActiveFileContext();
+    expect(state.activeFileContext()).toBeNull();
+    state.setSelectedFile(f("b.excalidraw"));
+    expect(state.activeFileContext()).toEqual({ label: "b.excalidraw", path: "b.excalidraw" });
+  });
+});
+
 describe("AppState — reader mode slice (DJA-42)", () => {
   it("setReaderMode persists to localStorage so the state survives reload", () => {
     // Domain rule: the user reaches reader mode mid-focus session.

@@ -63,3 +63,55 @@ describe("app__excalidraw_write tool", () => {
     expect(calls[0]?.mermaid).toBe("flowchart TD\n A-->B");
   });
 });
+
+const readTool = (deps: InProcessToolDeps) =>
+  buildInProcessTools(deps).find((t) => t.name === "app__read_active_doc")!;
+
+describe("app__read_active_doc tool", () => {
+  const OUTLINE = 'Excalidraw scene — 2 elements in flow.excalidraw:\n- Rectangle "Login"\n- Rectangle "API"';
+
+  it("serves the scene outline + an excalidraw note when a diagram is active", async () => {
+    // Mutation: skipping the outline dep would hand the model the empty editor
+    // buffer — it would "read" an open diagram as a blank document.
+    const { deps } = depsWithExcalidrawSpy();
+    deps.getActiveDocPath = () => "/w/flow.excalidraw";
+    deps.getActiveExcalidrawOutline = async () => OUTLINE;
+    const res = await readTool(deps).execute({});
+    expect(res).toEqual({
+      content: OUTLINE,
+      kind: "excalidraw",
+      note: expect.stringContaining("app__excalidraw_write"),
+      path: "/w/flow.excalidraw",
+    });
+  });
+
+  it("still flags an active .excalidraw when the outline is unavailable (frame not ready)", async () => {
+    const { deps } = depsWithExcalidrawSpy();
+    deps.getActiveDocPath = () => "/w/flow.excalidraw";
+    deps.getActiveExcalidrawOutline = async () => null;
+    const res = await readTool(deps).execute({});
+    expect(res).toEqual({
+      content: "",
+      kind: "excalidraw",
+      note: expect.stringContaining("Excalidraw diagram"),
+      path: "/w/flow.excalidraw",
+    });
+  });
+
+  it("keeps the plain text path unchanged for documents (no note, no kind)", async () => {
+    const { deps } = depsWithExcalidrawSpy();
+    deps.getActiveDoc = () => "# hello";
+    deps.getActiveDocPath = () => "/w/notes.md";
+    deps.getActiveExcalidrawOutline = async () => null;
+    const res = await readTool(deps).execute({});
+    expect(res).toEqual({ path: "/w/notes.md", content: "# hello" });
+  });
+
+  it("works without the optional outline dep (non-Excalidraw hosts)", async () => {
+    const { deps } = depsWithExcalidrawSpy();
+    deps.getActiveDoc = () => "body";
+    deps.getActiveDocPath = () => "/w/a.md";
+    const res = await readTool(deps).execute({});
+    expect(res).toEqual({ path: "/w/a.md", content: "body" });
+  });
+});

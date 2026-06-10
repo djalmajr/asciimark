@@ -493,12 +493,15 @@ export function createAppState(config: AppStateConfig) {
   const [aiContextItems, setAiContextItems] = createSignal<AiContextItem[]>([]);
   const [activeFileContextDismissed, setActiveFileContextDismissed] = createSignal(false);
 
-  // The active-document chip (Markdown/AsciiDoc only — a drawing/image isn't
-  // useful as text context). Re-appears when the user switches files.
+  // The active-document chip (Markdown/AsciiDoc, plus Excalidraw — the chip is
+  // label-only and the desktop read tool serves a scene outline for diagrams;
+  // images/PDFs stay out since there's nothing textual to read). Re-appears
+  // when the user switches files.
   const activeFileContext = createMemo<{ label: string; path: string } | null>(() => {
     if (activeFileContextDismissed()) return null;
     const f = selectedFile();
-    if (!f || fileKind(f.name) !== "document") return null;
+    const k = f ? fileKind(f.name) : null;
+    if (!f || (k !== "document" && k !== "excalidraw")) return null;
     return { label: f.name, path: f.path };
   });
   createEffect(() => {
