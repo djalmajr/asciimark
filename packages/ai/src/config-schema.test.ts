@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import * as v from "valibot";
 import type { ProviderConfig } from "./config-schema.ts";
-import { mergeConfigs, parseUserConfig } from "./config-schema.ts";
+import { MCPServerConfigSchema, mergeConfigs, parseUserConfig } from "./config-schema.ts";
 
 const BUILTINS: Record<string, ProviderConfig> = {
   anthropic: {
@@ -38,6 +39,94 @@ describe("parseUserConfig", () => {
 
   it("returns null for null input", () => {
     expect(parseUserConfig(null)).toBeNull();
+  });
+});
+
+describe("MCPServerConfigSchema — transport cross-field rule", () => {
+  it("accepts a stdio server with a command", () => {
+    const result = v.safeParse(MCPServerConfigSchema, {
+      id: "memory",
+      transport: "stdio",
+      command: "bunx",
+      args: ["ai-memory-mcp"],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts an http server with a url", () => {
+    const result = v.safeParse(MCPServerConfigSchema, {
+      id: "remote",
+      transport: "http",
+      url: "https://example.com/mcp",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a stdio server without a command (e.g. only a url)", () => {
+    const result = v.safeParse(MCPServerConfigSchema, {
+      id: "broken",
+      transport: "stdio",
+      url: "https://example.com/mcp",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a stdio server with an empty/whitespace command", () => {
+    expect(
+      v.safeParse(MCPServerConfigSchema, { id: "x", transport: "stdio", command: "" }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(MCPServerConfigSchema, { id: "x", transport: "stdio", command: "   " }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an http server without a url (e.g. only a command)", () => {
+    const result = v.safeParse(MCPServerConfigSchema, {
+      id: "broken",
+      transport: "http",
+      command: "bunx",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("forwards the issue to the missing field", () => {
+    const result = v.safeParse(MCPServerConfigSchema, { id: "x", transport: "stdio" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.issues[0]?.path?.[0]?.key).toBe("command");
+    }
+  });
+});
+
+describe("parseUserConfig — per-entry mcp filtering", () => {
+  const VALID_STDIO = { id: "memory", transport: "stdio", command: "bunx" };
+  const VALID_HTTP = { id: "remote", transport: "http", url: "https://example.com/mcp" };
+
+  it("keeps valid mcp entries in input order", () => {
+    const parsed = parseUserConfig(JSON.stringify({ mcp: [VALID_STDIO, VALID_HTTP] }));
+    expect(parsed?.mcp?.map((s) => s.id)).toEqual(["memory", "remote"]);
+  });
+
+  it("drops an invalid entry but keeps the rest of the config", () => {
+    const parsed = parseUserConfig(
+      JSON.stringify({
+        model: "anthropic/claude-sonnet-4-6",
+        mcp: [VALID_STDIO, { id: "bad", transport: "http" }, VALID_HTTP],
+      }),
+    );
+    // The bad entry must not nuke model/provider settings (null config).
+    expect(parsed).not.toBeNull();
+    expect(parsed?.model).toBe("anthropic/claude-sonnet-4-6");
+    expect(parsed?.mcp?.map((s) => s.id)).toEqual(["memory", "remote"]);
+  });
+
+  it("drops non-object mcp entries", () => {
+    const parsed = parseUserConfig(JSON.stringify({ mcp: ["nope", 42, null] }));
+    expect(parsed?.mcp).toEqual([]);
+  });
+
+  it("still returns null when mcp itself is not an array", () => {
+    expect(parseUserConfig(JSON.stringify({ mcp: { id: "x" } }))).toBeNull();
   });
 });
 

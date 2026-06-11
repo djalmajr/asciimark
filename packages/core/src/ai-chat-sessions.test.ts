@@ -188,6 +188,16 @@ describe("messages round-trip", () => {
     expect(getChatMessages("s1")).toEqual([userTurn, asstTurn]);
   });
 
+  it("round-trips a turn's usage telemetry (the schema must not strip it)", () => {
+    const turn: PersistedChatMessage = {
+      role: "assistant",
+      content: "a",
+      usage: { inputTokens: 10, outputTokens: 20, toolCalls: 1 },
+    };
+    setChatMessages("s1", [turn]);
+    expect(getChatMessages("s1")).toEqual([turn]);
+  });
+
   it("writing an empty list removes the key", () => {
     setChatMessages("s1", [userTurn]);
     setChatMessages("s1", []);

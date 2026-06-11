@@ -86,6 +86,30 @@ describe("buildMcpTools", () => {
     expect(tool!.inputSchema.required).toEqual(["a"]);
   });
 
+  it("spills strict-stripped constraints into schema descriptions when spillConstraints is set", async () => {
+    const bridge: MCPBridge = {
+      listTools: async () => [
+        {
+          server: "srv",
+          name: "t",
+          inputSchema: {
+            type: "object",
+            properties: {
+              n: { type: "number", minimum: 1, default: 5 },
+              tags: { type: "array", items: { type: "string", pattern: "^a+$" } },
+            },
+          },
+        },
+      ],
+      callTool: async () => null,
+    };
+    const [tool] = await buildMcpTools(bridge, { spillConstraints: true, strictSchema: true });
+    const props = tool!.inputSchema.properties as any;
+    expect(props.n.description).toBe("(minimum: 1) (default: 5)");
+    expect(props.tags.items.description).toBe("(pattern: ^a+$)");
+    expect(props.n.minimum).toBeUndefined(); // still stripped from the schema itself
+  });
+
   it("routes execute to the original server/name even when the display name is sanitized", async () => {
     const calls: Array<[string, string, unknown]> = [];
     const bridge: MCPBridge = {

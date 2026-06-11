@@ -35,12 +35,15 @@ export interface AIUsage {
  *  terminal part — `done` on success or `error` on failure.
  *  `citation` is reserved for M2 (RAG / file:line grounding) and is never
  *  emitted in M1. `tool-call`/`tool-result` surface the model's use of MCP
- *  (and in-process app) tools during a tool-calling loop (M2). */
+ *  (and in-process app) tools during a tool-calling loop (M2).
+ *  `usage` is per-run telemetry: emitted once at the end of a turn, right
+ *  before `done`, when the SDK reports `totalUsage` (and/or tools ran). */
 export type AIStreamPart =
   | { type: "text-delta"; text: string }
   | { type: "citation"; file: string; line: number }
   | { type: "tool-call"; toolCallId: string; toolName: string; source?: string; args: unknown }
   | { type: "tool-result"; toolCallId: string; toolName: string; result: unknown; isError?: boolean }
+  | { type: "usage"; inputTokens?: number; outputTokens?: number; toolCalls?: number }
   | { type: "error"; code: AIErrorCode; message: string }
   | { type: "done"; usage?: AIUsage };
 

@@ -19,6 +19,11 @@
 type JsonSchema = Record<string, unknown>;
 
 export interface SanitizeSchemaOptions {
+  /** Append constraints stripped by `strict` to the node's `description`
+   *  (e.g. "(format: uri) (default: 5)") so the MODEL still sees them even
+   *  though the provider schema can't carry the keywords. No effect without
+   *  `strict` — the broad pass removes no constraints. Default false. */
+  spillToDescription?: boolean;
   /** Apply OpenAI strict-mode tightening. Default false. */
   strict?: boolean;
 }
@@ -75,9 +80,17 @@ function resolvePointer(ref: string, root: JsonSchema): unknown {
 
 interface Ctx {
   root: JsonSchema;
-  strict: boolean;
   /** Ref pointers currently on the resolution path — cycle guard. */
   seen: Set<string>;
+  spill: boolean;
+  strict: boolean;
+}
+
+/** Render one stripped constraint for a description spill: string values go
+ *  verbatim ("(format: uri)"), everything else as JSON ("(default: 5)"). */
+function formatConstraint(key: string, value: unknown): string {
+  const rendered = typeof value === "string" ? value : JSON.stringify(value);
+  return `(${key}: ${rendered})`;
 }
 
 function walk(node: unknown, ctx: Ctx): unknown {
@@ -97,9 +110,13 @@ function walk(node: unknown, ctx: Ctx): unknown {
   }
 
   const out: JsonSchema = {};
+  const spilled: string[] = [];
   for (const [key, value] of Object.entries(node)) {
     if (DEFS_KEYS.has(key) || META_KEYWORDS.has(key)) continue;
-    if (ctx.strict && STRICT_UNSUPPORTED.has(key)) continue;
+    if (ctx.strict && STRICT_UNSUPPORTED.has(key)) {
+      if (ctx.spill) spilled.push(formatConstraint(key, value));
+      continue;
+    }
 
     if (key === "oneOf" && Array.isArray(value)) {
       // Gemini/Vertex don't support oneOf; anyOf is the closest portable form.
@@ -131,6 +148,16 @@ function walk(node: unknown, ctx: Ctx): unknown {
     out[key] = value;
   }
 
+  // Spill the stripped constraints into the description (after the loop, so
+  // a `description` keyword that came later in source order is already set).
+  if (spilled.length > 0) {
+    const base =
+      typeof out.description === "string" && out.description.length > 0
+        ? `${out.description} `
+        : "";
+    out.description = base + spilled.join(" ");
+  }
+
   // OpenAI strict tightening on object schemas.
   if (ctx.strict && isObjectSchema(out)) {
     out.additionalProperties = false;
@@ -159,6 +186,11 @@ export function sanitizeJsonSchema(
 ): Record<string, unknown> {
   if (!isPlainObject(schema)) return {};
   const root = structuredClone(schema) as JsonSchema;
-  const result = walk(root, { root, strict: !!options.strict, seen: new Set() });
+  const result = walk(root, {
+    root,
+    seen: new Set(),
+    spill: !!options.spillToDescription,
+    strict: !!options.strict,
+  });
   return isPlainObject(result) ? result : {};
 }

@@ -34,6 +34,12 @@ export type FetchImpl = (input: RequestInfo | URL, init?: RequestInit) => Promis
 export interface AIEngineOptions {
   /** Custom fetch (e.g. Tauri HTTP plugin) to dodge webview CORS. */
   fetch?: FetchImpl;
+  /** Ask the model to spend reasoning/thinking effort. Omit = off (request
+   *  unchanged). Each engine maps it onto the provider family's native option
+   *  (see engines/ai-sdk.ts: anthropic → `thinking` budget, openai →
+   *  `reasoningEffort`, openai-compatible → `reasoning_effort` passthrough)
+   *  and silently ignores it where the SDK has no matching option. */
+  reasoningEffort?: "low" | "medium" | "high";
   /** Use `streamText` (real incremental deltas) instead of the buffered
    *  `generateText` + fake-typing path. Default false: whether the injected
    *  fetch surfaces SSE incrementally in the WKWebView is unverified (the A0

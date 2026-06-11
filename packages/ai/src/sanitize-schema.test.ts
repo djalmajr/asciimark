@@ -140,6 +140,102 @@ describe("sanitizeJsonSchema — strict pass", () => {
   });
 });
 
+describe("sanitizeJsonSchema — description spill", () => {
+  it("appends a stripped constraint to an existing description", () => {
+    const out = sanitizeJsonSchema(
+      {
+        type: "object",
+        properties: { u: { type: "string", description: "target", format: "uri" } },
+      },
+      { spillToDescription: true, strict: true },
+    );
+    expect((out.properties as any).u).toEqual({
+      type: "string",
+      description: "target (format: uri)",
+    });
+  });
+
+  it("creates a description when none exists, in source key order", () => {
+    const out = sanitizeJsonSchema(
+      { type: "object", properties: { n: { type: "number", minimum: 1, default: 5 } } },
+      { spillToDescription: true, strict: true },
+    );
+    expect((out.properties as any).n).toEqual({
+      type: "number",
+      description: "(minimum: 1) (default: 5)",
+    });
+  });
+
+  it("spills on nested object properties", () => {
+    const out = sanitizeJsonSchema(
+      {
+        type: "object",
+        properties: {
+          outer: {
+            type: "object",
+            properties: { p: { type: "string", pattern: "^a+$" } },
+          },
+        },
+      },
+      { spillToDescription: true, strict: true },
+    );
+    expect((out.properties as any).outer.properties.p.description).toBe("(pattern: ^a+$)");
+  });
+
+  it("spills inside array `items`", () => {
+    const out = sanitizeJsonSchema(
+      { type: "array", items: { type: "string", format: "email" } },
+      { spillToDescription: true, strict: true },
+    );
+    expect(out.items).toEqual({ type: "string", description: "(format: email)" });
+  });
+
+  it("spills inside tuple `items` (array form) and array-level constraints", () => {
+    const out = sanitizeJsonSchema(
+      {
+        type: "array",
+        minItems: 1,
+        items: [{ type: "string", minLength: 3 }, { type: "number" }],
+      },
+      { spillToDescription: true, strict: true },
+    );
+    expect(out.description).toBe("(minItems: 1)");
+    expect((out.items as any)[0]).toEqual({ type: "string", description: "(minLength: 3)" });
+    expect((out.items as any)[1]).toEqual({ type: "number" });
+  });
+
+  it("renders non-string constraint values as JSON", () => {
+    const out = sanitizeJsonSchema(
+      {
+        type: "object",
+        properties: {
+          v: { type: "object", default: { a: 1 }, examples: [{ a: 1 }] },
+        },
+      },
+      { spillToDescription: true, strict: true },
+    );
+    expect((out.properties as any).v.description).toBe(
+      '(default: {"a":1}) (examples: [{"a":1}])',
+    );
+  });
+
+  it("is a no-op without strict (the broad pass removes no constraints)", () => {
+    const input = {
+      type: "object",
+      properties: { n: { type: "number", minimum: 1 } },
+    };
+    expect(sanitizeJsonSchema(input, { spillToDescription: true })).toEqual(input);
+  });
+
+  it("does not touch descriptions when spill is off (constraints just dropped)", () => {
+    const out = sanitizeJsonSchema(
+      { type: "object", properties: { s: { type: "string", description: "d", format: "uri" } } },
+      { strict: true },
+    );
+    expect((out.properties as any).s.description).toBe("d");
+  });
+});
+
 describe("sanitizeJsonSchema — purity & robustness", () => {
   it("never mutates the input", () => {
     const input = {

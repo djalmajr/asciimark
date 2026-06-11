@@ -30,6 +30,7 @@ describe("mapFullStream", () => {
     expect(out).toEqual([
       { type: "text-delta", text: "Hel" },
       { type: "text-delta", text: "lo" },
+      { type: "usage", inputTokens: 3, outputTokens: 5 },
       { type: "done", usage: { inputTokens: 3, outputTokens: 5 } },
     ]);
   });
@@ -130,6 +131,7 @@ describe("mapFullStream", () => {
     );
     expect(out).toEqual([
       { type: "text-delta", text: "hi" },
+      { type: "usage", inputTokens: 1, outputTokens: 1 },
       { type: "done", usage: { inputTokens: 1, outputTokens: 1 } },
     ]);
   });
@@ -140,6 +142,34 @@ describe("mapFullStream", () => {
       type: "done",
       usage: { inputTokens: 0, outputTokens: 0 },
     });
+    // No usage telemetry either — nothing finite was reported and no tool ran.
+    expect(out.find((p) => p.type === "usage")).toBeUndefined();
+  });
+
+  it("emits a usage part counting tool calls before the done", async () => {
+    const out = await collect(
+      mapFullStream(
+        gen([
+          { type: "tool-call", toolCallId: "c1", toolName: "t", input: {} },
+          { type: "tool-result", toolCallId: "c1", toolName: "t", output: 1 },
+          { type: "finish", totalUsage: { inputTokens: 10, outputTokens: 20 } },
+        ]),
+      ),
+    );
+    expect(out[out.length - 2]).toEqual({
+      type: "usage",
+      inputTokens: 10,
+      outputTokens: 20,
+      toolCalls: 1,
+    });
+    expect(out[out.length - 1]?.type).toBe("done");
+  });
+
+  it("emits no usage part after a terminal error", async () => {
+    const out = await collect(
+      mapFullStream(gen([{ type: "error", error: { statusCode: 401, message: "nope" } }])),
+    );
+    expect(out).toEqual([{ type: "error", code: "auth", message: "nope" }]);
   });
 });
 
@@ -149,6 +179,7 @@ describe("mapFullStream", () => {
 
 interface RequestBody {
   messages: Array<{ content: unknown; role: string }>;
+  reasoning_effort?: string;
 }
 
 function resolvedModel(): ResolvedModel {
@@ -188,7 +219,10 @@ function createFakeFetch(payloads: Array<Record<string, unknown>>): {
   return { fetchImpl, requests };
 }
 
-function completionResponse(content: string): Record<string, unknown> {
+function completionResponse(
+  content: string,
+  usage: { completion_tokens: number; prompt_tokens: number } = { completion_tokens: 1, prompt_tokens: 1 },
+): Record<string, unknown> {
   return {
     id: "chatcmpl-1",
     object: "chat.completion",
@@ -197,7 +231,11 @@ function completionResponse(content: string): Record<string, unknown> {
     choices: [
       { index: 0, message: { role: "assistant", content }, finish_reason: "stop" },
     ],
-    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    usage: {
+      prompt_tokens: usage.prompt_tokens,
+      completion_tokens: usage.completion_tokens,
+      total_tokens: usage.prompt_tokens + usage.completion_tokens,
+    },
   };
 }
 
@@ -279,6 +317,57 @@ describe("ai-sdk engine context compaction", () => {
     // The tail is the newest 199 turns of the 229 supplied.
     expect(sent[1].content).toBe("turn 30");
     expect(sent[sent.length - 1].content).toBe("turn 228");
+  });
+});
+
+describe("ai-sdk engine reasoning effort", () => {
+  it("forwards reasoningEffort as reasoning_effort in an openai-compatible request body", async () => {
+    const { fetchImpl, requests } = createFakeFetch([completionResponse("ok")]);
+    const provider = aiSdkEngine.createProvider(resolvedModel(), async () => "key", {
+      fetch: fetchImpl,
+      reasoningEffort: "medium",
+    });
+    await collect(provider.chat([{ role: "user", content: "hi" }]));
+    expect(requests[0].reasoning_effort).toBe("medium");
+  });
+
+  it("leaves the request body untouched when the option is omitted (off)", async () => {
+    const { fetchImpl, requests } = createFakeFetch([completionResponse("ok")]);
+    await chatThrough(fetchImpl, [{ role: "user", content: "hi" }]);
+    expect(requests[0].reasoning_effort).toBeUndefined();
+  });
+});
+
+describe("ai-sdk engine per-run usage telemetry (buffered path)", () => {
+  it("emits a usage part from the SDK totalUsage right before the done", async () => {
+    const { fetchImpl } = createFakeFetch([
+      completionResponse("ok", { completion_tokens: 9, prompt_tokens: 7 }),
+    ]);
+    const parts = await chatThrough(fetchImpl, [{ role: "user", content: "hi" }]);
+    const usageIdx = parts.findIndex((p) => p.type === "usage");
+    expect(parts[usageIdx]).toEqual({ type: "usage", inputTokens: 7, outputTokens: 9 });
+    expect(parts[usageIdx + 1]?.type).toBe("done");
+  });
+
+  it("counts tool calls across steps and sums token usage over the loop", async () => {
+    const { fetchImpl } = createFakeFetch([
+      toolCallResponse("app__read", {}),
+      completionResponse("read it", { completion_tokens: 3, prompt_tokens: 2 }),
+    ]);
+    const tool: AITool = {
+      name: "app__read",
+      inputSchema: { type: "object" },
+      execute: async () => "contents",
+      source: "app",
+    };
+    const parts = await chatThrough(fetchImpl, [{ role: "user", content: "go" }], { tools: [tool] });
+    // totalUsage sums both steps: 1+2 prompt, 1+3 completion (toolCallResponse uses 1/1).
+    expect(parts.find((p) => p.type === "usage")).toEqual({
+      type: "usage",
+      inputTokens: 3,
+      outputTokens: 4,
+      toolCalls: 1,
+    });
   });
 });
 

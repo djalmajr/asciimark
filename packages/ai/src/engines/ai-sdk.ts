@@ -90,6 +90,51 @@ async function buildModel(
   }
 }
 
+/** `providerOptions` as the AI SDK call settings accept it (the `ai` package
+ *  does not re-export the type, so it is derived the same way FetchFunction is
+ *  above). Resolves to `Record<string, JSONObject>` (SharedV3ProviderOptions). */
+type ProviderOptions = NonNullable<
+  Parameters<typeof import("ai").generateText>[0]["providerOptions"]
+>;
+
+/** Anthropic has no enum effort — extended thinking takes an explicit token
+ *  budget (API minimum 1024). These map the three effort levels onto budgets. */
+const ANTHROPIC_THINKING_BUDGETS = { low: 4096, medium: 12288, high: 24576 } as const;
+
+/**
+ * Map `AIEngineOptions.reasoningEffort` onto each provider family's native
+ * option, verified against the INSTALLED SDK option schemas:
+ *   - anthropic (@ai-sdk/anthropic 3.0.81): `providerOptions.anthropic.thinking`
+ *     accepts `{ type: "enabled", budgetTokens }` — effort becomes a budget via
+ *     ANTHROPIC_THINKING_BUDGETS.
+ *   - openai (@ai-sdk/openai 3.0.68): `providerOptions.openai.reasoningEffort`
+ *     ("low" | "medium" | "high" are valid for both the chat and responses
+ *     option schemas).
+ *   - openai-compatible (@ai-sdk/openai-compatible 2.0.48): the canonical
+ *     `providerOptions.openaiCompatible.reasoningEffort` (zod string) is
+ *     serialized by the SDK as `reasoning_effort` in the request body —
+ *     backends that don't support it simply ignore the field.
+ * Returns undefined when effort is unset (off): the request is unchanged.
+ */
+export function reasoningProviderOptions(
+  kind: ResolvedModel["provider"]["kind"],
+  effort: AIEngineOptions["reasoningEffort"],
+): ProviderOptions | undefined {
+  if (!effort) return undefined;
+  switch (kind) {
+    case "anthropic":
+      return {
+        anthropic: {
+          thinking: { budgetTokens: ANTHROPIC_THINKING_BUDGETS[effort], type: "enabled" },
+        },
+      };
+    case "openai":
+      return { openai: { reasoningEffort: effort } };
+    case "openai-compatible":
+      return { openaiCompatible: { reasoningEffort: effort } };
+  }
+}
+
 /** Map an SDK / network error to the AIStreamPart error taxonomy so the UI can
  *  show a dedicated message (esp. "Ollama offline" — a refused connection). */
 function classifyError(e: unknown): { code: AIErrorCode; message: string } {
@@ -122,6 +167,28 @@ function classifyError(e: unknown): { code: AIErrorCode; message: string } {
 /** A loosely-typed AI SDK `fullStream` part — we read only the fields we map. */
 type FullStreamPart = { type: string } & Record<string, unknown>;
 
+/** Build the per-run telemetry `usage` part (emitted once, right before
+ *  `done`): token totals from the SDK's `totalUsage` (ai@6 names them
+ *  `inputTokens`/`outputTokens`, both possibly undefined) plus the tool-call
+ *  count across steps. Returns undefined unless at least one number is finite
+ *  — a turn with no reported usage and no tool calls emits nothing. */
+function buildUsagePart(
+  usage: { inputTokens?: number; outputTokens?: number } | undefined,
+  toolCalls: number,
+): Extract<AIStreamPart, { type: "usage" }> | undefined {
+  const part: Extract<AIStreamPart, { type: "usage" }> = { type: "usage" };
+  if (typeof usage?.inputTokens === "number" && Number.isFinite(usage.inputTokens)) {
+    part.inputTokens = usage.inputTokens;
+  }
+  if (typeof usage?.outputTokens === "number" && Number.isFinite(usage.outputTokens)) {
+    part.outputTokens = usage.outputTokens;
+  }
+  if (Number.isFinite(toolCalls) && toolCalls > 0) part.toolCalls = toolCalls;
+  const hasData =
+    part.inputTokens !== undefined || part.outputTokens !== undefined || part.toolCalls !== undefined;
+  return hasData ? part : undefined;
+}
+
 /**
  * Map an AI SDK v6 `streamText().fullStream` onto our `AIStreamPart` contract,
  * owning the single terminal emission: an `error`/`abort` part yields one error
@@ -135,6 +202,7 @@ export async function* mapFullStream(
   sourceByName?: Map<string, string | undefined>,
 ): AsyncIterable<AIStreamPart> {
   let usage: { inputTokens?: number; outputTokens?: number } | undefined;
+  let toolCalls = 0;
   for await (const part of fullStream) {
     switch (part.type) {
       case "text-delta": {
@@ -143,6 +211,7 @@ export async function* mapFullStream(
         break;
       }
       case "tool-call":
+        toolCalls += 1;
         yield {
           type: "tool-call",
           toolCallId: part.toolCallId as string,
@@ -198,6 +267,8 @@ export async function* mapFullStream(
         break;
     }
   }
+  const usagePart = buildUsagePart(usage, toolCalls);
+  if (usagePart) yield usagePart;
   yield {
     type: "done",
     usage: { inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0 },
@@ -288,6 +359,10 @@ function createProvider(
             ]),
           )
         : undefined;
+      const providerOptions = reasoningProviderOptions(
+        resolved.provider.kind,
+        opts?.reasoningEffort,
+      );
       const common = {
         model,
         ...(chatOpts?.system ? { system: chatOpts.system } : {}),
@@ -295,6 +370,7 @@ function createProvider(
         ...(chatOpts?.signal ? { abortSignal: chatOpts.signal } : {}),
         ...(chatOpts?.temperature != null ? { temperature: chatOpts.temperature } : {}),
         ...(tools ? { tools, stopWhen: ai.stepCountIs(chatOpts?.maxSteps ?? 8) } : {}),
+        ...(providerOptions ? { providerOptions } : {}),
       };
 
       // Streaming path (opt-in): real incremental deltas via `fullStream`,
@@ -350,6 +426,11 @@ function createProvider(
       yield { type: "text-delta", text: chunk };
       await new Promise((r) => setTimeout(r, 10));
     }
+    const usagePart = buildUsagePart(
+      usage,
+      steps.reduce((n, step) => n + step.toolCalls.length, 0),
+    );
+    if (usagePart) yield usagePart;
     yield {
       type: "done",
       usage: {

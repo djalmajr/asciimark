@@ -73,23 +73,44 @@ const MCPTransportSchema = v.picklist(["stdio", "http"] as const);
  *  Trust note: `{file:path}` reads any path the app can and the contents are
  *  sent to the server (including remote HTTP MCP servers) — only reference
  *  files you intend to transmit; prefer `{keychain:id}` for real secrets. */
-const MCPServerConfigSchema = v.object({
-  /** Stable id — also namespaces the server's tools as `<id>__<tool>`. */
-  id: v.string(),
-  /** Friendly label for the settings UI; falls back to `id`. */
-  name: v.optional(v.string()),
-  transport: MCPTransportSchema,
-  /** Defaults to true at the use site when omitted. */
-  enabled: v.optional(v.boolean()),
-  // stdio transport
-  command: v.optional(v.string()),
-  args: v.optional(v.array(v.string())),
-  env: v.optional(v.record(v.string(), v.string())),
-  cwd: v.optional(v.string()),
-  // http transport
-  url: v.optional(v.string()),
-  headers: v.optional(v.record(v.string(), v.string())),
-});
+const MCPServerConfigSchema = v.pipe(
+  v.object({
+    /** Stable id — also namespaces the server's tools as `<id>__<tool>`. */
+    id: v.string(),
+    /** Friendly label for the settings UI; falls back to `id`. */
+    name: v.optional(v.string()),
+    transport: MCPTransportSchema,
+    /** Defaults to true at the use site when omitted. */
+    enabled: v.optional(v.boolean()),
+    // stdio transport
+    command: v.optional(v.string()),
+    args: v.optional(v.array(v.string())),
+    env: v.optional(v.record(v.string(), v.string())),
+    cwd: v.optional(v.string()),
+    // http transport
+    url: v.optional(v.string()),
+    headers: v.optional(v.record(v.string(), v.string())),
+  }),
+  // Cross-field transport rule, forwarded so the issue lands on the missing
+  // field: "stdio" has nothing to spawn without a `command`; "http" has
+  // nothing to reach without a `url`. An entry violating this FAILS the
+  // schema — the resolved AIConfigSchema uses it as-is; the lenient user
+  // config filters invalid entries one by one instead (see UserMCPListSchema).
+  v.forward(
+    v.check(
+      (server) => server.transport !== "stdio" || (server.command ?? "").trim() !== "",
+      'transport "stdio" requires a non-empty `command`',
+    ),
+    ["command"],
+  ),
+  v.forward(
+    v.check(
+      (server) => server.transport !== "http" || (server.url ?? "").trim() !== "",
+      'transport "http" requires a non-empty `url`',
+    ),
+    ["url"],
+  ),
+);
 
 /** Fully-resolved AI config (after merge). Model ids are in "provider/model" form. */
 const AIConfigSchema = v.object({
@@ -99,12 +120,29 @@ const AIConfigSchema = v.object({
   mcp: v.optional(v.array(MCPServerConfigSchema)),
 });
 
+/** Per-entry lenient `mcp` list for ai.json. Each entry is validated against
+ *  the full MCPServerConfigSchema (shape + transport rule) on its own, and
+ *  entries that fail are DROPPED rather than failing the whole config — one
+ *  typo'd server must not make parseUserConfig return null and wipe the
+ *  user's model/provider settings. Mirrors how mergeConfigs ignores an
+ *  incomplete custom provider. A non-array `mcp` is still a whole-config
+ *  schema mismatch (null), and the resolved AIConfigSchema stays strict. */
+const UserMCPListSchema = v.pipe(
+  v.array(v.unknown()),
+  v.transform((entries) =>
+    entries.flatMap((entry) => {
+      const parsed = v.safeParse(MCPServerConfigSchema, entry);
+      return parsed.success ? [parsed.output] : [];
+    }),
+  ),
+);
+
 /** Lenient shape parsed from ai.json before merge-with-builtins. */
 const UserAIConfigSchema = v.object({
   model: v.optional(v.string()),
   small_model: v.optional(v.string()),
   provider: v.optional(v.record(v.string(), UserProviderConfigSchema)),
-  mcp: v.optional(v.array(MCPServerConfigSchema)),
+  mcp: v.optional(UserMCPListSchema),
 });
 
 type ProviderKind = v.InferOutput<typeof ProviderKindSchema>;

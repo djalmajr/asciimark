@@ -3,6 +3,7 @@ import {
   getStoredAiEngine,
   getStoredAiMode,
   getStoredAiModel,
+  getStoredAiReasoning,
   getStoredAiSmallModel,
   getStoredAiStreaming,
   getStoredHiddenModels,
@@ -11,6 +12,7 @@ import {
   setStoredAiEngine,
   setStoredAiMode,
   setStoredAiModel,
+  setStoredAiReasoning,
   setStoredAiSmallModel,
   setStoredAiStreaming,
   setStoredIndexingTier,
@@ -24,13 +26,14 @@ describe("ai preferences defaults", () => {
     localStorage.clear();
   });
 
-  it("defaults: no model, lite tier, ai-sdk engine, streaming off", () => {
+  it("defaults: no model, lite tier, ai-sdk engine, streaming off, reasoning off", () => {
     expect(getStoredAiModel()).toBeNull();
     expect(getStoredAiSmallModel()).toBeNull();
     expect(getStoredIndexingTier()).toBe("lite");
     expect(getStoredAiEngine()).toBe("ai-sdk");
     expect(getStoredAiStreaming()).toBe(false);
     expect(getStoredAiMode()).toBe("build");
+    expect(getStoredAiReasoning()).toBe("off");
   });
 
   it("falls back to build for an unknown/garbage mode value", () => {
@@ -46,6 +49,11 @@ describe("ai preferences defaults", () => {
   it("falls back to ai-sdk for an unknown engine value", () => {
     localStorage.setItem("asciimark-ai-engine", "nope");
     expect(getStoredAiEngine()).toBe("ai-sdk");
+  });
+
+  it("falls back to off for an unknown reasoning value", () => {
+    localStorage.setItem("asciimark-ai-reasoning", "ultra");
+    expect(getStoredAiReasoning()).toBe("off");
   });
 });
 
@@ -78,6 +86,13 @@ describe("ai preferences round-trip", () => {
     expect(getStoredAiStreaming()).toBe(true);
     setStoredAiStreaming(false);
     expect(getStoredAiStreaming()).toBe(false);
+  });
+
+  it("persists the reasoning effort across every level", () => {
+    for (const effort of ["low", "medium", "high", "off"] as const) {
+      setStoredAiReasoning(effort);
+      expect(getStoredAiReasoning()).toBe(effort);
+    }
   });
 
   it("persists the chat mode (build ↔ plan)", () => {

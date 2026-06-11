@@ -17,12 +17,17 @@ type AIEngineId = "ai-sdk" | "tanstack";
  *  implements with the full tool set. */
 type AIChatMode = "build" | "plan";
 
+/** Reasoning effort forwarded to providers that support it (the engine maps it
+ *  per provider kind). "off" (the default) leaves requests unchanged. */
+type AIReasoningEffort = "off" | "low" | "medium" | "high";
+
 const MODE_KEY = "asciimark-ai-mode";
 const ENGINE_KEY = "asciimark-ai-engine";
 const MODEL_KEY = "asciimark-ai-model";
 const SMALL_MODEL_KEY = "asciimark-ai-small-model";
 const TIER_KEY = "asciimark-ai-indexing-tier";
 const STREAMING_KEY = "asciimark-ai-streaming";
+const REASONING_KEY = "asciimark-ai-reasoning";
 const HIDDEN_MODELS_KEY = "asciimark-ai-hidden-models";
 
 function getStoredAiMode(): AIChatMode {
@@ -83,6 +88,18 @@ function setStoredAiStreaming(enabled: boolean): void {
   localStorage.setItem(STREAMING_KEY, enabled ? "true" : "false");
 }
 
+/** Reasoning effort. Default "off"; lenient read falls back to "off" for any
+ *  unknown/garbage stored value. */
+function getStoredAiReasoning(): AIReasoningEffort {
+  const stored = localStorage.getItem(REASONING_KEY);
+  if (stored === "low" || stored === "medium" || stored === "high") return stored;
+  return "off";
+}
+
+function setStoredAiReasoning(effort: AIReasoningEffort): void {
+  localStorage.setItem(REASONING_KEY, effort);
+}
+
 /** Model refs ("provider/model") the user hid from the picker ("Manage models").
  *  Default empty (everything visible); lenient read drops malformed blobs. */
 function getStoredHiddenModels(): string[] {
@@ -100,18 +117,20 @@ function setStoredHiddenModels(refs: string[]): void {
   localStorage.setItem(HIDDEN_MODELS_KEY, JSON.stringify([...new Set(refs)]));
 }
 
-export type { AIChatMode, AIEngineId, IndexingTier };
+export type { AIChatMode, AIEngineId, AIReasoningEffort, IndexingTier };
 export {
   getStoredAiMode,
   setStoredAiMode,
   getStoredAiEngine,
   getStoredAiModel,
+  getStoredAiReasoning,
   getStoredAiSmallModel,
   getStoredAiStreaming,
   getStoredHiddenModels,
   getStoredIndexingTier,
   setStoredAiEngine,
   setStoredAiModel,
+  setStoredAiReasoning,
   setStoredAiSmallModel,
   setStoredAiStreaming,
   setStoredHiddenModels,

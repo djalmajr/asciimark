@@ -44,10 +44,20 @@ const PersistedToolActivitySchema = v.object({
   resultJson: v.nullable(v.string()),
 });
 
+// Per-run telemetry attached to an assistant turn (token totals + tool-call
+// count). Declared here because valibot's `v.object` STRIPS undeclared keys on
+// parse — without this the field would silently vanish at the storage boundary.
+const PersistedTurnUsageSchema = v.object({
+  inputTokens: v.optional(v.number()),
+  outputTokens: v.optional(v.number()),
+  toolCalls: v.optional(v.number()),
+});
+
 const PersistedChatMessageSchema = v.object({
   role: v.picklist(["user", "assistant"] as const),
   content: v.string(),
   tools: v.optional(v.array(PersistedToolActivitySchema)),
+  usage: v.optional(PersistedTurnUsageSchema),
 });
 
 const PersistedChatSessionMetaSchema = v.object({
@@ -141,11 +151,12 @@ function capMessages(messages: PersistedChatMessage[]): PersistedChatMessage[] {
       msg.content.length > MAX_MESSAGE_CONTENT_CHARS
         ? msg.content.slice(0, MAX_MESSAGE_CONTENT_CHARS) + TRUNCATION_SENTINEL
         : msg.content;
+    const usage = msg.usage !== undefined ? { usage: msg.usage } : {};
     if (!msg.tools || msg.tools.length === 0) {
-      return { role: msg.role, content };
+      return { role: msg.role, content, ...usage };
     }
     const tools = msg.tools.length > MAX_TOOLS_PER_MESSAGE ? msg.tools.slice(0, MAX_TOOLS_PER_MESSAGE) : msg.tools;
-    return { role: msg.role, content, tools };
+    return { role: msg.role, content, tools, ...usage };
   });
 }
 
