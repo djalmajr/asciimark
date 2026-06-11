@@ -74,8 +74,11 @@ export interface AiChatStore {
    *  trailing) and streams a fresh one in its place. No-op while streaming or
    *  when there is no trailing conversation to retry. */
   retryLast(): Promise<void>;
-  /** Send a user message and stream the reply. No-op while already streaming or
-   *  when the text is blank. */
+  /** Send a user message and stream the reply. While a turn streams the text
+   *  QUEUES instead (steering) and the returned promise settles only when the
+   *  queued turn actually completes — or when the queued slot dies (Stop, the
+   *  queued bar's ×, or replacement by a newer steering send). No-op when the
+   *  text is blank. */
   sendMessage(text: string, opts?: { system?: string }): Promise<void>;
   /** Abort the in-flight turn. The partial reply (if any) is kept as history. */
   cancel(): void;
@@ -129,18 +132,39 @@ export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
   const [error, setError] = createSignal<AiChatError | null>(null);
   const [queued, setQueued] = createSignal<string | null>(null);
   let controller: AbortController | null = null;
+  // Resolves the steering sender's promise. A send made while a turn streams
+  // must NOT settle at queue time: callers (the composer's mention
+  // consumption) release the message's context on settlement, and the context
+  // preamble is only read when the queued turn actually RUNS.
+  let settleQueued: (() => void) | null = null;
+
+  /** Settle the current queued sender's promise — used when the slot dies
+   *  without running (Stop, the queued bar's ×, replacement). */
+  function settleQueuedSlot(): void {
+    const settle = settleQueued;
+    settleQueued = null;
+    settle?.();
+  }
 
   function providerReady(): boolean {
     return config.getProvider() !== null;
   }
 
   /** Dispatch the steering queue once the current turn settled. One slot:
-   *  sending again while streaming replaces the pending message. */
+   *  sending again while streaming replaces the pending message. The queued
+   *  sender's promise settles AFTER its turn completes (finally — even a
+   *  failed turn must release the sender). */
   async function drainQueue(): Promise<void> {
     const next = queued();
     if (next === null || streaming()) return;
+    const settle = settleQueued;
+    settleQueued = null;
     setQueued(null);
-    await sendMessage(next);
+    try {
+      await sendMessage(next);
+    } finally {
+      settle?.();
+    }
   }
 
   async function sendMessage(
@@ -150,10 +174,16 @@ export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
     const trimmed = text.trim();
     if (!trimmed) return;
     // Steering: typing during a turn queues the message instead of dropping
-    // it — it auto-sends when the in-flight turn finishes.
+    // it — it auto-sends when the in-flight turn finishes. The returned
+    // promise settles when the queued turn actually runs (drainQueue) or the
+    // slot dies, NOT at queue time; one slot, so a replacement settles the
+    // sender it displaces.
     if (streaming()) {
+      settleQueuedSlot();
       setQueued(trimmed);
-      return;
+      return new Promise<void>((resolve) => {
+        settleQueued = resolve;
+      });
     }
 
     // The no-provider check lives here (not only in runTurn) so the typed
@@ -346,11 +376,13 @@ export function createAiChatStore(config: AiChatStoreConfig): AiChatStore {
 
   function cancel(): void {
     // Stop means stop: a queued steering message must not fire right after.
+    settleQueuedSlot();
     setQueued(null);
     controller?.abort();
   }
 
   function cancelQueued(): void {
+    settleQueuedSlot();
     setQueued(null);
   }
 

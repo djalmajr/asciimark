@@ -101,15 +101,26 @@ describe("createAiChatStore", () => {
     expect(store.streaming()).toBe(false);
   });
 
-  it("steering: a message sent while streaming queues, then auto-sends", async () => {
+  it("steering: a message sent while streaming queues, then auto-sends; its promise settles only after its turn ran", async () => {
     const store = createAiChatStore({ getProvider: () => pausingProvider() });
     const pending = store.sendMessage("first");
     // Mid-stream: the second send must queue, not interleave a turn.
-    await store.sendMessage("second");
+    let steeredSettled = false;
+    const steered = store.sendMessage("second").then(() => {
+      steeredSettled = true;
+    });
     expect(store.queued()).toBe("second");
+    // The steering sender must NOT settle at queue time — callers release the
+    // message's context (mention chips) on settlement, and the context
+    // preamble is only read when the queued turn actually runs.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(steeredSettled).toBe(false);
     await pending;
     // The queue drained into a full second turn after the first settled.
     expect(store.queued()).toBeNull();
+    await steered;
+    expect(steeredSettled).toBe(true);
     expect(store.messages().map((t) => t.role)).toEqual([
       "user",
       "assistant",
@@ -119,21 +130,44 @@ describe("createAiChatStore", () => {
     expect(store.messages()[2]).toEqual({ role: "user", content: "second" });
   });
 
-  it("steering: cancelQueued drops the pending message; Stop clears it too", async () => {
+  it("steering: cancelQueued drops the pending message and settles its sender; Stop clears it too", async () => {
     const store = createAiChatStore({ getProvider: () => pausingProvider() });
     const pending = store.sendMessage("first");
-    await store.sendMessage("queued-then-dropped");
+    const dropped = store.sendMessage("queued-then-dropped");
     store.cancelQueued();
     expect(store.queued()).toBeNull();
+    // The dropped sender's promise settles on cancellation — its turn will
+    // never run, and an unsettled promise would leak the caller's cleanup.
+    await dropped;
     await pending;
     expect(store.messages()).toHaveLength(2);
 
     const second = store.sendMessage("again");
-    await store.sendMessage("queued-then-stopped");
+    const stopped = store.sendMessage("queued-then-stopped");
     expect(store.queued()).toBe("queued-then-stopped");
     store.cancel(); // Stop aborts the turn AND the queue
+    await stopped;
     await second;
     expect(store.queued()).toBeNull();
+  });
+
+  it("steering: a replacement send settles the displaced sender; only the replacement runs", async () => {
+    const store = createAiChatStore({ getProvider: () => pausingProvider() });
+    const pending = store.sendMessage("first");
+    const displaced = store.sendMessage("will-be-replaced");
+    // One slot: the newer steering send displaces (and settles) the older one.
+    const kept = store.sendMessage("replacement");
+    expect(store.queued()).toBe("replacement");
+    await displaced;
+    await pending;
+    await kept;
+    expect(store.messages().map((t) => t.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(store.messages()[2]).toEqual({ role: "user", content: "replacement" });
   });
 
   it("clear() resets history and error", async () => {

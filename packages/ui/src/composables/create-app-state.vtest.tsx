@@ -485,6 +485,24 @@ describe("AppState — AI multi-chat tab routing", () => {
     }, aiConfig);
   });
 
+  it("reorderAiContext moves the mention labels to the END in textual order; others keep position first", () => {
+    withState((state) => {
+      // A non-mention item (selection) plus two mentions added in one order...
+      state.addSelectionToContext({ from: 0, to: 5, text: "hello" });
+      state.addFileMention({ content: "A", label: "a.md", path: "a.md", rootId: "r" });
+      state.addFileMention({ content: "B", label: "b.md", path: "b.md", rootId: "r" });
+      // ...reordered to the composer tokens' textual order (b before a). The
+      // context preamble is built in array order, so this IS the order the
+      // model receives the references in.
+      state.reorderAiContext(["b.md", "a.md"]);
+      const labels = state.aiContextItems().map((i) => i.label);
+      expect(labels).toHaveLength(3);
+      // The selection keeps its position, FIRST, before the mention block.
+      expect(state.aiContextItems()[0]!.kind).toBe("selection");
+      expect(labels.slice(1)).toEqual(["b.md", "a.md"]);
+    }, aiConfig);
+  });
+
   it("injects mention chips into the sent message; removing a chip drops its content", async () => {
     let sent: { role: string; content: string }[] | undefined;
     const provider = {

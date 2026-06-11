@@ -3,7 +3,9 @@ import { createSignal } from "solid-js";
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { createMockProvider } from "@asciimark/ai/mock-provider.ts";
 import type { SlashCommandDef } from "@asciimark/ai/slash-commands.ts";
-import { createAiChatStore } from "../composables/create-ai-chat-store.ts";
+import type { AIMessage, AIProvider } from "@asciimark/ai/types.ts";
+import { createAiChatStore, type AiChatStore } from "../composables/create-ai-chat-store.ts";
+import { buildContextPreamble, type AiContextItem } from "../composables/ai-context.ts";
 import { AiPanel, type AiMentionEntry } from "./ai-panel.tsx";
 import { AiMessage } from "./ai-message.tsx";
 
@@ -119,9 +121,9 @@ describe("AiPanel", () => {
     expect(items[0]!.textContent).toContain("alpha.md");
     fireEvent.mouseDown(items[0]!);
     expect(onMention).toHaveBeenCalledWith({ label: "alpha.md", path: "a/alpha.md", rootId: "r" });
-    // The reference lives as a context chip now — the "@al" token is REMOVED
-    // from the composer (no inline "@alpha.md" text) and the list closes.
-    expect(ta.value).toBe("");
+    // The reference stays INLINE: the typed "@al" is replaced by the literal
+    // "@alpha.md " token in the composer text, and the list closes.
+    expect(ta.value).toBe("@alpha.md ");
     expect(baseElement.querySelectorAll(".ai-mention-item")).toHaveLength(0);
   });
 
@@ -149,10 +151,11 @@ describe("AiPanel", () => {
     expect(items[0]!.querySelector(".ai-mention-name")?.textContent).toBe("notes/");
     // Selecting a dir fires onMention with the full dir entry (kind included),
     // so the host knows to attach a listing instead of file content. The
-    // "@no" token is removed — folder refs are chips, not inline text.
+    // typed "@no" becomes the inline "@notes/ " token (folder labels already
+    // carry the trailing slash).
     fireEvent.mouseDown(items[0]!);
     expect(onMention).toHaveBeenCalledWith({ kind: "dir", label: "notes/", path: "notes", rootId: "r" });
-    expect(ta.value).toBe("");
+    expect(ta.value).toBe("@notes/ ");
     // The root entry is mentionable too.
     ta.value = "@wk";
     ta.setSelectionRange(3, 3);
@@ -633,10 +636,385 @@ describe("AiPanel — @-mention workspace roots", () => {
     const ta = typeMention(baseElement, "@");
     fireEvent.keyDown(ta, { key: "Enter" });
     expect(onMention).toHaveBeenCalledWith(ROOT);
-    // The "@" token is removed, the list closes, nothing was sent.
-    expect(ta.value).toBe("");
+    // The "@" becomes the inline root token, the list closes, nothing was sent.
+    expect(ta.value).toBe("@wksp/ ");
     expect(baseElement.querySelectorAll(".ai-mention-item")).toHaveLength(0);
     expect(store.messages()).toHaveLength(0);
+  });
+});
+
+describe("AiPanel — inline @-mention tokens (Cursor-style)", () => {
+  const FILES: AiMentionEntry[] = [
+    { label: "alpha.md", path: "a/alpha.md", rootId: "r" },
+    { label: "beta.md", path: "b/beta.md", rootId: "r" },
+  ];
+  // Items carry path/rootId like the real host's addFileMention — the panel
+  // matches and hides mention items by that identity, not by label.
+  const ALPHA_ITEM: AiContextItem = {
+    content: "ALPHA",
+    id: "mention:r:a/alpha.md",
+    kind: "file",
+    label: "alpha.md",
+    path: "a/alpha.md",
+    rootId: "r",
+  };
+  const BETA_ITEM: AiContextItem = {
+    content: "BETA",
+    id: "mention:r:b/beta.md",
+    kind: "file",
+    label: "beta.md",
+    path: "b/beta.md",
+    rootId: "r",
+  };
+  // The SAME file name in two roots — the label-collision scenario the
+  // identity matching exists for.
+  const TWIN_FILES: AiMentionEntry[] = [
+    { label: "notes.md", path: "a/notes.md", rootId: "r1", rootLabel: "wksp" },
+    { label: "notes.md", path: "b/notes.md", rootId: "r2", rootLabel: "docs" },
+  ];
+  const TWIN_R1_ITEM: AiContextItem = {
+    content: "R1",
+    id: "mention:r1:a/notes.md",
+    kind: "file",
+    label: "notes.md",
+    path: "a/notes.md",
+    rootId: "r1",
+  };
+  const TWIN_R2_ITEM: AiContextItem = {
+    content: "R2",
+    id: "mention:r2:b/notes.md",
+    kind: "file",
+    label: "notes.md",
+    path: "b/notes.md",
+    rootId: "r2",
+  };
+
+  function typeText(baseElement: HTMLElement, value: string, caret?: number): HTMLTextAreaElement {
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    ta.value = value;
+    const at = caret ?? value.length;
+    ta.setSelectionRange(at, at);
+    fireEvent.input(ta);
+    return ta;
+  }
+
+  function pickMention(baseElement: HTMLElement, index = 0): void {
+    fireEvent.mouseDown(baseElement.querySelectorAll(".ai-mention-item")[index]!);
+  }
+
+  /** Minimal AiChatStore stub so a test can control the sendMessage promise. */
+  function stubStore(over: Partial<AiChatStore> = {}): AiChatStore {
+    return {
+      cancel: () => {},
+      cancelQueued: () => {},
+      clear: () => {},
+      editAndResend: async () => {},
+      error: () => null,
+      listTools: async () => [],
+      messages: () => [],
+      providerReady: () => true,
+      queued: () => null,
+      retryLast: async () => {},
+      sendMessage: async () => {},
+      streaming: () => false,
+      streamingText: () => "",
+      systemPrompt: () => undefined,
+      toolActivity: () => [],
+      ...over,
+    };
+  }
+
+  function deferred(): { promise: Promise<void>; resolve: () => void } {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it("selecting a mention inserts '@label ' inline, highlights it, and fires onMention", () => {
+    const store = readyStore();
+    const onMention = vi.fn();
+    const { baseElement } = render(() => (
+      <AiPanel store={store} mentionFiles={FILES} onMention={onMention} />
+    ));
+    const ta = typeText(baseElement, "@al");
+    pickMention(baseElement);
+    expect(onMention).toHaveBeenCalledWith(FILES[0]);
+    expect(ta.value).toBe("@alpha.md ");
+    // The backdrop renders the tracked token as a pill span.
+    expect(baseElement.querySelector(".ai-inline-mention")?.textContent).toBe("@alpha.md");
+  });
+
+  it("deleting the token text removes the resolved context item", () => {
+    const store = readyStore();
+    const onRemoveContext = vi.fn();
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store}
+        contextItems={[ALPHA_ITEM]}
+        mentionFiles={FILES}
+        onRemoveContext={onRemoveContext}
+      />
+    ));
+    typeText(baseElement, "@al");
+    pickMention(baseElement);
+    // Breaking the token's literal string (one char deleted) untracks it.
+    typeText(baseElement, "@alpha.m ");
+    expect(onRemoveContext).toHaveBeenCalledWith("mention:r:a/alpha.md");
+    expect(baseElement.querySelector(".ai-inline-mention")).toBeNull();
+  });
+
+  it("async orphan: a token deleted before its item lands removes the item on arrival", async () => {
+    const store = readyStore();
+    const onRemoveContext = vi.fn();
+    const [items, setItems] = createSignal<AiContextItem[]>([]);
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store}
+        contextItems={items()}
+        mentionFiles={FILES}
+        onRemoveContext={onRemoveContext}
+      />
+    ));
+    typeText(baseElement, "@al");
+    pickMention(baseElement);
+    // The host is still reading the file — no item yet when the token dies.
+    typeText(baseElement, "x");
+    expect(onRemoveContext).not.toHaveBeenCalled();
+    // The item lands late → the pending-removal sweep drops it immediately.
+    setItems([ALPHA_ITEM]);
+    await waitFor(() => {
+      expect(onRemoveContext).toHaveBeenCalledWith("mention:r:a/alpha.md");
+    });
+  });
+
+  it("the chips bar hides a tokened item but keeps a tree-added one showing", () => {
+    const store = readyStore();
+    const { baseElement } = render(() => (
+      <AiPanel store={store} contextItems={[ALPHA_ITEM, BETA_ITEM]} mentionFiles={FILES} />
+    ));
+    // Both arrived without tokens (file-tree "Add to chat") — both show.
+    expect(baseElement.querySelectorAll(".ai-context-chip")).toHaveLength(2);
+    typeText(baseElement, "@al");
+    pickMention(baseElement);
+    // alpha.md is now represented by its inline token; beta.md keeps its chip.
+    const chips = [...baseElement.querySelectorAll(".ai-context-chip")];
+    expect(chips).toHaveLength(1);
+    expect(chips[0]!.textContent).toContain("beta.md");
+  });
+
+  it("submit keeps tokens verbatim, reorders to textual order, and removes items only after the send resolves", async () => {
+    const send = deferred();
+    const sendMessage = vi.fn(() => send.promise);
+    const store = stubStore({ sendMessage });
+    const onRemoveContext = vi.fn();
+    const onReorderContext = vi.fn();
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store}
+        contextItems={[ALPHA_ITEM, BETA_ITEM]}
+        mentionFiles={FILES}
+        onRemoveContext={onRemoveContext}
+        onReorderContext={onReorderContext}
+      />
+    ));
+    // alpha mentioned first, but its token ends up AFTER beta's in the text:
+    typeText(baseElement, "@al");
+    pickMention(baseElement);
+    const ta = typeText(baseElement, "@be @alpha.md ", 3);
+    pickMention(baseElement);
+    expect(ta.value).toBe("@beta.md  @alpha.md ");
+    fireEvent.keyDown(ta, { key: "Enter" });
+    // Sent text carries the tokens verbatim; the reorder (textual order)
+    // happened BEFORE the send so the preamble matches.
+    expect(sendMessage).toHaveBeenCalledWith("@beta.md  @alpha.md ");
+    expect(onReorderContext).toHaveBeenCalledWith(["beta.md", "alpha.md"]);
+    expect(onReorderContext.mock.invocationCallOrder[0]!).toBeLessThan(
+      sendMessage.mock.invocationCallOrder[0]!,
+    );
+    // Consumed-but-not-removed: the chips stay hidden, items stay attached
+    // (a queued steering send reads the preamble when the turn actually runs).
+    expect(onRemoveContext).not.toHaveBeenCalled();
+    expect(baseElement.querySelectorAll(".ai-context-chip")).toHaveLength(0);
+    send.resolve();
+    await waitFor(() => {
+      expect(onRemoveContext).toHaveBeenCalledWith("mention:r:b/beta.md");
+      expect(onRemoveContext).toHaveBeenCalledWith("mention:r:a/alpha.md");
+    });
+  });
+
+  it("a chat switch with a live token removes its item and empties the composer", async () => {
+    const [store, setStore] = createSignal(readyStore());
+    const onRemoveContext = vi.fn();
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store()}
+        contextItems={[ALPHA_ITEM]}
+        mentionFiles={FILES}
+        onRemoveContext={onRemoveContext}
+      />
+    ));
+    typeText(baseElement, "@al");
+    pickMention(baseElement);
+    setStore(readyStore());
+    await waitFor(() => {
+      expect(onRemoveContext).toHaveBeenCalledWith("mention:r:a/alpha.md");
+    });
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    expect(ta.value).toBe("");
+  });
+
+  it("a label collision falls back to a path-qualified token for the second entry", () => {
+    const store = readyStore();
+    const twins: AiMentionEntry[] = [
+      { label: "notes.md", path: "a/notes.md", rootId: "r1", rootLabel: "wksp" },
+      { label: "notes.md", path: "b/notes.md", rootId: "r2", rootLabel: "docs" },
+    ];
+    const { baseElement } = render(() => <AiPanel store={store} mentionFiles={twins} />);
+    typeText(baseElement, "@notes");
+    pickMention(baseElement, 0);
+    typeText(baseElement, "@notes.md @notes");
+    pickMention(baseElement, 1);
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    expect(ta.value).toBe("@notes.md @docs/b/notes.md ");
+  });
+
+  it("a steering send keeps its mention items attached until the queued turn actually runs (real store)", async () => {
+    // One gated turn per chat() call, capturing the outgoing messages — the
+    // test must prove the QUEUED turn still saw the mention content in its
+    // preamble (getContext is read when the turn runs, not at queue time).
+    const gates: Array<() => void> = [];
+    const outgoing: AIMessage[][] = [];
+    const provider: AIProvider = {
+      async *chat(messages) {
+        outgoing.push([...messages]);
+        await new Promise<void>((resolve) => gates.push(resolve));
+        yield { type: "text-delta", text: "ok" };
+        yield { type: "done" };
+      },
+      async complete() {
+        return "";
+      },
+      async embed() {
+        return [];
+      },
+    };
+    const [items, setItems] = createSignal<AiContextItem[]>([]);
+    const store = createAiChatStore({
+      getProvider: () => provider,
+      getContext: () => buildContextPreamble(items()),
+    });
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store}
+        contextItems={items()}
+        mentionFiles={FILES}
+        onMention={() => setItems([BETA_ITEM])}
+        onRemoveContext={(id) => setItems((prev) => prev.filter((i) => i.id !== id))}
+      />
+    ));
+    // Turn 1 streams (its gate stays closed)...
+    const ta = typeText(baseElement, "hi");
+    fireEvent.keyDown(ta, { key: "Enter" });
+    await waitFor(() => expect(gates).toHaveLength(1));
+    // ...and a steering send with an @-mention queues while it does.
+    typeText(baseElement, "@be");
+    pickMention(baseElement);
+    fireEvent.keyDown(ta, { key: "Enter" });
+    expect(store.queued()).toBe("@beta.md");
+    // The mention's item must STAY attached while the message sits queued.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(items()).toEqual([BETA_ITEM]);
+    // Finish turn 1 → the queued turn runs WITH the mention content attached.
+    gates[0]!();
+    await waitFor(() => expect(gates).toHaveLength(2));
+    expect(outgoing[1]!.at(-1)?.content).toContain("BETA");
+    expect(items()).toEqual([BETA_ITEM]);
+    // Only after the queued turn completes does the consumed item release.
+    gates[1]!();
+    await waitFor(() => expect(items()).toEqual([]));
+  });
+
+  it("twin labels: deleting one twin's token removes ITS item, not the other twin's", () => {
+    const store = readyStore();
+    const [items, setItems] = createSignal<AiContextItem[]>([TWIN_R1_ITEM, TWIN_R2_ITEM]);
+    const onRemoveContext = vi.fn((id: string) =>
+      setItems((prev) => prev.filter((i) => i.id !== id)),
+    );
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store}
+        contextItems={items()}
+        mentionFiles={TWIN_FILES}
+        onRemoveContext={onRemoveContext}
+      />
+    ));
+    // Mention both: the second twin gets the path-qualified collision token.
+    typeText(baseElement, "@notes");
+    pickMention(baseElement, 0);
+    typeText(baseElement, "@notes.md @notes");
+    pickMention(baseElement, 1);
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    expect(ta.value).toBe("@notes.md @docs/b/notes.md ");
+    // Both twins tokened — both chips hidden.
+    expect(baseElement.querySelectorAll(".ai-context-chip")).toHaveLength(0);
+    // Deleting the SECOND twin's token must remove r2's item, never r1's.
+    typeText(baseElement, "@notes.md ");
+    expect(onRemoveContext).toHaveBeenCalledTimes(1);
+    expect(onRemoveContext).toHaveBeenCalledWith("mention:r2:b/notes.md");
+    expect(items()).toEqual([TWIN_R1_ITEM]);
+    // r1's token is still live, so its chip stays hidden (not stranded gone).
+    expect(baseElement.querySelectorAll(".ai-context-chip")).toHaveLength(0);
+  });
+
+  it("twin labels: a tokened twin hides only ITS chip — the untokened twin stays visible and removable", () => {
+    const store = readyStore();
+    const onRemoveContext = vi.fn();
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store}
+        contextItems={[TWIN_R1_ITEM, TWIN_R2_ITEM]}
+        mentionFiles={TWIN_FILES}
+        onRemoveContext={onRemoveContext}
+      />
+    ));
+    // Token only the r2 twin; r1 arrived without a token (tree "Add to chat").
+    typeText(baseElement, "@notes");
+    pickMention(baseElement, 1);
+    const chips = baseElement.querySelectorAll(".ai-context-chip");
+    expect(chips).toHaveLength(1);
+    // The visible chip is r1's — its × removes r1, proving it never stranded.
+    fireEvent.click(chips[0]!.querySelector(".ai-context-chip-x")!);
+    expect(onRemoveContext).toHaveBeenCalledWith("mention:r1:a/notes.md");
+  });
+
+  it("twin labels: an async-orphan removal only kills the dead token's twin when items land", async () => {
+    const store = readyStore();
+    const [items, setItems] = createSignal<AiContextItem[]>([]);
+    const onRemoveContext = vi.fn((id: string) =>
+      setItems((prev) => prev.filter((i) => i.id !== id)),
+    );
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store}
+        contextItems={items()}
+        mentionFiles={TWIN_FILES}
+        onRemoveContext={onRemoveContext}
+      />
+    ));
+    // Mention the r2 twin and kill its token before the host lands any item.
+    typeText(baseElement, "@notes");
+    pickMention(baseElement, 1);
+    typeText(baseElement, "x");
+    expect(onRemoveContext).not.toHaveBeenCalled();
+    // BOTH twins land in the same batch — the sweep may only take r2's.
+    setItems([TWIN_R1_ITEM, TWIN_R2_ITEM]);
+    await waitFor(() => {
+      expect(onRemoveContext).toHaveBeenCalledWith("mention:r2:b/notes.md");
+    });
+    expect(onRemoveContext).toHaveBeenCalledTimes(1);
+    expect(items()).toEqual([TWIN_R1_ITEM]);
+    expect(baseElement.querySelectorAll(".ai-context-chip")).toHaveLength(1);
   });
 });
 

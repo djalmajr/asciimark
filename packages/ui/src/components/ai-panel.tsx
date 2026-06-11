@@ -67,6 +67,11 @@ export interface AiPanelProps {
   /** The active-document chip (read via tool, shown for awareness), or null. */
   activeFileContext?: { label: string } | null;
   onRemoveContext?: (id: string) => void;
+  /** The labels of the composer's inline @-mention tokens, in TEXTUAL order,
+   *  emitted right before a send — the host reorders its context array to
+   *  match (the preamble injects items in array order, so this is the order
+   *  the model receives the references in). */
+  onReorderContext?: (labels: string[]) => void;
   onDismissActiveFile?: () => void;
   /** Handle a file dropped onto the composer (host reads it + adds context). */
   onContextDrop?: (e: DragEvent) => void;
@@ -112,6 +117,7 @@ export interface AiPanelProps {
 export function AiPanel(props: AiPanelProps): JSX.Element {
   const [input, setInput] = createSignal("");
   let textarea: HTMLTextAreaElement | undefined;
+  let highlightEl: HTMLDivElement | undefined;
   let scroller: HTMLDivElement | undefined;
 
   createEffect(() => {
@@ -148,6 +154,10 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
     // abandoned draft would otherwise capture the edit's Enter and replace the
     // loaded content with a "/name " insertion.
     setSlashQuery(null);
+    // The pending draft's inline tokens die with the draft. The loaded text
+    // may contain literal "@..." strings from the original message — those
+    // mentions were consumed at the original send and are NOT re-tracked.
+    clearTrackedMentions();
     textarea?.focus();
   }
 
@@ -158,6 +168,8 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
     // would keep capturing arrows/Enter over the next chat's empty composer.
     setMentionQuery(null);
     setSlashQuery(null);
+    // The draft's inline tokens die with it — their context items too.
+    clearTrackedMentions();
   }
 
   function submit(): void {
@@ -170,10 +182,13 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
       if (props.store.streaming()) return;
       // Editing replaces the turn at `edit.index` (later turns drop) instead
       // of appending a new one. Deliberately NO slash expansion here: an
-      // edited turn was already expanded at its original send.
+      // edited turn was already expanded at its original send. Mentions added
+      // DURING the edit ride the same consumption as a normal send — the
+      // re-run turn reads the context preamble too.
       setEditing(null);
       setInput("");
-      void props.store.editAndResend(edit.index, text);
+      const editTracked = beginMentionConsumption(text);
+      settleMentionConsumption(editTracked, props.store.editAndResend(edit.index, text));
       return;
     }
     // While a turn streams, the store queues the message (steering) — the
@@ -183,7 +198,10 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
     setInput("");
     setMentionQuery(null);
     setSlashQuery(null);
-    void props.store.sendMessage(expandIfSlashCommand(text));
+    // The sent text keeps the inline tokens VERBATIM — the reorder + consume
+    // pair runs before the send so the preamble matches the tokens' order.
+    const tracked = beginMentionConsumption(text);
+    settleMentionConsumption(tracked, props.store.sendMessage(expandIfSlashCommand(text)));
   }
 
   // ── "/" slash commands ─────────────────────────────────────────────────
@@ -270,6 +288,224 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
   const [mentionQuery, setMentionQuery] = createSignal<string | null>(null);
   const [mentionIndex, setMentionIndex] = createSignal(0);
 
+  // ── Inline mention tokens (Cursor-style) ───────────────────────────────
+  // A selected mention stays in the message TEXT as a literal "@label" token;
+  // this map (token string → entry) is the panel's record of which substrings
+  // are live references. Consumed tokens (sent, awaiting settlement) park in
+  // a counted identity map so the chips bar keeps hiding their items until
+  // removal actually fires — counted, because the SAME entry can ride two
+  // in-flight sends (a steering send while a turn streams).
+  const [inlineMentions, setInlineMentions] = createSignal<Map<string, AiMentionEntry>>(new Map());
+  const [consumedMentions, setConsumedMentions] = createSignal<Map<string, number>>(new Map());
+  // Mention identities whose context item didn't exist yet at removal time
+  // (the host resolves file content ASYNC, so a token can die before its
+  // item lands).
+  const [pendingRemovals, setPendingRemovals] = createSignal<Set<string>>(new Set());
+
+  const mentionItemKind = (entry: AiMentionEntry): "file" | "folder" =>
+    entry.kind === "dir" ? "folder" : "file";
+
+  const isSameMentionEntry = (a: AiMentionEntry, b: AiMentionEntry): boolean =>
+    a.path === b.path && a.rootId === b.rootId && mentionItemKind(a) === mentionItemKind(b);
+
+  /** Identity of a mention target — kind + rootId + path. Labels collide
+   *  across roots (twin "notes.md" files in two workspaces), so removal and
+   *  chip-hiding must key on this, never on the label. */
+  const mentionIdentity = (entry: AiMentionEntry): string =>
+    `${mentionItemKind(entry)}\n${entry.rootId}\n${entry.path}`;
+
+  /** The same identity for a host context item, or null when the host
+   *  attached it without path/rootId (then only the label can match). */
+  const itemIdentity = (item: AiContextItem): string | null =>
+    item.kind !== "selection" && item.path !== undefined && item.rootId !== undefined
+      ? `${item.kind}\n${item.rootId}\n${item.path}`
+      : null;
+
+  /** Remove the resolved context item behind `entry` — matched by identity
+   *  (label+kind only for items without path/rootId) — or, when the host
+   *  hasn't landed it yet, queue the identity so the contextItems effect
+   *  below removes it on arrival. */
+  function removeMentionItem(entry: AiMentionEntry): void {
+    const identity = mentionIdentity(entry);
+    const kind = mentionItemKind(entry);
+    const item = props.contextItems?.find((i) =>
+      itemIdentity(i) === null
+        ? i.kind === kind && i.label === entry.label
+        : itemIdentity(i) === identity,
+    );
+    if (item) props.onRemoveContext?.(item.id);
+    else setPendingRemovals((prev) => new Set(prev).add(identity));
+  }
+
+  // Async-orphan sweep: a token died before its item resolved — drop the item
+  // the moment the host lands it. Matched by identity, so a twin (same label,
+  // other root) landing in the same batch survives. Only the matched
+  // identities clear; the rest of the set keeps waiting.
+  createEffect(() => {
+    const items = props.contextItems ?? [];
+    const pending = pendingRemovals();
+    if (pending.size === 0) return;
+    const matched = items.filter((i) => {
+      const identity = itemIdentity(i);
+      return identity !== null && pending.has(identity);
+    });
+    if (matched.length === 0) return;
+    for (const item of matched) props.onRemoveContext?.(item.id);
+    setPendingRemovals((prev) => {
+      const next = new Set(prev);
+      for (const item of matched) next.delete(itemIdentity(item)!);
+      return next;
+    });
+  });
+
+  /** Untrack every token whose literal string no longer occurs in `text` and
+   *  remove its resolved item. Called ONLY from the textarea's input event —
+   *  programmatic setInput paths (submit/cancel/edit/chat-switch) handle
+   *  their own cleanup. */
+  function reconcileMentions(text: string): void {
+    const tracked = inlineMentions();
+    if (tracked.size === 0) return;
+    let changed = false;
+    const next = new Map(tracked);
+    for (const [token, entry] of tracked) {
+      if (hasTokenWithBoundary(text, token)) continue;
+      next.delete(token);
+      changed = true;
+      removeMentionItem(entry);
+    }
+    if (changed) setInlineMentions(next);
+  }
+
+  /** True when `token` occurs in `text` followed by whitespace or the end of
+   *  the text. A bare `includes` would keep a token alive while it merely
+   *  prefixes a longer one ("@wksp/" inside "@wksp/a/notes.md") or after the
+   *  user glued characters onto it ("@a.md" edited into "@a.mdx"). */
+  function hasTokenWithBoundary(text: string, token: string): boolean {
+    let from = 0;
+    while (true) {
+      const at = text.indexOf(token, from);
+      if (at < 0) return false;
+      const after = text[at + token.length];
+      if (after === undefined || /\s/.test(after)) return true;
+      from = at + 1;
+    }
+  }
+
+  /** Draft death: the tracked (non-consumed) tokens die with the draft —
+   *  remove their items (pending-removal set covers unresolved ones) and
+   *  clear the map. Consumed tokens are in-flight sends and settle on their
+   *  own promise. */
+  function clearTrackedMentions(): void {
+    for (const entry of inlineMentions().values()) removeMentionItem(entry);
+    setInlineMentions(new Map());
+  }
+
+  /** Per-message consumption, step 1 (BEFORE sendMessage): emit the tokens'
+   *  textual order so the host reorders the context to match, then park the
+   *  tokens as consumed (one count per entry identity). Returns the snapshot
+   *  for {@link settleMentionConsumption}. */
+  function beginMentionConsumption(text: string): Map<string, AiMentionEntry> {
+    const tracked = inlineMentions();
+    if (tracked.size === 0) return tracked;
+    const byPosition = [...tracked.entries()].sort(([a], [b]) => text.indexOf(a) - text.indexOf(b));
+    props.onReorderContext?.(byPosition.map(([, entry]) => entry.label));
+    setConsumedMentions((prev) => {
+      const next = new Map(prev);
+      for (const entry of tracked.values()) {
+        const identity = mentionIdentity(entry);
+        next.set(identity, (next.get(identity) ?? 0) + 1);
+      }
+      return next;
+    });
+    setInlineMentions(new Map());
+    return tracked;
+  }
+
+  /** Per-message consumption, step 2: act only when the send SETTLES — the
+   *  store resolves a steering send when its queued turn actually completes
+   *  (or the queued slot dies), and the context preamble is read when the
+   *  turn runs, so removing earlier would lose the content. Each entry
+   *  releases one consumption count; its item is removed only when no other
+   *  in-flight send or live composer token still references the identity. */
+  function settleMentionConsumption(
+    tracked: Map<string, AiMentionEntry>,
+    sent: Promise<void>,
+  ): void {
+    if (tracked.size === 0) {
+      void sent;
+      return;
+    }
+    // Settle on BOTH outcomes — a rejected send must still release the
+    // consumption counts or the items stay hidden for the panel's lifetime.
+    const release = (): void => {
+      const released: AiMentionEntry[] = [];
+      const next = new Map(consumedMentions());
+      for (const entry of tracked.values()) {
+        const identity = mentionIdentity(entry);
+        const count = next.get(identity) ?? 0;
+        if (count <= 1) {
+          next.delete(identity);
+          released.push(entry);
+        } else {
+          next.set(identity, count - 1);
+        }
+      }
+      setConsumedMentions(next);
+      const live = new Set([...inlineMentions().values()].map(mentionIdentity));
+      for (const entry of released) {
+        if (!live.has(mentionIdentity(entry))) removeMentionItem(entry);
+      }
+    };
+    void sent.then(release, release);
+  }
+
+  /** Identities hidden from the chips bar: items represented by a live (or
+   *  consumed-but-not-yet-settled) inline token. Items with the same label
+   *  but a different identity (a twin in another root) — and any item the
+   *  host attached without path/rootId — keep showing. */
+  const hiddenChipIdentities = createMemo<Set<string>>(() => {
+    const identities = new Set(consumedMentions().keys());
+    for (const entry of inlineMentions().values()) identities.add(mentionIdentity(entry));
+    return identities;
+  });
+
+  const visibleContextItems = createMemo<AiContextItem[]>(() =>
+    (props.contextItems ?? []).filter((item) => {
+      if (item.kind === "selection") return true;
+      const identity = itemIdentity(item);
+      return identity === null || !hiddenChipIdentities().has(identity);
+    }),
+  );
+
+  /** The input split on tracked tokens (longest-first on ties) for the
+   *  highlight backdrop — plain text nodes + pill spans, never innerHTML. */
+  const highlightSegments = createMemo<{ text: string; token: boolean }[]>(() => {
+    const text = input();
+    const tokens = [...inlineMentions().keys()].sort((a, b) => b.length - a.length);
+    if (tokens.length === 0) return [{ text, token: false }];
+    const segments: { text: string; token: boolean }[] = [];
+    let pos = 0;
+    while (pos < text.length) {
+      let nextIdx = -1;
+      let nextToken = "";
+      for (const token of tokens) {
+        const idx = text.indexOf(token, pos);
+        if (idx !== -1 && (nextIdx === -1 || idx < nextIdx)) {
+          nextIdx = idx;
+          nextToken = token;
+        }
+      }
+      if (nextIdx === -1) {
+        segments.push({ text: text.slice(pos), token: false });
+        break;
+      }
+      if (nextIdx > pos) segments.push({ text: text.slice(pos, nextIdx), token: false });
+      segments.push({ text: nextToken, token: true });
+      pos = nextIdx + nextToken.length;
+    }
+    return segments;
+  });
+
   // Workspace roots (path === "") are pinned: matched separately and NEVER
   // subject to the 8-entry cap, or files would fill the cap and make the
   // roots unreachable in any real workspace. An empty query matches all roots.
@@ -308,16 +544,26 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
     }
   }
 
-  // Selecting a mention REMOVES the "@query" token from the composer (the
-  // reference lives as a context chip, not inline text) and hands the entry to
-  // the host, which resolves + attaches it.
+  // Selecting a mention replaces the typed "@query" with a literal inline
+  // token ("@label ") that STAYS in the message text; the entry is tracked by
+  // its exact token string and the host still resolves + attaches the context
+  // item. A label collision (same file name elsewhere already tracked) falls
+  // back to a path-qualified token so the two references stay distinguishable.
   function selectMention(file: AiMentionEntry): void {
     const ta = textarea;
     if (!ta) return;
     const caret = ta.selectionStart ?? input().length;
-    const before = input().slice(0, caret).replace(MENTION_RE, (_full, pre: string) => pre);
+    let token = `@${file.label}`;
+    const tracked = inlineMentions().get(token);
+    if (tracked && !isSameMentionEntry(tracked, file)) {
+      token = `@${file.rootLabel ? `${file.rootLabel}/` : ""}${file.path}`;
+    }
+    const before = input()
+      .slice(0, caret)
+      .replace(MENTION_RE, (_full, pre: string) => `${pre}${token} `);
     const next = before + input().slice(caret);
     setInput(next);
+    setInlineMentions((prev) => new Map(prev).set(token, file));
     setMentionQuery(null);
     props.onMention?.(file);
     queueMicrotask(() => {
@@ -399,7 +645,7 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
   const displayed = (text: string): string => props.displayText?.(text) ?? text;
 
   const hasContext = (): boolean =>
-    !!props.activeFileContext || (props.contextItems?.length ?? 0) > 0;
+    !!props.activeFileContext || visibleContextItems().length > 0;
 
   const allModels = (): { value: string; label: string }[] =>
     (props.modelGroups ?? []).flatMap((g) => g.models);
@@ -553,7 +799,7 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
                 </span>
               )}
             </Show>
-            <For each={props.contextItems}>
+            <For each={visibleContextItems()}>
               {(item) => (
                 <span class="ai-context-chip" title={item.label}>
                   <Switch fallback={<IconFileText width={12} height={12} />}>
@@ -640,19 +886,36 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
             </For>
           </div>
         </Show>
-        <textarea
-          ref={(el) => (textarea = el)}
-          class="ai-composer-input"
-          rows={2}
-          placeholder={(useLocale(), m.ai_composer_placeholder())}
-          value={input()}
-          onInput={(e) => {
-            setInput(e.currentTarget.value);
-            syncMention(e.currentTarget);
-            syncSlash(e.currentTarget);
-          }}
-          onKeyDown={onKeyDown}
-        />
+        {/* Highlight backdrop UNDER the textarea: same box + identical text
+            metrics, so each tracked token's pill sits exactly behind the
+            textarea's own glyphs (the textarea text renders above the pill —
+            the backdrop's token text stays hidden behind it). */}
+        <div class="ai-composer-input-wrap">
+          <div aria-hidden="true" class="ai-composer-highlight" ref={(el) => (highlightEl = el)}>
+            <For each={highlightSegments()}>
+              {(seg) =>
+                seg.token ? <span class="ai-inline-mention">{seg.text}</span> : seg.text
+              }
+            </For>
+          </div>
+          <textarea
+            ref={(el) => (textarea = el)}
+            class="ai-composer-input"
+            rows={2}
+            placeholder={(useLocale(), m.ai_composer_placeholder())}
+            value={input()}
+            onInput={(e) => {
+              setInput(e.currentTarget.value);
+              reconcileMentions(e.currentTarget.value);
+              syncMention(e.currentTarget);
+              syncSlash(e.currentTarget);
+            }}
+            onKeyDown={onKeyDown}
+            onScroll={(e) => {
+              if (highlightEl) highlightEl.scrollTop = e.currentTarget.scrollTop;
+            }}
+          />
+        </div>
         <div class="ai-composer-footer">
           <Show when={props.onModeChange}>
             <Select

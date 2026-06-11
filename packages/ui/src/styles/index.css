@@ -2529,17 +2529,67 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   background: hsl(var(--bg-hover));
 }
 
+/* Inline @-mention tokens (Cursor-style): a backdrop div mirrors the textarea
+   text 1:1 UNDERNEATH it, with each tracked token wrapped in an accent pill.
+   The metric block is SHARED — any font/padding/line-height/wrapping drift
+   between the two layers would misalign the pills behind the glyphs. */
+/* Scoped under the wrap so the wrapping metrics can't leak into other reusers
+   of .ai-composer-input (the settings panel borrows that class). */
+.ai-composer-input-wrap .ai-composer-input,
+.ai-composer-highlight {
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px 12px 2px;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.ai-composer-input-wrap {
+  position: relative;
+}
+
+.ai-composer-input-wrap .ai-composer-input {
+  /* display: block kills the inline-block baseline gap (the inset-0 backdrop
+     would otherwise be a few px taller than the textarea). The hidden
+     scrollbar matters for alignment too: the global 8px layout-consuming
+     scrollbar would shrink the textarea's wrap width while the backdrop
+     keeps full width — every wrapped line's pills would drift. */
+  display: block;
+  scrollbar-width: none;
+}
+
+.ai-composer-input-wrap .ai-composer-input::-webkit-scrollbar {
+  display: none;
+}
+
 .ai-composer-input {
+  /* Positioned so it paints ABOVE the absolutely-positioned backdrop sibling:
+     the pill sits behind the textarea's own (normally colored) glyphs. */
+  position: relative;
   width: 100%;
   resize: none;
   border: none;
   background: transparent;
   color: hsl(var(--foreground));
-  font-size: 13px;
-  line-height: 1.45;
-  padding: 10px 12px 2px;
-  font-family: inherit;
   outline: none;
+}
+
+.ai-composer-highlight {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* Only the token pills are visible — every other backdrop glyph is
+     transparent (the textarea renders the real text on top). */
+  color: transparent;
+}
+
+.ai-inline-mention {
+  border-radius: 4px;
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary));
 }
 
 .ai-composer-footer {

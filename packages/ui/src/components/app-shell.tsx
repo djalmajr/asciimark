@@ -911,6 +911,7 @@ export function AppShell(props: AppShellProps) {
                 contextItems={s.aiContextItems()}
                 activeFileContext={s.activeFileContext()}
                 onRemoveContext={s.removeAiContext}
+                onReorderContext={s.reorderAiContext}
                 onDismissActiveFile={s.dismissActiveFileContext}
                 mentionFiles={mentionFiles()}
                 slashCommands={props.aiSlashCommands}

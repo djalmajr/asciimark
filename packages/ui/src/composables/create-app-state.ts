@@ -552,6 +552,21 @@ export function createAppState(config: AppStateConfig) {
   function removeAiContext(id: string): void {
     setAiContextItems((prev) => prev.filter((i) => i.id !== id));
   }
+  /** Reorder the context for a send: items whose label is in `labels` (the
+   *  composer's inline @-mention tokens, in textual order) move to the END in
+   *  that order; everything else keeps its relative order, first. The context
+   *  preamble (buildContextPreamble via getContext below) injects items in
+   *  ARRAY order, so this is the order the model receives the references in. */
+  function reorderAiContext(labels: string[]): void {
+    setAiContextItems((prev) => {
+      const rank = new Map(labels.map((label, i) => [label, i]));
+      const rest = prev.filter((item) => !rank.has(item.label));
+      const mentioned = prev
+        .filter((item) => rank.has(item.label))
+        .sort((a, b) => rank.get(a.label)! - rank.get(b.label)!);
+      return [...rest, ...mentioned];
+    });
+  }
   function dismissActiveFileContext(): void {
     setActiveFileContextDismissed(true);
   }
@@ -609,8 +624,11 @@ export function createAppState(config: AppStateConfig) {
       kind,
       label: file.label,
       content: file.content,
-      ...(file.path ? { path: file.path } : {}),
-      ...(file.rootId ? { rootId: file.rootId } : {}),
+      // `!== undefined`, not truthiness: a workspace-root mention has path ""
+      // and the chip must still carry it (the panel matches mention items by
+      // path+rootId identity, since labels collide across roots).
+      ...(file.path !== undefined ? { path: file.path } : {}),
+      ...(file.rootId !== undefined ? { rootId: file.rootId } : {}),
     });
   }
 
@@ -1418,6 +1436,7 @@ export function createAppState(config: AppStateConfig) {
     activeFileContext,
     addAiContext,
     removeAiContext,
+    reorderAiContext,
     dismissActiveFileContext,
     addSelectionToContext,
     addPreviewSelectionToContext,
