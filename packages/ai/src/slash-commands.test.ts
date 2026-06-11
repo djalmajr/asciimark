@@ -160,6 +160,12 @@ describe("parseInstructionsFile", () => {
     expect(parseInstructionsFile("---\nmode:\n---\nBody")?.mode).toBe("append");
   });
 
+  it("accepts mode values case-insensitively (Replace / REPLACE / Append)", () => {
+    expect(parseInstructionsFile("---\nmode: Replace\n---\nBody")?.mode).toBe("replace");
+    expect(parseInstructionsFile("---\nmode: REPLACE\n---\nBody")?.mode).toBe("replace");
+    expect(parseInstructionsFile("---\nmode: Append\n---\nBody")?.mode).toBe("append");
+  });
+
   it("trims the body", () => {
     expect(parseInstructionsFile("\n\n  hi  \n")?.text).toBe("hi");
   });

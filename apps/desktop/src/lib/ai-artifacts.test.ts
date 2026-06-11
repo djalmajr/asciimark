@@ -6,10 +6,13 @@ const SECRET = "sk-w7a4JDfGvnZklepfHyg1unjtehDPpY0b";
 const NOW = new Date(2026, 5, 11, 8, 9, 10);
 
 /** Deps wired the way the app does it: a session map seeded by scrubbing
- *  outbound context, and a write spy standing in for the Tauri write_file. */
+ *  outbound context, and a write spy standing in for the Tauri write_file.
+ *  `placeholder` is whatever the scrub assigned to SECRET — the nonce is
+ *  random per map, so tests derive it instead of hardcoding the format. */
 function artifactDeps() {
   const map = new Map<string, string>();
-  scrubSecrets(`key: ${SECRET}`, map); // the model only ever saw [secret-1]
+  // The model only ever saw the placeholder for SECRET.
+  const placeholder = scrubSecrets(`key: ${SECRET}`, map).text.slice("key: ".length);
   const writes: { content: string; path: string }[] = [];
   const deps = {
     restoreSecrets: (text: string) => restoreSecrets(text, map),
@@ -17,16 +20,16 @@ function artifactDeps() {
       writes.push({ content, path });
     },
   };
-  return { deps, writes };
+  return { deps, placeholder, writes };
 }
 
 describe("savePlanArtifact", () => {
-  it("restores [secret-N] placeholders before the plan reaches disk", async () => {
+  it("restores secret placeholders before the plan reaches disk", async () => {
     // Plan-mode turns receive the scrubbed context, so the model's plan
     // quotes placeholders; the map is session-scoped — a placeholder written
     // to disk would be permanently unresolvable after restart.
-    const { deps, writes } = artifactDeps();
-    const path = await savePlanArtifact(deps, "/ws", "Call the API with key: [secret-1]", NOW);
+    const { deps, placeholder, writes } = artifactDeps();
+    const path = await savePlanArtifact(deps, "/ws", `Call the API with key: ${placeholder}`, NOW);
     expect(path).toBe("/ws/.asciimark/plans/plan-20260611-080910.md");
     expect(writes).toEqual([{ content: `Call the API with key: ${SECRET}`, path }]);
   });
@@ -34,7 +37,7 @@ describe("savePlanArtifact", () => {
 
 describe("exportChatArtifact", () => {
   it("restores placeholders so the file matches the displayed transcript", async () => {
-    const { deps, writes } = artifactDeps();
+    const { deps, placeholder, writes } = artifactDeps();
     const dialogCalls: { defaultDir: string | null; defaultName: string }[] = [];
     const path = await exportChatArtifact(
       {
@@ -45,7 +48,7 @@ describe("exportChatArtifact", () => {
         },
       },
       "/ws",
-      { markdown: "## You\n\nmy key is [secret-1]", title: "My Chat" },
+      { markdown: `## You\n\nmy key is ${placeholder}`, title: "My Chat" },
       NOW,
     );
     expect(dialogCalls).toEqual([

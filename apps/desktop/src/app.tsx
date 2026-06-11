@@ -19,7 +19,11 @@ import { createApprovalGate } from "@asciimark/ai/approval-policy.ts";
 import { resolveModel } from "@asciimark/ai/resolve-model.ts";
 import { resolveCredential } from "@asciimark/ai/resolve-credential.ts";
 import { createProvider as createAiProvider } from "@asciimark/ai/adapter.ts";
-import { restoreSecrets, scrubSecrets } from "@asciimark/ai/secret-scrub.ts";
+import {
+  replaceUnrestoredPlaceholders,
+  restoreSecrets,
+  scrubSecrets,
+} from "@asciimark/ai/secret-scrub.ts";
 import { withBuiltins } from "@asciimark/ai/builtin-providers.ts";
 import {
   getStoredAiEngine,
@@ -49,6 +53,7 @@ import {
 } from "./lib/ai-mcp.ts";
 import { buildInProcessTools } from "./lib/ai-tools.ts";
 import { loadCustomInstructions, loadSlashCommands } from "./lib/ai-commands.ts";
+import { createGenerationGuard } from "./lib/generation-guard.ts";
 import type { CustomInstructions, SlashCommandDef } from "@asciimark/ai/slash-commands.ts";
 import { deleteApiKey, getApiKey, hasApiKey, setApiKey } from "./lib/ai-credentials.ts";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
@@ -128,12 +133,19 @@ export function App() {
   const [mcpTools, setMcpTools] = createSignal<Record<string, string[]>>({});
 
   // Deterministic secret scrubbing (omp#5), session-scoped: one map per app
-  // run keeps `[secret-N]` placeholders stable across every outbound scrub
-  // (file reads, active doc, context chips) so inbound tool args and the chat
-  // display can restore the real values.
+  // run keeps `[secret-<nonce>-N]` placeholders stable across every outbound
+  // scrub (file reads, active doc, context chips) so inbound tool args and the
+  // chat display can restore the real values.
   const aiSecretMap = new Map<string, string>();
   const scrubAi = (text: string): string => scrubSecrets(text, aiSecretMap).text;
   const restoreAi = (text: string): string => restoreSecrets(text, aiSecretMap);
+  /** Chat DISPLAY transform: restore, then label any placeholder the
+   *  session-scoped map can no longer resolve (rehydrated chats from a
+   *  previous run) as an expired secret instead of rendering it raw. Tool-args
+   *  restore stays `restoreAi` — there a stale placeholder must keep failing
+   *  its find-match (fail-safe), not silently morph into a label. */
+  const displayAi = (text: string): string =>
+    replaceUnrestoredPlaceholders(restoreAi(text), m.ai_secret_expired());
 
   // A prompt-tier tool call (MCP / unknown) awaiting Accept/Reject before it
   // runs. Human-in-the-loop gating on top of the current non-streaming loop.
@@ -574,6 +586,10 @@ export function App() {
     } catch {
       argsPreview = String(req.args);
     }
+    // The user must approve the REAL values, not session placeholders. Display
+    // only — the tool still receives the args as sent (restoreSecretsIn maps
+    // them back where they must match real content).
+    argsPreview = restoreAi(argsPreview);
     setPendingApproval({
       toolName: req.toolName,
       source: req.source,
@@ -721,14 +737,24 @@ export function App() {
   // File-backed slash commands + custom instructions (omp#1). Reloaded
   // whenever the primary workspace root changes — the project-level files
   // live under <root>/.asciimark; builtin + global commands survive with no
-  // root open. Both loaders are best-effort and never throw.
+  // root open. Both loaders are best-effort and never throw. The guard makes
+  // resolutions latest-wins: rapid root switches (or popover-open refreshes)
+  // may settle out of order, and a stale load must not clobber a fresh one.
   const [aiSlashCommands, setAiSlashCommands] = createSignal<SlashCommandDef[]>([]);
   const [aiInstructions, setAiInstructions] = createSignal<CustomInstructions | null>(null);
-  createEffect(() => {
+  const aiCommandsGuard = createGenerationGuard();
+  function reloadAiCommands(): void {
     const root = Array.from(rootPaths().values())[0] ?? null;
-    void loadSlashCommands(root).then(setAiSlashCommands);
-    void loadCustomInstructions(root).then(setAiInstructions);
-  });
+    const isLatest = aiCommandsGuard.begin();
+    void loadSlashCommands(root).then((commands) => {
+      if (isLatest()) setAiSlashCommands(commands);
+    });
+    void loadCustomInstructions(root).then((instructions) => {
+      if (isLatest()) setAiInstructions(instructions);
+    });
+  }
+  // reloadAiCommands reads rootPaths() synchronously, so the effect tracks it.
+  createEffect(() => reloadAiCommands());
 
   // Quick Open (Cmd/Ctrl+P) overlay visibility — owned here so the keyboard
   // handler can toggle it without round-tripping through AppShell.
@@ -2298,8 +2324,11 @@ export function App() {
       aiModelGroups={aiModelGroups()}
       aiCurrentModel={aiCurrentModel()}
       aiContextLimit={aiContextLimit()}
-      aiDisplayText={restoreAi}
+      aiDisplayText={displayAi}
       aiSlashCommands={aiSlashCommands()}
+      // Freshness without a file watcher: opening the "/" popover re-runs the
+      // loader (the open transition itself debounces; latest-wins guard above).
+      onAiSlashMenuOpen={reloadAiCommands}
       onSelectAiModel={selectAiModel}
       onOpenSettings={() => setSettingsOpen(true)}
       settingsOpen={settingsOpen()}

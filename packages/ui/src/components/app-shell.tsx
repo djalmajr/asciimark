@@ -100,6 +100,9 @@ interface AppShellProps {
   aiDisplayText?: (text: string) => string;
   /** File-backed slash commands for the chat composer's "/" autocomplete. */
   aiSlashCommands?: SlashCommandDef[];
+  /** The chat composer's "/" autocomplete just opened — the host refreshes
+   *  `aiSlashCommands` so the popover lists fresh entries. */
+  onAiSlashMenuOpen?: () => void;
   /** Persist a model selection from the chat footer picker. */
   onSelectAiModel?: (modelRef: string) => void;
   /** Opens Settings → AI (AI panel empty-state CTA + the picker's "+"/"⚙"). */
@@ -902,6 +905,7 @@ export function AppShell(props: AppShellProps) {
                 onMention={(f) => props.onAddFileMention?.(f)}
                 onOpenExternal={props.onOpenExternal}
                 onOpenSettings={props.onOpenSettings}
+                onSlashMenuOpen={props.onAiSlashMenuOpen}
                 mode={s.aiMode()}
                 planItems={s.aiPlan()?.items}
                 onClearPlan={s.clearAiPlan}

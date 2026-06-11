@@ -627,6 +627,13 @@ export function createAppState(config: AppStateConfig) {
     "Markdown (goal, steps, files to touch, risks). The plan will be saved for " +
     "the user to execute later in Build mode. Output only the plan.";
 
+  /** Build-mode base system prompt — none today (the tool set speaks for
+   *  itself); typed so the custom-instructions merge below composes correctly
+   *  the day a base is introduced. */
+  function buildBaseSystemPrompt(): string | undefined {
+    return undefined;
+  }
+
   // ── AI live plan (omp#3) ────────────────────────────────────────────
   // The checklist the model maintains via app__update_plan and the user
   // steers by checking items off. Per-app-session ONLY — deliberately NOT
@@ -667,15 +674,21 @@ export function createAppState(config: AppStateConfig) {
   const aiSessions = createAiChatSessions({
     getProvider: () => config.createAIProvider?.() ?? null,
     // Plan mode runs tool-less and under a planning system prompt; Build mode
-    // exposes the full host tool set with no extra system prompt. Custom
-    // instructions (omp#1) merge on top: "replace" swaps the (build-mode)
-    // system text for the user's, while the plan prompt is functional — it
-    // encodes the tool-less planning contract — so plan mode ALWAYS keeps it
-    // and the instructions land after a blank line in both modes.
+    // exposes the full host tool set over an (empty today) base prompt.
+    // Custom instructions (omp#1) merge on top, branching explicitly on
+    // instructions.mode so the semantics survive a future base prompt.
     system: () => {
-      const base = aiMode() === "plan" ? PLAN_SYSTEM_PROMPT : undefined;
       const instructions = config.getCustomInstructions?.();
+      if (aiMode() === "plan") {
+        // The plan prompt is functional — it encodes the tool-less planning
+        // contract — so it is NEVER replaced: instructions append after a
+        // blank line regardless of instructions.mode.
+        if (!instructions) return PLAN_SYSTEM_PROMPT;
+        return `${PLAN_SYSTEM_PROMPT}\n\n${instructions.text}`;
+      }
+      const base = buildBaseSystemPrompt();
       if (!instructions) return base;
+      if (instructions.mode === "replace") return instructions.text;
       return base === undefined ? instructions.text : `${base}\n\n${instructions.text}`;
     },
     getTools: async () => {

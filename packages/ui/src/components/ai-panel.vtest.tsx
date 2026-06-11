@@ -517,6 +517,40 @@ describe("AiPanel", () => {
     expect(baseElement.textContent).toContain("token is sk-realvalue");
     expect(baseElement.textContent).not.toContain("secret-1");
   });
+
+  it("expanded tool chip output applies displayText (chip names stay raw)", () => {
+    // Tool args/results carry the placeholders the provider saw — the
+    // expanded terminal block must show the restored values too.
+    const store = createAiChatStore({
+      getProvider: () => null,
+      initialMessages: [
+        {
+          content: "done",
+          role: "assistant",
+          tools: [
+            {
+              result: "key: [secret-1]",
+              status: "done",
+              toolCallId: "t1",
+              toolName: "app__read_file",
+            },
+          ],
+        },
+      ],
+    });
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store}
+        displayText={(text) => text.split("[secret-1]").join("sk-realvalue")}
+        providerLabel="Mock"
+      />
+    ));
+    const chip = baseElement.querySelector(".ai-tool-chip") as HTMLButtonElement;
+    expect(chip.textContent).toContain("read_file");
+    fireEvent.click(chip);
+    const output = baseElement.querySelector(".ai-tool-output");
+    expect(output?.textContent).toBe("key: sk-realvalue");
+  });
 });
 
 describe("AiPanel — slash commands (omp#1)", () => {
@@ -655,6 +689,72 @@ describe("AiPanel — slash commands (omp#1)", () => {
     await waitFor(() => {
       expect(store.messages()[0]?.content).toBe("/su");
     });
+  });
+
+  it("suppresses the '/' autocomplete while editing a turn (mentions stay active)", () => {
+    const store = createAiChatStore({
+      getProvider: () => createMockProvider({ reply: () => "x", chunkDelayMs: 0 }),
+      initialMessages: [
+        { role: "user", content: "q1" },
+        { role: "assistant", content: "a1" },
+      ],
+    });
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store}
+        mentionFiles={[{ label: "alpha.md", path: "a/alpha.md", rootId: "r" }]}
+        slashCommands={SLASH_COMMANDS}
+      />
+    ));
+    fireEvent.click(baseElement.querySelector('[aria-label="Edit and resend"]')!);
+    expect(baseElement.querySelector(".ai-editing-bar")).not.toBeNull();
+    // The edit submit path never expands commands, so "/" must not offer them.
+    typeIntoComposer(baseElement, "/");
+    expect(baseElement.querySelectorAll(".ai-slash-item")).toHaveLength(0);
+    // Mentions are context chips — orthogonal to the send path — and stay on.
+    typeIntoComposer(baseElement, "@al");
+    expect(baseElement.querySelectorAll(".ai-mention-item")).toHaveLength(1);
+  });
+
+  it("clicking edit with the slash list open closes it, and Enter submits the edit", async () => {
+    const store = createAiChatStore({
+      getProvider: () => createMockProvider({ reply: () => "edited reply", chunkDelayMs: 0 }),
+      initialMessages: [
+        { role: "user", content: "q1" },
+        { role: "assistant", content: "a1" },
+      ],
+    });
+    const { baseElement } = render(() => <AiPanel store={store} slashCommands={SLASH_COMMANDS} />);
+    const ta = typeIntoComposer(baseElement, "/su");
+    expect(baseElement.querySelectorAll(".ai-slash-item")).toHaveLength(1);
+    // startEditing bypasses the textarea's input event — the popover belongs
+    // to the abandoned "/su" draft and must close, or its Enter handler would
+    // replace the loaded "q1" draft with "/summarize " instead of submitting.
+    fireEvent.click(baseElement.querySelector('[aria-label="Edit and resend"]')!);
+    expect(baseElement.querySelectorAll(".ai-slash-item")).toHaveLength(0);
+    expect(ta.value).toBe("q1");
+    fireEvent.keyDown(ta, { key: "Enter" });
+    await waitFor(() => {
+      expect(store.messages()).toEqual([
+        { role: "user", content: "q1" },
+        { role: "assistant", content: "edited reply" },
+      ]);
+    });
+    expect(ta.value).toBe("");
+  });
+
+  it("Shift+Enter with the slash list open falls through to newline (no selection)", () => {
+    const store = readyStore();
+    const { baseElement } = render(() => <AiPanel store={store} slashCommands={SLASH_COMMANDS} />);
+    const ta = typeIntoComposer(baseElement, "/su");
+    expect(baseElement.querySelectorAll(".ai-slash-item")).toHaveLength(1);
+    // Not cancelled: the popover branch lets Shift+Enter reach the browser's
+    // default newline insertion instead of selecting the highlighted command.
+    const reachedDefault = fireEvent.keyDown(ta, { key: "Enter", shiftKey: true });
+    expect(reachedDefault).toBe(true);
+    // No "/summarize " insertion happened, and nothing was sent.
+    expect(ta.value).toBe("/su");
+    expect(store.messages()).toHaveLength(0);
   });
 
   it("'@' mentions still work alongside slash commands (the lists never coexist)", () => {

@@ -104,12 +104,13 @@ export function expandSlashCommand(template: string, args: string): string {
 
 /**
  * Parse a custom-instructions file (same frontmatter style). The only honored
- * key is `mode`: "replace" or "append" — anything else (or no frontmatter)
- * falls back to "append". Returns null when the body is empty.
+ * key is `mode`: "replace" or "append" (case-insensitive — "Replace" /
+ * "REPLACE" count) — anything else (or no frontmatter) falls back to
+ * "append". Returns null when the body is empty.
  */
 export function parseInstructionsFile(raw: string): CustomInstructions | null {
   const { body, fields } = splitFrontmatter(raw);
   const text = body.trim();
   if (!text) return null;
-  return { mode: fields.get("mode") === "replace" ? "replace" : "append", text };
+  return { mode: fields.get("mode")?.toLowerCase() === "replace" ? "replace" : "append", text };
 }

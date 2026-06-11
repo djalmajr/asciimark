@@ -76,6 +76,10 @@ export interface AiPanelProps {
   /** File-backed slash commands for the composer's "/" autocomplete. A sent
    *  "/name args" expands the matching template before reaching the store. */
   slashCommands?: SlashCommandDef[];
+  /** The "/" autocomplete just opened (closed→open transition) — the host can
+   *  refresh `slashCommands`; the open list reads the prop reactively, so a
+   *  late-arriving fresh list updates it in place. */
+  onSlashMenuOpen?: () => void;
   /** Opens Settings → AI (empty-state CTA). */
   onOpenSettings?: () => void;
   /** Open an http(s) link from a chat reply in the OS browser. Clicks on chat
@@ -136,6 +140,11 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
   function startEditing(index: number, content: string): void {
     setEditing({ index });
     setInput(content);
+    // Loading the turn bypasses the textarea's input event (where syncSlash
+    // suppresses the list while editing) — an open slash popover from the
+    // abandoned draft would otherwise capture the edit's Enter and replace the
+    // loaded content with a "/name " insertion.
+    setSlashQuery(null);
     textarea?.focus();
   }
 
@@ -157,7 +166,8 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
       // the typed text instead of silently discarding the edit.
       if (props.store.streaming()) return;
       // Editing replaces the turn at `edit.index` (later turns drop) instead
-      // of appending a new one.
+      // of appending a new one. Deliberately NO slash expansion here: an
+      // edited turn was already expanded at its original send.
       setEditing(null);
       setInput("");
       void props.store.editAndResend(edit.index, text);
@@ -205,7 +215,11 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
   });
 
   function syncSlash(ta: HTMLTextAreaElement): void {
-    if (!props.slashCommands?.length) {
+    // No autocomplete while editing a past turn: the edit submit path never
+    // expands commands (the turn was expanded at its original send), so the
+    // list would offer an expansion that cannot happen. Mentions stay active —
+    // they attach context chips, orthogonal to the send path.
+    if (editing() || !props.slashCommands?.length) {
       setSlashQuery(null);
       return;
     }
@@ -218,6 +232,19 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
       setSlashQuery(null);
     }
   }
+
+  // Closed→open transition of the slash autocomplete → let the host refresh
+  // the command list (freshness without a file watcher). `slashMatches` reads
+  // `props.slashCommands` inside its memo, so a late-arriving fresh list
+  // updates the already-open popover in place.
+  createEffect(
+    on(
+      () => slashQuery() !== null,
+      (open, wasOpen) => {
+        if (open && !wasOpen) props.onSlashMenuOpen?.();
+      },
+    ),
+  );
 
   // Selecting a command replaces the typed "/<partial>" prefix with "/name "
   // (the trailing space closes the list) and keeps the caret right after it,
@@ -295,7 +322,9 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
         setSlashIndex((i) => Math.max(i - 1, 0));
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      // Shift+Enter keeps meaning "newline" even with the list open — only a
+      // plain Enter (or Tab, shift or not) selects the highlighted command.
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
         e.preventDefault();
         const command = slashMatches()[slashIndex()];
         if (command) selectSlashCommand(command);
@@ -319,7 +348,8 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
         setMentionIndex((i) => Math.max(i - 1, 0));
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      // Shift+Enter falls through to newline insertion, same as the slash list.
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
         e.preventDefault();
         const m = mentionMatches()[mentionIndex()];
         if (m) selectMention(m);
@@ -388,6 +418,7 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
             {(msg, i) => (
               <AiMessage
                 content={displayed(msg.content)}
+                displayText={props.displayText}
                 role={msg.role}
                 tools={msg.tools}
                 usage={msg.usage}
@@ -415,10 +446,11 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
           </For>
           <Show when={props.store.streaming()}>
             <AiMessage
-              role="assistant"
               content={displayed(props.store.streamingText())}
-              tools={props.store.toolActivity()}
+              displayText={props.displayText}
+              role="assistant"
               streaming
+              tools={props.store.toolActivity()}
             />
           </Show>
         </Show>

@@ -197,6 +197,7 @@
   "ai_chat_archive": "Archive",
   "ai_chat_restore": "Restore",
   "ai_chat_delete": "Delete",
+  "ai_secret_expired": "[expired secret]",
   "ai_tab_pin": "Pin",
   "ai_tab_unpin": "Unpin",
   "ai_tab_rename": "Rename",

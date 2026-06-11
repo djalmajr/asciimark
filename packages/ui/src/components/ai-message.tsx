@@ -10,6 +10,9 @@ import { renderChatMarkdown } from "../lib/chat-markdown.ts";
 
 export interface AiMessageProps {
   content: string;
+  /** Display-only transform applied to expanded tool chip text (e.g. restore
+   *  scrubbed secret placeholders). The host already transforms `content`. */
+  displayText?: (text: string) => string;
   role: "user" | "assistant";
   /** True for the in-flight assistant turn — renders a streaming cursor. */
   streaming?: boolean;
@@ -50,11 +53,19 @@ function formatToolValue(value: unknown): string {
   }
 }
 
+export interface AiToolChipsProps {
+  /** Display-only transform for the expanded terminal block (e.g. restore
+   *  scrubbed secret placeholders). Chip names stay raw — they never carry
+   *  placeholder text. */
+  displayText?: (text: string) => string;
+  tools: ToolActivity[];
+}
+
 /** Compact chips summarizing tool calls made during a turn. Shared by completed
  *  assistant messages and the in-flight streaming reply. Clicking a chip
  *  expands the raw call (args while running, result when settled) in a
  *  terminal-style block. */
-export function AiToolChips(props: { tools: ToolActivity[] }): JSX.Element {
+export function AiToolChips(props: AiToolChipsProps): JSX.Element {
   const [expandedId, setExpandedId] = createSignal<string | null>(null);
   const expandedTool = (): ToolActivity | undefined =>
     props.tools.find((t) => t.toolCallId === expandedId());
@@ -62,9 +73,13 @@ export function AiToolChips(props: { tools: ToolActivity[] }): JSX.Element {
     const tool = expandedTool();
     if (!tool) return "";
     const result = formatToolValue(tool.result);
-    if (result) return result;
     const args = formatToolValue(tool.args);
-    return args ? `${toolDisplayName(tool.toolName)} ${args}` : toolDisplayName(tool.toolName);
+    const raw = result
+      ? result
+      : args
+        ? `${toolDisplayName(tool.toolName)} ${args}`
+        : toolDisplayName(tool.toolName);
+    return props.displayText?.(raw) ?? raw;
   };
   return (
     <div class="ai-tool-chips">
@@ -169,7 +184,7 @@ export function AiMessage(props: AiMessageProps): JSX.Element {
           : (useLocale(), m.ai_message_role_assistant())}
       </div>
       <Show when={props.tools && props.tools.length > 0}>
-        <AiToolChips tools={props.tools!} />
+        <AiToolChips displayText={props.displayText} tools={props.tools!} />
       </Show>
       <div class="ai-message-text">
         <Show when={props.role === "assistant"} fallback={props.content}>

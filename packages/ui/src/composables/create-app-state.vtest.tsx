@@ -924,4 +924,30 @@ describe("AppState — custom instructions in the system prompt (omp#1)", () => 
       },
     );
   });
+
+  it("replace branch toggling modes: build is exactly the text, plan keeps its prompt", async () => {
+    // Exercises the EXPLICIT mode branch: build-mode "replace" returns the
+    // instructions text alone (no plan-prompt leakage after a mode round
+    // trip), while plan mode keeps its functional prompt on the same session.
+    const { calls, provider } = captureProvider();
+    await withState(
+      async (state) => {
+        const id = state.newChat();
+        await state.aiSessions.storeFor(id)!.sendMessage("hi");
+        expect(calls.at(-1)?.system).toBe("You are a pirate.");
+        state.setAiMode("plan");
+        await state.aiSessions.storeFor(id)!.sendMessage("plan it");
+        const planSystem = calls.at(-1)?.system ?? "";
+        expect(planSystem.startsWith("You are in PLAN mode.")).toBe(true);
+        expect(planSystem.endsWith("\n\nYou are a pirate.")).toBe(true);
+        state.setAiMode("build");
+        await state.aiSessions.storeFor(id)!.sendMessage("build it");
+        expect(calls.at(-1)?.system).toBe("You are a pirate.");
+      },
+      {
+        createAIProvider: () => provider,
+        getCustomInstructions: () => ({ mode: "replace", text: "You are a pirate." }),
+      },
+    );
+  });
 });

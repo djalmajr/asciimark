@@ -473,23 +473,33 @@ function depsWithScrubbingFs() {
   return { calls, deps, files, secretMap };
 }
 
+/** The placeholder a scrub assigned to `secret`. Tests derive it from the map
+ *  instead of hardcoding the format — the nonce is random per map. */
+function placeholderFor(secretMap: Map<string, string>, secret: string): string {
+  for (const [placeholder, value] of secretMap) {
+    if (value === secret) return placeholder;
+  }
+  throw new Error("secret was not scrubbed");
+}
+
 describe("secret scrubbing round-trip (restoreSecretsIn)", () => {
   const SECRET = "sk-w7a4JDfGvnZklepfHyg1unjtehDPpY0b";
 
   it("app__read_file serves placeholders, and app__edit_file matches via restore", async () => {
-    // Round-trip: scrub on read produces [secret-1]; the model echoes the
+    // Round-trip: scrub on read produces a placeholder; the model echoes the
     // placeholder in `find`; restore makes it match the REAL file content —
     // and the write lands real values, never placeholders.
-    const { calls, deps, files } = depsWithScrubbingFs();
+    const { calls, deps, files, secretMap } = depsWithScrubbingFs();
     files.set("env.md", `key: ${SECRET}\nrest`);
     const read = (await toolByName(deps, "app__read_file").execute({ path: "env.md" })) as {
       content: string;
     };
-    expect(read.content).toBe("key: [secret-1]\nrest");
+    const ph = placeholderFor(secretMap, SECRET);
+    expect(read.content).toBe(`key: ${ph}\nrest`);
     const res = await toolByName(deps, "app__edit_file").execute({
-      find: "key: [secret-1]",
+      find: `key: ${ph}`,
       path: "env.md",
-      replace: "token: [secret-1]",
+      replace: `token: ${ph}`,
     });
     expect(res).toEqual({ path: "env.md", replacements: 1, status: "edited" });
     expect(calls.at(-1)).toEqual({
@@ -499,13 +509,14 @@ describe("secret scrubbing round-trip (restoreSecretsIn)", () => {
   });
 
   it("app__edit_file line-anchored hunks anchor on the scrubbed text; the write restores", async () => {
-    const { calls, deps, files } = depsWithScrubbingFs();
+    const { calls, deps, files, secretMap } = depsWithScrubbingFs();
     files.set("env.md", `a\nkey: ${SECRET}\nc`);
     // A prior read populated the map (the model can only know the placeholder).
     await toolByName(deps, "app__read_file").execute({ numbered: true, path: "env.md" });
+    const ph = placeholderFor(secretMap, SECRET);
     const res = await toolByName(deps, "app__edit_file").execute({
       edits: [
-        { endLine: 2, expectedText: "key: [secret-1]", replace: "token: [secret-1]", startLine: 2 },
+        { endLine: 2, expectedText: `key: ${ph}`, replace: `token: ${ph}`, startLine: 2 },
       ],
       path: "env.md",
     });
@@ -516,7 +527,7 @@ describe("secret scrubbing round-trip (restoreSecretsIn)", () => {
     });
   });
 
-  // A 3-line PEM block scrubs into ONE [secret-N] line, so scrubbed and real
+  // A 3-line PEM block scrubs into ONE placeholder line, so scrubbed and real
   // line numbers diverge below it. Numbered reads serve scrubbed coordinates;
   // the edit must verify/splice in the SAME system or every hunk at/below the
   // secret fails as a "stale anchor" — or worse, lands on the wrong real line.
@@ -524,7 +535,7 @@ describe("secret scrubbing round-trip (restoreSecretsIn)", () => {
     "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----";
 
   it("a hunk below a multiline PEM secret applies to the intended line", async () => {
-    const { calls, deps, files } = depsWithScrubbingFs();
+    const { calls, deps, files, secretMap } = depsWithScrubbingFs();
     files.set("key.md", `intro\n${PEM}\nmiddle\ntarget\noutro`);
     const read = (await toolByName(deps, "app__read_file").execute({
       numbered: true,
@@ -532,7 +543,9 @@ describe("secret scrubbing round-trip (restoreSecretsIn)", () => {
     })) as { content: string; totalLines: number };
     // 7 real lines collapse to 5 scrubbed lines — the model anchors on these.
     expect(read.totalLines).toBe(5);
-    expect(read.content).toBe("1→intro\n2→[secret-1]\n3→middle\n4→target\n5→outro");
+    expect(read.content).toBe(
+      `1→intro\n2→${placeholderFor(secretMap, PEM)}\n3→middle\n4→target\n5→outro`,
+    );
     const res = await toolByName(deps, "app__edit_file").execute({
       edits: [{ endLine: 4, expectedText: "target", replace: "TARGET", startLine: 4 }],
       path: "key.md",
@@ -545,11 +558,13 @@ describe("secret scrubbing round-trip (restoreSecretsIn)", () => {
   });
 
   it("a hunk over the placeholder line itself is applicable (deletes the real block)", async () => {
-    const { calls, deps, files } = depsWithScrubbingFs();
+    const { calls, deps, files, secretMap } = depsWithScrubbingFs();
     files.set("key.md", `before\n${PEM}\nafter`);
     await toolByName(deps, "app__read_file").execute({ numbered: true, path: "key.md" });
     const res = await toolByName(deps, "app__edit_file").execute({
-      edits: [{ endLine: 2, expectedText: "[secret-1]", replace: "", startLine: 2 }],
+      edits: [
+        { endLine: 2, expectedText: placeholderFor(secretMap, PEM), replace: "", startLine: 2 },
+      ],
       path: "key.md",
     });
     expect(res).toEqual({ path: "key.md", replacements: 1, status: "edited" });
@@ -557,12 +572,12 @@ describe("secret scrubbing round-trip (restoreSecretsIn)", () => {
   });
 
   it("app__create_file writes restored content", async () => {
-    const { calls, deps, files } = depsWithScrubbingFs();
+    const { calls, deps, files, secretMap } = depsWithScrubbingFs();
     // The placeholder exists because the model read a scrubbed file earlier.
     files.set("env.md", `key: ${SECRET}`);
     await toolByName(deps, "app__read_file").execute({ path: "env.md" });
     const res = await toolByName(deps, "app__create_file").execute({
-      content: "copied: [secret-1]",
+      content: `copied: ${placeholderFor(secretMap, SECRET)}`,
       path: "copy.md",
     });
     expect(res).toEqual({ status: "created", path: "copy.md", bytes: `copied: ${SECRET}`.length });
