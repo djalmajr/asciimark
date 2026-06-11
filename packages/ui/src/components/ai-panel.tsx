@@ -35,6 +35,9 @@ export interface AiMentionEntry {
   label: string;
   path: string;
   rootId: string;
+  /** Display-only disambiguation hint: the owning root's name, set by the
+   *  host when more than one workspace root is open. */
+  rootLabel?: string;
 }
 
 export interface AiPanelProps {
@@ -267,12 +270,28 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
   const [mentionQuery, setMentionQuery] = createSignal<string | null>(null);
   const [mentionIndex, setMentionIndex] = createSignal(0);
 
-  const mentionMatches = createMemo(() => {
+  // Workspace roots (path === "") are pinned: matched separately and NEVER
+  // subject to the 8-entry cap, or files would fill the cap and make the
+  // roots unreachable in any real workspace. An empty query matches all roots.
+  const rootMatches = createMemo(() => {
     const q = mentionQuery();
     if (q === null || !props.mentionFiles?.length) return [];
     const ql = q.toLowerCase();
-    return props.mentionFiles.filter((f) => f.label.toLowerCase().includes(ql)).slice(0, 8);
+    return props.mentionFiles.filter((f) => f.path === "" && f.label.toLowerCase().includes(ql));
   });
+
+  const fileMatches = createMemo(() => {
+    const q = mentionQuery();
+    if (q === null || !props.mentionFiles?.length) return [];
+    const ql = q.toLowerCase();
+    return props.mentionFiles
+      .filter((f) => f.path !== "" && f.label.toLowerCase().includes(ql))
+      .slice(0, 8);
+  });
+
+  // Roots first (pinned), then files — the keyboard index spans this combined
+  // list in visual order.
+  const mentionMatches = createMemo(() => [...rootMatches(), ...fileMatches()]);
 
   function syncMention(ta: HTMLTextAreaElement): void {
     if (!props.mentionFiles?.length) {
@@ -564,14 +583,17 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
             <For each={mentionMatches()}>
               {(file, i) => (
                 <button
-                  type="button"
                   class="ai-mention-item"
-                  classList={{ "ai-mention-item-active": i() === mentionIndex() }}
-                  onMouseEnter={() => setMentionIndex(i())}
+                  classList={{
+                    "ai-mention-item-active": i() === mentionIndex(),
+                    "ai-mention-root": file.path === "",
+                  }}
+                  type="button"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     selectMention(file);
                   }}
+                  onMouseEnter={() => setMentionIndex(i())}
                 >
                   <Show when={file.kind === "dir"} fallback={<IconFileText width={12} height={12} />}>
                     <IconFolder width={12} height={12} />
@@ -579,7 +601,17 @@ export function AiPanel(props: AiPanelProps): JSX.Element {
                   <span class="ai-mention-name">
                     {file.kind === "dir" && !file.label.endsWith("/") ? `${file.label}/` : file.label}
                   </span>
-                  <span class="ai-mention-path">{file.path}</span>
+                  <Show
+                    when={file.path === ""}
+                    fallback={<span class="ai-mention-path">{file.path}</span>}
+                  >
+                    <span class="ai-mention-root-badge">
+                      {(useLocale(), m.ai_mention_workspace())}
+                    </span>
+                  </Show>
+                  <Show when={file.rootLabel}>
+                    <span class="ai-mention-root-hint">{file.rootLabel}</span>
+                  </Show>
                 </button>
               )}
             </For>

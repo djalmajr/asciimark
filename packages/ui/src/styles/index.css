@@ -2448,6 +2448,28 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
   color: hsl(var(--muted-foreground));
   font-size: 10px;
 }
+/* Workspace-root rows are pinned scope entries: a small "workspace" badge
+   replaces the (empty) path; a dim trailing rootLabel hint disambiguates
+   duplicate names across roots. */
+.ai-mention-root .ai-mention-name {
+  font-weight: 500;
+}
+.ai-mention-root-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: hsl(var(--secondary));
+  color: hsl(var(--muted-foreground));
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ai-mention-root-hint {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+}
 /* "/" slash-command autocomplete — shares the mention list shell; only the
    command name gets a slightly stronger weight so it reads as a command. */
 .ai-slash-name {

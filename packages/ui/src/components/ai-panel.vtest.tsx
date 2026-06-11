@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-li
 import { createMockProvider } from "@asciimark/ai/mock-provider.ts";
 import type { SlashCommandDef } from "@asciimark/ai/slash-commands.ts";
 import { createAiChatStore } from "../composables/create-ai-chat-store.ts";
-import { AiPanel } from "./ai-panel.tsx";
+import { AiPanel, type AiMentionEntry } from "./ai-panel.tsx";
 import { AiMessage } from "./ai-message.tsx";
 
 afterEach(cleanup);
@@ -550,6 +550,93 @@ describe("AiPanel", () => {
     fireEvent.click(chip);
     const output = baseElement.querySelector(".ai-tool-output");
     expect(output?.textContent).toBe("key: sk-realvalue");
+  });
+});
+
+describe("AiPanel — @-mention workspace roots", () => {
+  const ROOT: AiMentionEntry = { kind: "dir", label: "wksp/", path: "", rootId: "r1" };
+
+  /** N files plus the root — appended LAST, mirroring app-shell's memo, so
+   *  these tests prove the popover reorders roots to the top. */
+  function mentionEntries(fileCount: number): AiMentionEntry[] {
+    const files: AiMentionEntry[] = Array.from({ length: fileCount }, (_, n) => ({
+      kind: "file",
+      label: `file-${n}.md`,
+      path: `docs/file-${n}.md`,
+      rootId: "r1",
+    }));
+    return [...files, ROOT];
+  }
+
+  function typeMention(baseElement: HTMLElement, value: string): HTMLTextAreaElement {
+    const ta = baseElement.querySelector(".ai-composer-input") as HTMLTextAreaElement;
+    ta.value = value;
+    ta.setSelectionRange(value.length, value.length);
+    fireEvent.input(ta);
+    return ta;
+  }
+
+  it("pins the root above the files on '@' even when files fill the 8-entry cap", () => {
+    const store = readyStore();
+    const { baseElement } = render(() => (
+      <AiPanel store={store} mentionFiles={mentionEntries(12)} />
+    ));
+    typeMention(baseElement, "@");
+    const items = baseElement.querySelectorAll(".ai-mention-item");
+    // 1 pinned root + the 8-file cap — the root is NOT subject to the cap.
+    expect(items).toHaveLength(9);
+    expect(items[0]!.classList.contains("ai-mention-root")).toBe(true);
+    expect(items[0]!.querySelector(".ai-mention-name")?.textContent).toBe("wksp/");
+    // Only the root row carries the workspace badge.
+    expect(items[0]!.querySelector(".ai-mention-root-badge")?.textContent).toBe("workspace");
+    expect(baseElement.querySelectorAll(".ai-mention-root-badge")).toHaveLength(1);
+  });
+
+  it("hides roots that don't match a file-only query", () => {
+    const store = readyStore();
+    const { baseElement } = render(() => (
+      <AiPanel store={store} mentionFiles={mentionEntries(3)} />
+    ));
+    typeMention(baseElement, "@file-1");
+    const items = baseElement.querySelectorAll(".ai-mention-item");
+    expect(items).toHaveLength(1);
+    expect(items[0]!.classList.contains("ai-mention-root")).toBe(false);
+    expect(baseElement.querySelectorAll(".ai-mention-root")).toHaveLength(0);
+  });
+
+  it("renders the dim rootLabel hint on entries that carry one", () => {
+    const store = readyStore();
+    const { baseElement } = render(() => (
+      <AiPanel
+        store={store}
+        mentionFiles={[
+          { kind: "file", label: "alpha.md", path: "a/alpha.md", rootId: "r1", rootLabel: "wksp" },
+          ROOT,
+        ]}
+      />
+    ));
+    typeMention(baseElement, "@al");
+    const items = baseElement.querySelectorAll(".ai-mention-item");
+    expect(items).toHaveLength(1);
+    expect(items[0]!.querySelector(".ai-mention-root-hint")?.textContent).toBe("wksp");
+    // The root entry itself carries no rootLabel — no hint on its row.
+    typeMention(baseElement, "@");
+    expect(baseElement.querySelector(".ai-mention-root .ai-mention-root-hint")).toBeNull();
+  });
+
+  it("Enter on index 0 inserts the pinned root mention", () => {
+    const store = readyStore();
+    const onMention = vi.fn();
+    const { baseElement } = render(() => (
+      <AiPanel store={store} mentionFiles={mentionEntries(12)} onMention={onMention} />
+    ));
+    const ta = typeMention(baseElement, "@");
+    fireEvent.keyDown(ta, { key: "Enter" });
+    expect(onMention).toHaveBeenCalledWith(ROOT);
+    // The "@" token is removed, the list closes, nothing was sent.
+    expect(ta.value).toBe("");
+    expect(baseElement.querySelectorAll(".ai-mention-item")).toHaveLength(0);
+    expect(store.messages()).toHaveLength(0);
   });
 });
 

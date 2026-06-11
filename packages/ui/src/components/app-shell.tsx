@@ -464,16 +464,28 @@ export function AppShell(props: AppShellProps) {
   // trailing "/" label and attach a subtree listing instead of file content.
   const mentionFiles = createMemo((): AiMentionEntry[] => {
     const roots = s.rootsList();
+    // rootLabel disambiguates duplicate names across workspaces — only set
+    // (and only rendered) when more than one root is open. Root entries
+    // themselves stay identifiable as `path: ""` and carry no hint.
+    const rootLabelFor = (rootId: string): string | undefined =>
+      roots.length > 1 ? roots.find((r) => r.id === rootId)?.name : undefined;
     const entries: AiMentionEntry[] = flattenWorkspace(roots).map((f) => ({
       kind: "file",
       label: f.name,
       path: f.path,
       rootId: f.rootId,
+      rootLabel: rootLabelFor(f.rootId),
     }));
     const walkDirs = (children: readonly FSEntry[], rootId: string): void => {
       for (const entry of children) {
         if (entry.kind !== "directory") continue;
-        entries.push({ kind: "dir", label: `${entry.name}/`, path: entry.path, rootId });
+        entries.push({
+          kind: "dir",
+          label: `${entry.name}/`,
+          path: entry.path,
+          rootId,
+          rootLabel: rootLabelFor(rootId),
+        });
         if (entry.children) walkDirs(entry.children, rootId);
       }
     };

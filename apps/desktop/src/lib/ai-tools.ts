@@ -33,6 +33,39 @@ export interface PlanToolItem {
   text: string;
 }
 
+/** Resolved file a path-targeted app__excalidraw_write should land in. Built
+ *  HERE (where the workspace-path resolver lives) so the host consumes the
+ *  pieces directly: `absPath` keys its Excalidraw frame registry, `root`+`rel`
+ *  feed the fs primitives and the file tree. */
+export interface ExcalidrawWriteTarget {
+  /** `root` + "/" + `rel` — the key the host's frame registry uses. */
+  absPath: string;
+  /** Root-relative path (forward slashes). */
+  rel: string;
+  /** Absolute path of the workspace root containing the file. */
+  root: string;
+}
+
+/** Input of the applyExcalidrawMermaid dep: the guest write plus an optional
+ *  resolved target file. Absent target → the currently open diagram. */
+export interface ExcalidrawMermaidRequest extends ExcalidrawWriteInput {
+  target?: ExcalidrawWriteTarget;
+}
+
+/** What the host did to a path target before drawing in it. */
+export interface ExcalidrawTargetFileOutcome {
+  created: boolean;
+  opened: boolean;
+  /** Absolute path of the targeted `.excalidraw` file. */
+  path: string;
+}
+
+/** Result of the applyExcalidrawMermaid dep: the guest's write result, plus —
+ *  for path-targeted writes only — what the host did to reach the target. */
+export interface ExcalidrawMermaidOutcome extends ExcalidrawWriteResult {
+  file?: ExcalidrawTargetFileOutcome;
+}
+
 export interface InProcessToolDeps {
   /** Filesystem bridge enabling app__read_file / app__create_file /
    *  app__create_folder. Omitted -> those tools are not offered. */
@@ -64,18 +97,21 @@ export interface InProcessToolDeps {
    *  app__update_plan is offered only when the host provides this. Pure UI
    *  state — the tool runs without approval. */
   updatePlan?: (items: PlanToolItem[] | null) => void;
-  /** Draw/update a diagram in the active `.excalidraw` from Mermaid text.
-   *  Returns a failure result (not a throw) when no diagram is open. */
-  applyExcalidrawMermaid: (input: ExcalidrawWriteInput) => Promise<ExcalidrawWriteResult>;
+  /** Draw/update a diagram from Mermaid text. No `input.target` → draws in
+   *  the active `.excalidraw` (current behavior); with a resolved target the
+   *  host opens that file (creating it first when missing) and renders there.
+   *  Returns a failure result (not a throw) when the canvas isn't available. */
+  applyExcalidrawMermaid: (input: ExcalidrawMermaidRequest) => Promise<ExcalidrawMermaidOutcome>;
 }
 
 const APPLY_MODES: readonly ExcalidrawApplyMode[] = ["replace-selection", "append", "replace-all"];
 
-/** Mirror of the Rust `FileMatch` (find_in_files), camelCased over IPC. */
+/** Mirror of the Rust `FileMatch` (find_in_files). The struct has no serde
+ *  rename_all, so fields arrive snake_case — same shape lib/fs.ts documents. */
 interface FileMatch {
+  line_number: number;
+  line_text: string;
   path: string;
-  lineNumber: number;
-  lineText: string;
 }
 
 interface DirEntryLite {
@@ -86,6 +122,13 @@ interface DirEntryLite {
 
 const APP = "app";
 const SEARCH_RESULT_CAP = 50;
+
+// Shared sentence for every path-taking tool so the model learns the
+// multi-root namespace once instead of per tool.
+const MULTI_ROOT_PATHS_NOTE =
+  " When several workspace folders are open, every path is namespaced by its workspace " +
+  "name (the folder's basename, e.g. 'my-notes/docs/guide.md') — app__list_files reports " +
+  "the names.";
 
 // Steers the model away from app__propose_edit (a text-replace that can't touch
 // the canvas) and toward the Excalidraw write tool when reading a diagram.
@@ -129,7 +172,8 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
     name: "app__search_workspace",
     source: APP,
     description:
-      "Search the user's workspace files (markdown/asciidoc/text) for a query string. Returns matching file paths with line numbers.",
+      "Search the user's workspace files (markdown/asciidoc/text) for a query string. Returns matching file paths with line numbers." +
+      MULTI_ROOT_PATHS_NOTE,
     inputSchema: {
       type: "object",
       properties: {
@@ -141,16 +185,24 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
     execute: async (args) => {
       const query = String((args as { query?: unknown })?.query ?? "").trim();
       if (!query) return { matches: [], note: "empty query" };
-      const root = deps.getWorkspaceRoots()[0];
-      if (!root) return { matches: [], note: "no workspace open" };
-      const matches = await invoke<FileMatch[]>("find_in_files", { root, query });
+      const roots = rootNamesFor(deps.getWorkspaceRoots());
+      if (roots.length === 0) return { matches: [], note: "no workspace open" };
+      // Every root is searched concurrently; the result cap applies to the
+      // MERGED list so the model sees one consistent budget across roots.
+      const perRoot = await Promise.all(
+        roots.map(async (root) => {
+          const matches = await invoke<FileMatch[]>("find_in_files", { root: root.path, query });
+          return matches.map((m) => ({
+            path: roots.length > 1 ? `${root.name}/${m.path}` : m.path,
+            line: m.line_number,
+            text: scrub(m.line_text),
+          }));
+        }),
+      );
+      const merged = perRoot.flat();
       return {
-        matches: matches.slice(0, SEARCH_RESULT_CAP).map((m) => ({
-          path: m.path,
-          line: m.lineNumber,
-          text: scrub(m.lineText),
-        })),
-        truncated: matches.length > SEARCH_RESULT_CAP,
+        matches: merged.slice(0, SEARCH_RESULT_CAP),
+        truncated: merged.length > SEARCH_RESULT_CAP,
       };
     },
   };
@@ -158,16 +210,25 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
   const listFiles: AITool = {
     name: "app__list_files",
     source: APP,
-    description: "List the files and folders in the open workspace.",
+    description: "List the files and folders in the open workspace." + MULTI_ROOT_PATHS_NOTE,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     execute: async () => {
-      const root = deps.getWorkspaceRoots()[0];
-      if (!root) return { entries: [], note: "no workspace open" };
-      const entries = await invoke<DirEntryLite[]>("read_dir", { path: root });
-      return {
-        root,
-        entries: entries.map((e) => ({ name: e.name, kind: e.kind, path: e.path })),
-      };
+      const roots = rootNamesFor(deps.getWorkspaceRoots());
+      if (roots.length === 0) return { entries: [], note: "no workspace open" };
+      const perRoot = await Promise.all(
+        roots.map(async (root) => {
+          const entries = await invoke<DirEntryLite[]>("read_dir", { path: root.path });
+          return entries.map((e) => ({
+            name: e.name,
+            kind: e.kind,
+            path: roots.length > 1 ? `${root.name}/${e.path}` : e.path,
+          }));
+        }),
+      );
+      // Single root keeps today's shape; multi-root swaps `root` for `roots`,
+      // the names that namespace every entry path above.
+      if (roots.length === 1) return { root: roots[0].path, entries: perRoot[0] };
+      return { entries: perRoot.flat(), roots: roots.map((r) => r.name) };
     },
   };
 
@@ -199,16 +260,20 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
     name: "app__excalidraw_write",
     source: APP,
     description:
-      "Draw or update a diagram in the Excalidraw canvas the user currently has open, by " +
-      "providing the diagram as Mermaid text. Excalidraw renders ONLY these Mermaid diagram " +
-      "types as editable shapes: flowchart, sequenceDiagram, classDiagram, and " +
-      "erDiagram — prefer them. Other types (pie, gantt, state, mindmap, …) come in as a " +
-      "single flat image, so avoid them. `mode` controls placement: " +
+      "Draw or update a diagram in an Excalidraw canvas by providing the diagram as Mermaid " +
+      "text. Two modes: without `path`, draws on the .excalidraw file the user currently has " +
+      "open (fails when none is open); with `path` (workspace-relative, ending in " +
+      "'.excalidraw'), the app opens that file — creating it first when it doesn't exist — " +
+      "and renders there, with no user action required. Excalidraw renders ONLY these " +
+      "Mermaid diagram types as editable shapes: flowchart, sequenceDiagram, classDiagram, " +
+      "and erDiagram — prefer them. Other types (pie, gantt, state, mindmap, …) come in as " +
+      "a single flat image, so avoid them. `mode` controls placement: " +
       "'replace-selection' swaps the user's current diagram selection for the new one (use " +
       "when they asked to change/fix the selected part; falls back to append if nothing is " +
       "selected); 'append' adds the diagram below existing content (the default — use to add " +
       "to the canvas); 'replace-all' clears the canvas first (only when explicitly asked to " +
-      "start over). Only works when a .excalidraw file is the active document.",
+      "start over)." +
+      MULTI_ROOT_PATHS_NOTE,
     inputSchema: {
       type: "object",
       properties: {
@@ -221,18 +286,43 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
           enum: ["replace-selection", "append", "replace-all"],
           description: "Where to place the diagram. Defaults to 'append'.",
         },
+        path: {
+          type: "string",
+          description:
+            "Workspace-relative path of the .excalidraw file to draw in (created and opened " +
+            "automatically when missing). Omit to draw on the currently open diagram.",
+        },
       },
       required: ["mermaid"],
       additionalProperties: false,
     },
     execute: async (args) => {
-      const a = args as { mermaid?: unknown; mode?: unknown };
+      const a = args as { mermaid?: unknown; mode?: unknown; path?: unknown };
       const mermaid = restore(String(a?.mermaid ?? "")).trim();
       if (!mermaid) return { ok: false, error: "`mermaid` is required." };
       const mode: ExcalidrawApplyMode = APPLY_MODES.includes(a?.mode as ExcalidrawApplyMode)
         ? (a.mode as ExcalidrawApplyMode)
         : "append";
-      return deps.applyExcalidrawMermaid({ mermaid, mode });
+      const path = typeof a?.path === "string" ? a.path.trim() : "";
+      if (!path) return deps.applyExcalidrawMermaid({ mermaid, mode });
+      if (!path.toLowerCase().endsWith(".excalidraw")) {
+        return {
+          ok: false,
+          error:
+            `\`path\` must point at a .excalidraw file (got '${path}'). ` +
+            "Omit it to draw on the currently open diagram.",
+        };
+      }
+      const resolved = resolveWorkspacePath(deps.getWorkspaceRoots(), path);
+      if ("error" in resolved) return { ok: false, error: resolved.error };
+      const target: ExcalidrawWriteTarget = {
+        absPath: `${resolved.root.path}/${resolved.rel}`,
+        rel: resolved.rel,
+        root: resolved.root.path,
+      };
+      const result = await deps.applyExcalidrawMermaid({ mermaid, mode, target });
+      // Echo the path as the model sent it so it can correlate the result.
+      return { ...result, path };
     },
   };
 
@@ -292,7 +382,30 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
   // (read/write tiers as policy — same model the omp agent uses).
   const fs = deps.fs;
   if (fs) {
-    const requireRoot = (): string | null => deps.getWorkspaceRoots()[0] ?? null;
+    // With several roots open the FIRST path segment names the root; the
+    // remainder stays workspace-relative for the (Rust-validated) bridge.
+    const resolvePath = (path: string): ResolvedWorkspacePath | { error: string } =>
+      resolveWorkspacePath(deps.getWorkspaceRoots(), path);
+
+    // Back-compat READ fallback: with ONE root paths resolve literally, but a
+    // model that learned the multi-root namespace (before the other roots
+    // were closed) may still prefix the root name. The literal path always
+    // wins — only when it is MISSING is the redundant prefix retried
+    // stripped. Creates/writes/excalidraw targets never get this: they must
+    // land exactly where the (user-approved) path says.
+    const readResolved = async (
+      resolved: ResolvedWorkspacePath,
+    ): Promise<{ content: string; rel: string } | null> => {
+      const content = await fs.readFileRelative(resolved.root.path, resolved.rel);
+      if (content !== null) return { content, rel: resolved.rel };
+      if (deps.getWorkspaceRoots().length !== 1) return null;
+      const prefix = `${resolved.root.name}/`;
+      if (!resolved.rel.startsWith(prefix)) return null;
+      const rel = resolved.rel.slice(prefix.length);
+      if (!rel) return null;
+      const fallback = await fs.readFileRelative(resolved.root.path, rel);
+      return fallback === null ? null : { content: fallback, rel };
+    };
 
     const readFile: AITool = {
       name: "app__read_file",
@@ -305,7 +418,8 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
         "is sliced before the size cap, so every slice of a huge file is reachable). Pass " +
         "numbered: true to prefix each line with its line number as 'N→'; use those numbers " +
         "to build line-anchored `edits` for app__edit_file. The 'N→' prefix is metadata, NOT " +
-        "file content — strip everything through the first '→' when quoting the file's text.",
+        "file content — strip everything through the first '→' when quoting the file's text." +
+        MULTI_ROOT_PATHS_NOTE,
       inputSchema: {
         type: "object",
         properties: {
@@ -327,15 +441,16 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
         const a = isRecord(args) ? args : {};
         const path = typeof a.path === "string" ? a.path.trim() : "";
         if (!path) return { status: "error", message: "`path` is required." };
-        const root = requireRoot();
-        if (!root) return { status: "error", message: "No workspace is open." };
-        const content = await fs.readFileRelative(root, path);
-        if (content === null) {
+        const resolved = resolvePath(path);
+        if ("error" in resolved) return { status: "error", message: resolved.error };
+        const read = await readResolved(resolved);
+        if (read === null) {
           return {
             status: "error",
             message: `File not found: ${path}. Use app__list_files or app__search_workspace to discover valid paths.`,
           };
         }
+        const content = read.content;
         const startLine = readLineParam(a.startLine);
         const endLine = readLineParam(a.endLine);
         const numbered = a.numbered === true;
@@ -382,7 +497,8 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
       source: APP,
       approval: "prompt",
       description:
-        "Create a folder (and any missing parents) at a workspace-relative path. The user approves each call.",
+        "Create a folder (and any missing parents) at a workspace-relative path. The user approves each call." +
+        MULTI_ROOT_PATHS_NOTE,
       inputSchema: {
         type: "object",
         properties: {
@@ -394,10 +510,10 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
       execute: async (args) => {
         const path = String((args as { path?: unknown })?.path ?? "").trim();
         if (!path) return { status: "error", message: "`path` is required." };
-        const root = requireRoot();
-        if (!root) return { status: "error", message: "No workspace is open." };
+        const resolved = resolvePath(path);
+        if ("error" in resolved) return { status: "error", message: resolved.error };
         try {
-          await fs.createDir(root, path);
+          await fs.createDir(resolved.root.path, resolved.rel);
           return { status: "created", path };
         } catch (err) {
           return { status: "error", message: creationErrorMessage(err, path) };
@@ -410,7 +526,8 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
       source: APP,
       approval: "prompt",
       description:
-        "Create a NEW file at a workspace-relative path, optionally with initial content. Refuses to overwrite an existing file — to change one, use app__propose_edit on the active document instead. The user approves each call.",
+        "Create a NEW file at a workspace-relative path, optionally with initial content. Refuses to overwrite an existing file — to change one, use app__propose_edit on the active document instead. The user approves each call." +
+        MULTI_ROOT_PATHS_NOTE,
       inputSchema: {
         type: "object",
         properties: {
@@ -424,10 +541,10 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
         const a = args as { content?: unknown; path?: unknown };
         const path = String(a?.path ?? "").trim();
         if (!path) return { status: "error", message: "`path` is required." };
-        const root = requireRoot();
-        if (!root) return { status: "error", message: "No workspace is open." };
+        const resolved = resolvePath(path);
+        if ("error" in resolved) return { status: "error", message: resolved.error };
         try {
-          await fs.createFile(root, path);
+          await fs.createFile(resolved.root.path, resolved.rel);
         } catch (err) {
           return { status: "error", message: creationErrorMessage(err, path) };
         }
@@ -435,7 +552,7 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
         if (content) {
           // create_file validated the path against the root; writing through
           // the joined absolute path reuses that vetted location.
-          await fs.writeFileAbs(`${root}/${path}`, content);
+          await fs.writeFileAbs(`${resolved.root.path}/${resolved.rel}`, content);
         }
         return { status: "created", path, bytes: content.length };
       },
@@ -454,7 +571,8 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
         "text of lines startLine..endLine joined with \\n (strip the 'N→' prefixes — they are " +
         "not file content). Hunks must not overlap; they are applied bottom-up, so the line " +
         "numbers you read stay valid for every hunk. When `edits` is present, find/replace/all " +
-        "are ignored. The user approves each call.",
+        "are ignored. The user approves each call." +
+        MULTI_ROOT_PATHS_NOTE,
       inputSchema: {
         type: "object",
         properties: {
@@ -495,15 +613,19 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
         const a = isRecord(args) ? args : {};
         const path = typeof a.path === "string" ? a.path.trim() : "";
         if (!path) return { status: "error", message: "`path` is required." };
-        const root = requireRoot();
-        if (!root) return { status: "error", message: "No workspace is open." };
-        const raw = await fs.readFileRelative(root, path);
-        if (raw === null) {
+        const resolved = resolvePath(path);
+        if ("error" in resolved) return { status: "error", message: resolved.error };
+        // Edits write back through `read.rel` — the path the read actually
+        // resolved — so a fallback-located file is edited in place, never a
+        // phantom sibling at the literal (missing) path.
+        const read = await readResolved(resolved);
+        if (read === null) {
           return {
             status: "error",
             message: `File not found: ${path}. Use app__list_files to discover valid paths, or app__create_file for a new file.`,
           };
         }
+        const raw = read.content;
         if (a.edits !== undefined) {
           const parsed = parseLineEdits(a.edits);
           if ("error" in parsed) return { status: "error", message: parsed.error };
@@ -516,7 +638,7 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
           // untouched regions byte-identical and maps placeholder lines back.
           const applied = applyLineEdits(raw, parsed.hunks, path);
           if ("error" in applied) return { status: "error", message: applied.error };
-          await fs.writeFileAbs(`${root}/${path}`, restore(applied.next));
+          await fs.writeFileAbs(`${resolved.root.path}/${read.rel}`, restore(applied.next));
           return { path, replacements: parsed.hunks.length, status: "edited" };
         }
         // find/replace mode is coordinate-free: the bridge scrubs reads for
@@ -554,7 +676,7 @@ export function buildInProcessTools(deps: InProcessToolDeps): AITool[] {
           a.all === true
             ? content.split(find).join(replace)
             : content.replace(find, replace);
-        await fs.writeFileAbs(`${root}/${path}`, next);
+        await fs.writeFileAbs(`${resolved.root.path}/${read.rel}`, next);
         return { path, replacements: a.all === true ? occurrences : 1, status: "edited" };
       },
     };
@@ -723,6 +845,76 @@ function applyLineEdits(
   }
   const eol = content.includes("\r\n") ? "\r\n" : "\n";
   return { next: lines.join(eol) };
+}
+
+/** A workspace root paired with the model-facing name that namespaces its
+ *  paths when several roots are open. */
+export interface NamedWorkspaceRoot {
+  name: string;
+  path: string;
+}
+
+/** Outcome of resolving a (possibly root-qualified) tool path: the root it
+ *  belongs to plus the remainder, which stays root-relative for the bridge
+ *  (the Rust side keeps rejecting `..`/absolute remainders). */
+export interface ResolvedWorkspacePath {
+  rel: string;
+  root: NamedWorkspaceRoot;
+}
+
+/** Basename of a root path, tolerant of Windows separators and a trailing
+ *  slash — the model-facing workspace name. */
+function rootBasename(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  const base = cut >= 0 ? trimmed.slice(cut + 1) : trimmed;
+  return base || "workspace";
+}
+
+/** Name each open root after its folder basename, in open order. Basename
+ *  collisions get "-2"/"-3"… suffixes so every name stays unique. */
+export function rootNamesFor(roots: string[]): NamedWorkspaceRoot[] {
+  const used = new Set<string>();
+  return roots.map((path) => {
+    const base = rootBasename(path);
+    let name = base;
+    for (let n = 2; used.has(name); n += 1) name = `${base}-${n}`;
+    used.add(name);
+    return { name, path };
+  });
+}
+
+/** Map a tool path onto an open workspace root. With ONE root the path passes
+ *  through unchanged — the literal path always wins, because single-root tool
+ *  outputs are unprefixed and the root may genuinely contain a top-level
+ *  folder named after itself (stripping would silently redirect reads AND
+ *  writes one level up). With several roots, the FIRST segment must name a
+ *  root. Errors are instructional strings for the model, not throws. */
+export function resolveWorkspacePath(
+  roots: string[],
+  path: string,
+): ResolvedWorkspacePath | { error: string } {
+  const named = rootNamesFor(roots);
+  if (named.length === 0) return { error: "No workspace is open." };
+  if (named.length === 1) return { rel: path, root: named[0] };
+  const cut = path.indexOf("/");
+  const head = cut === -1 ? path : path.slice(0, cut);
+  const rest = cut === -1 ? "" : path.slice(cut + 1);
+  const match = named.find((r) => r.name === head);
+  if (!match) {
+    const names = named.map((r) => `${r.name}/`).join(", ");
+    return {
+      error:
+        `Multiple workspaces are open: ${names}. Prefix the path with the workspace name, ` +
+        `e.g. '${named[0].name}/notes.md' (app__list_files shows each workspace's files).`,
+    };
+  }
+  if (!rest) {
+    return {
+      error: `'${path}' names a workspace root, not a file. Append the path inside it, e.g. '${match.name}/notes.md'.`,
+    };
+  }
+  return { rel: rest, root: match };
 }
 
 /** Instructional error text (the model reads this — tell it what to do next). */

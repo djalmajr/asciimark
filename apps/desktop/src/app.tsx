@@ -51,7 +51,12 @@ import {
   listMcpServers,
   type McpServerStatus,
 } from "./lib/ai-mcp.ts";
-import { buildInProcessTools } from "./lib/ai-tools.ts";
+import {
+  buildInProcessTools,
+  type ExcalidrawMermaidOutcome,
+  type ExcalidrawMermaidRequest,
+  type ExcalidrawTargetFileOutcome,
+} from "./lib/ai-tools.ts";
 import { loadCustomInstructions, loadSlashCommands } from "./lib/ai-commands.ts";
 import { createGenerationGuard } from "./lib/generation-guard.ts";
 import type { CustomInstructions, SlashCommandDef } from "@asciimark/ai/slash-commands.ts";
@@ -74,7 +79,6 @@ import {
   ExcalidrawFrame,
   type ExcalidrawFrameApi,
   type ExcalidrawWriteInput,
-  type ExcalidrawWriteResult,
 } from "./components/excalidraw-frame.tsx";
 import { fileKind, isSupportedFile } from "@asciimark/core/utils.ts";
 import { excalidrawSceneToOutline, excalidrawSelectionToContext } from "@asciimark/ui/composables/ai-context.ts";
@@ -118,6 +122,13 @@ const { convertAdoc, convertMarkdown } = createConverter(new ConvertWorker());
 // Providers that talk to a localhost server and need no API key — they count
 // as "connected" without a keychain or config credential.
 const LOCAL_PROVIDER_IDS = new Set(["ollama", "lmstudio"]);
+
+// Skeleton written when app__excalidraw_write targets a file that doesn't
+// exist yet. The frame's loader would boot an empty scene from "" too (its
+// JSON.parse catch), but a 0-byte file isn't a valid .excalidraw — the
+// skeleton keeps the file well-formed even if the guest never saves.
+const EMPTY_EXCALIDRAW_SCENE =
+  '{"type":"excalidraw","version":2,"source":"asciimark","elements":[]}';
 
 export function App() {
   // AI provider catalog (ai.json merged over builtins). Starts with builtins so
@@ -1239,15 +1250,38 @@ export function App() {
     else excalidrawFrames.delete(filePath);
   }
 
-  /** The host handle for the Excalidraw shown in the ACTIVE pane, or null when
-   *  the active view isn't a `.excalidraw` (used by ⌘I and the AI write tool). */
-  function activeExcalidrawFrame(): ExcalidrawFrameApi | null {
+  /** Absolute path of the `.excalidraw` shown in the ACTIVE pane, or null when
+   *  the active view isn't a `.excalidraw`. */
+  function activeExcalidrawAbsPath(): string | null {
     const pane = state.paneManager.activePane();
     const file = pane.selectedFile();
     const rootId = pane.selectedRootId();
     if (!file || fileKind(file.name) !== "excalidraw" || !rootId) return null;
-    const abs = `${rootPaths().get(rootId) ?? ""}/${file.path}`;
-    return excalidrawFrames.get(abs) ?? null;
+    return `${rootPaths().get(rootId) ?? ""}/${file.path}`;
+  }
+
+  /** The host handle for the Excalidraw shown in the ACTIVE pane, or null when
+   *  the active view isn't a `.excalidraw` (used by ⌘I and the AI write tool). */
+  function activeExcalidrawFrame(): ExcalidrawFrameApi | null {
+    const abs = activeExcalidrawAbsPath();
+    return abs ? (excalidrawFrames.get(abs) ?? null) : null;
+  }
+
+  /** Poll the frame registry until the guest editor for `absPath` is mounted
+   *  AND answering (registration happens on mount, BEFORE the iframe handshake
+   *  — `getScene()` returning a scene is the actual "canvas ready" signal), or
+   *  `timeoutMs` elapses. Resolves null on timeout. */
+  async function waitForExcalidrawFrame(
+    absPath: string,
+    timeoutMs = 8000,
+  ): Promise<ExcalidrawFrameApi | null> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const api = excalidrawFrames.get(absPath);
+      if (api && (await api.getScene()) !== null) return api;
+      if (Date.now() >= deadline) return null;
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+    }
   }
 
   // ⌘I over an open `.excalidraw`: attach the current diagram selection to the
@@ -1265,21 +1299,89 @@ export function App() {
     return true;
   }
 
-  /** Render a Mermaid diagram into the active `.excalidraw` (the AI write tool).
-   *  Returns a structured result the model can read — including a clear failure
-   *  when no diagram is open, so it knows to tell the user to open one. */
-  async function applyExcalidrawMermaid(input: ExcalidrawWriteInput): Promise<ExcalidrawWriteResult> {
-    const api = activeExcalidrawFrame();
-    if (!api) {
-      return {
-        ok: false,
-        mode: input.mode,
-        added: 0,
-        removed: 0,
-        error: "No Excalidraw diagram is open. Ask the user to open a .excalidraw file first.",
-      };
+  /** Render a Mermaid diagram into an Excalidraw file (the AI write tool).
+   *  No target (or the target IS the active diagram) → draw on the active
+   *  frame, as before. Any other target is created on disk when missing,
+   *  opened through the file tree's own load path (handleLoadFileWithTab, so
+   *  panes/tabs behave normally), and drawn on once its guest frame is ready.
+   *  Always returns a structured result the model can read — never throws. */
+  async function applyExcalidrawMermaid(
+    input: ExcalidrawMermaidRequest,
+  ): Promise<ExcalidrawMermaidOutcome> {
+    const write: ExcalidrawWriteInput = { mermaid: input.mermaid, mode: input.mode };
+    const fail = (
+      error: string,
+      file?: ExcalidrawTargetFileOutcome,
+    ): ExcalidrawMermaidOutcome => ({
+      ok: false,
+      mode: input.mode,
+      added: 0,
+      removed: 0,
+      error,
+      ...(file ? { file } : {}),
+    });
+    const target = input.target;
+    if (!target) {
+      const api = activeExcalidrawFrame();
+      if (!api) {
+        return fail(
+          "No Excalidraw diagram is open. Pass `path` to target a workspace file directly, " +
+            "or ask the user to open a .excalidraw file first.",
+        );
+      }
+      return api.applyMermaid(write);
     }
-    return api.applyMermaid(input);
+    // rootPaths keys equal the absolute root paths (openFolderPath sets the
+    // map up that way), so the resolved root doubles as the rootId the
+    // tree/loader APIs expect.
+    const rootId = target.root;
+    let created = false;
+    let opened = false;
+    if (activeExcalidrawAbsPath() !== target.absPath) {
+      if ((await readFileByPath(target.root, target.rel)) === null) {
+        try {
+          // Host-authored skeleton through the normal fs primitives:
+          // create_file validates the path and makes parent dirs; the content
+          // carries no model text, so no scrub/restore round-trip applies.
+          await createFile(target.root, target.rel);
+          await writeFile(target.absPath, EMPTY_EXCALIDRAW_SCENE);
+        } catch (e) {
+          return fail(
+            `Could not create ${target.rel}: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+        created = true;
+      }
+      let entry = state.findEntryByPath(target.rel, rootId);
+      if (!entry) {
+        // A just-created (or externally created) file may not be in the tree
+        // yet — refresh the root before giving up.
+        await folder.refreshRoot(rootId);
+        entry = state.findEntryByPath(target.rel, rootId);
+      }
+      if (!entry || entry.kind !== "file") {
+        return fail(
+          `Could not open ${target.rel}: the file is not visible in the workspace tree.`,
+          { created, opened, path: target.absPath },
+        );
+      }
+      await handleLoadFileWithTab(entry, rootId);
+      opened = true;
+    }
+    const api = await waitForExcalidrawFrame(target.absPath);
+    if (!api) {
+      const did = created ? "was created and opened" : opened ? "was opened" : "is already open";
+      return fail(
+        `The file ${did}, but its Excalidraw canvas did not become ready in time. ` +
+          "The user can retry the same call.",
+        { created, opened, path: target.absPath },
+      );
+    }
+    const result = await api.applyMermaid(write);
+    // Target was already the active diagram and nothing was created/opened:
+    // exactly today's payload.
+    if (!created && !opened) return result;
+    return { ...result, file: { created, opened, path: target.absPath } };
   }
 
   async function handleOpenRecentFile(recentFile: RecentFile) {

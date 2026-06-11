@@ -227,6 +227,7 @@
   "ai_composer_placeholder": "Pregunta sobre este documento…",
   "ai_composer_send": "Enviar",
   "ai_composer_stop": "Detener",
+  "ai_mention_workspace": "área de trabajo",
   "ai_mode_label": "Modo del chat",
   "ai_mode_build": "Construir",
   "ai_mode_build_hint": "Construir: implementa los cambios con todas las herramientas",

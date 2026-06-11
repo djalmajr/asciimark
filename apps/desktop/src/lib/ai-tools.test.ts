@@ -1,12 +1,32 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import { restoreSecrets, scrubSecrets } from "@asciimark/ai/secret-scrub.ts";
-import { buildInProcessTools, type InProcessToolDeps, type PlanToolItem } from "./ai-tools.ts";
-import type { ExcalidrawWriteInput, ExcalidrawWriteResult } from "../components/excalidraw-frame.tsx";
+import {
+  buildInProcessTools,
+  resolveWorkspacePath,
+  rootNamesFor,
+  type ExcalidrawMermaidRequest,
+  type InProcessToolDeps,
+  type PlanToolItem,
+} from "./ai-tools.ts";
+import type { ExcalidrawWriteResult } from "../components/excalidraw-frame.tsx";
+
+/** Per-test handler behind the chaos-invoke mock (app__list_files and
+ *  app__search_workspace go through `invoke`, not the fs bridge). Tests that
+ *  exercise those tools install a handler; everything else never invokes. */
+let invokeHandler: (cmd: string, args: Record<string, unknown>) => Promise<unknown> = async (
+  cmd,
+) => {
+  throw new Error(`unexpected invoke of "${cmd}" — install an invokeHandler in the test`);
+};
+
+mock.module("./chaos-invoke.ts", () => ({
+  invoke: (cmd: string, args?: Record<string, unknown>) => invokeHandler(cmd, args ?? {}),
+}));
 
 /** A deps stub that records the last excalidraw-write call and returns a canned
  *  ok result, so we can assert how the tool normalizes the model's arguments. */
 function depsWithExcalidrawSpy() {
-  const calls: ExcalidrawWriteInput[] = [];
+  const calls: ExcalidrawMermaidRequest[] = [];
   const deps: InProcessToolDeps = {
     getActiveDoc: () => "",
     getActiveDocPath: () => null,
@@ -62,6 +82,121 @@ describe("app__excalidraw_write tool", () => {
     await writeTool(deps).execute({ mermaid: "  flowchart TD\n A-->B  ", mode: "replace-selection" });
     expect(calls[0]?.mode).toBe("replace-selection");
     expect(calls[0]?.mermaid).toBe("flowchart TD\n A-->B");
+  });
+});
+
+describe("app__excalidraw_write path targeting", () => {
+  const MERMAID = "flowchart TD\n A-->B";
+
+  it("no path → the dep receives no target and the payload is unchanged", async () => {
+    // Mutation: synthesizing a target for a path-less call would flip the host
+    // into the open/create flow for what must stay the active-diagram write.
+    const { deps, calls } = depsWithExcalidrawSpy();
+    const res = await writeTool(deps).execute({ mermaid: MERMAID });
+    expect(calls[0]?.target).toBeUndefined();
+    // No `path` echo either — exactly today's result shape.
+    expect(res).toEqual({ ok: true, mode: "append", added: 1, removed: 0 });
+  });
+
+  it("a blank path behaves as no path", async () => {
+    const { deps, calls } = depsWithExcalidrawSpy();
+    await writeTool(deps).execute({ mermaid: MERMAID, path: "   " });
+    expect(calls[0]?.target).toBeUndefined();
+  });
+
+  it("rejects a non-.excalidraw path before touching the dep", async () => {
+    const { deps, calls } = depsWithExcalidrawSpy();
+    deps.getWorkspaceRoots = () => ["/ws"];
+    const res = (await writeTool(deps).execute({ mermaid: MERMAID, path: "docs/diagram.md" })) as {
+      ok: boolean;
+      error: string;
+    };
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain(".excalidraw");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("accepts the extension case-insensitively and resolves a single-root path", async () => {
+    const { deps, calls } = depsWithExcalidrawSpy();
+    deps.getWorkspaceRoots = () => ["/ws"];
+    await writeTool(deps).execute({ mermaid: MERMAID, path: "diagrams/Login.EXCALIDRAW" });
+    expect(calls[0]?.target).toEqual({
+      absPath: "/ws/diagrams/Login.EXCALIDRAW",
+      rel: "diagrams/Login.EXCALIDRAW",
+      root: "/ws",
+    });
+  });
+
+  it("resolves a root-qualified multi-root path into the dep's target and echoes the path", async () => {
+    const { deps, calls } = depsWithExcalidrawSpy();
+    deps.getWorkspaceRoots = () => ["/x/alpha", "/x/beta"];
+    const res = await writeTool(deps).execute({
+      mermaid: MERMAID,
+      mode: "replace-all",
+      path: "beta/diagrams/login.excalidraw",
+    });
+    expect(calls[0]).toEqual({
+      mermaid: MERMAID,
+      mode: "replace-all",
+      target: {
+        absPath: "/x/beta/diagrams/login.excalidraw",
+        rel: "diagrams/login.excalidraw",
+        root: "/x/beta",
+      },
+    });
+    expect(res).toEqual({
+      ok: true,
+      mode: "replace-all",
+      added: 1,
+      removed: 0,
+      path: "beta/diagrams/login.excalidraw",
+    });
+  });
+
+  it("multi root: an unknown root errors instructively without calling the dep", async () => {
+    const { deps, calls } = depsWithExcalidrawSpy();
+    deps.getWorkspaceRoots = () => ["/x/alpha", "/x/beta"];
+    const res = (await writeTool(deps).execute({
+      mermaid: MERMAID,
+      path: "ghost/login.excalidraw",
+    })) as { ok: boolean; error: string };
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("alpha/, beta/");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("no workspace open + path errors instructively without calling the dep", async () => {
+    const { deps, calls } = depsWithExcalidrawSpy(); // getWorkspaceRoots → []
+    const res = (await writeTool(deps).execute({
+      mermaid: MERMAID,
+      path: "login.excalidraw",
+    })) as { ok: boolean; error: string };
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("No workspace is open");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("forwards the host's file outcome alongside the echoed path", async () => {
+    // The host reports created/opened on targeted writes; the tool must not
+    // strip that payload on its way back to the model.
+    const { deps } = depsWithExcalidrawSpy();
+    deps.getWorkspaceRoots = () => ["/ws"];
+    deps.applyExcalidrawMermaid = async (input) => ({
+      ok: true,
+      mode: input.mode,
+      added: 3,
+      removed: 0,
+      file: { created: true, opened: true, path: input.target?.absPath ?? "" },
+    });
+    const res = await writeTool(deps).execute({ mermaid: MERMAID, path: "new.excalidraw" });
+    expect(res).toEqual({
+      ok: true,
+      mode: "append",
+      added: 3,
+      removed: 0,
+      file: { created: true, opened: true, path: "/ws/new.excalidraw" },
+      path: "new.excalidraw",
+    });
   });
 });
 
@@ -686,5 +821,330 @@ describe("app__update_plan tool", () => {
       expect(res.message).toMatch(/done|items/);
     }
     expect(planCalls).toHaveLength(0);
+  });
+});
+
+describe("rootNamesFor / resolveWorkspacePath (pure resolver)", () => {
+  it("names roots by basename, in open order, suffixing collisions", () => {
+    expect(rootNamesFor(["/a/notes", "C:\\work\\docs\\", "/b/notes"])).toEqual([
+      { name: "notes", path: "/a/notes" },
+      { name: "docs", path: "C:\\work\\docs\\" },
+      { name: "notes-2", path: "/b/notes" },
+    ]);
+  });
+
+  it("errors when no root is open", () => {
+    expect(resolveWorkspacePath([], "a.md")).toEqual({ error: "No workspace is open." });
+  });
+
+  it("single root: passes the path through unchanged", () => {
+    expect(resolveWorkspacePath(["/ws"], "docs/a.md")).toEqual({
+      rel: "docs/a.md",
+      root: { name: "ws", path: "/ws" },
+    });
+  });
+
+  it("single root: a root-name prefix is NOT stripped — the literal path wins", () => {
+    // Mutation: stripping here would redirect every path under a real
+    // top-level folder named like the root (root 'notes' containing
+    // 'notes/') — reads AND writes would land one level up from where the
+    // model addressed them, invisibly to both the approving user and the
+    // model (each only ever sees the echoed path).
+    expect(resolveWorkspacePath(["/ws"], "ws/a.md")).toEqual({
+      rel: "ws/a.md",
+      root: { name: "ws", path: "/ws" },
+    });
+  });
+
+  it("single root: a bare path equal to the root name stays a plain file path", () => {
+    expect(resolveWorkspacePath(["/ws"], "ws")).toEqual({
+      rel: "ws",
+      root: { name: "ws", path: "/ws" },
+    });
+  });
+
+  it("multi root: the first segment selects the root, the remainder stays relative", () => {
+    expect(resolveWorkspacePath(["/x/a", "/x/b"], "b/docs/y.md")).toEqual({
+      rel: "docs/y.md",
+      root: { name: "b", path: "/x/b" },
+    });
+  });
+
+  it("multi root: an unknown first segment lists the open root names", () => {
+    expect(resolveWorkspacePath(["/x/a", "/x/b"], "notes.md")).toEqual({
+      error: expect.stringContaining("Multiple workspaces are open: a/, b/."),
+    });
+    expect(resolveWorkspacePath(["/x/a", "/x/b"], "ghost/notes.md")).toEqual({
+      error: expect.stringContaining("Prefix the path with the workspace name"),
+    });
+  });
+
+  it("multi root: a bare root name is not a file", () => {
+    expect(resolveWorkspacePath(["/x/a", "/x/b"], "b")).toEqual({
+      error: expect.stringContaining("names a workspace root"),
+    });
+  });
+
+  it("multi root: collision suffixes resolve by open order", () => {
+    expect(resolveWorkspacePath(["/x/docs", "/y/docs"], "docs-2/a.md")).toEqual({
+      rel: "a.md",
+      root: { name: "docs-2", path: "/y/docs" },
+    });
+  });
+});
+
+/** Two-root deps: files are keyed per root so a path resolved against the
+ *  wrong root reads as missing instead of silently passing. */
+function depsWithTwoRootFs(roots: string[] = ["/ws/alpha", "/ws/beta"]) {
+  const calls: { op: string; args: string[] }[] = [];
+  const files = new Map<string, string>(); // keyed "<rootAbs>/<rel>"
+  const { deps } = depsWithExcalidrawSpy();
+  deps.getWorkspaceRoots = () => roots;
+  deps.fs = {
+    createDir: async (root, rel) => {
+      calls.push({ op: "createDir", args: [root, rel] });
+    },
+    createFile: async (root, rel) => {
+      calls.push({ op: "createFile", args: [root, rel] });
+      const key = `${root}/${rel}`;
+      if (files.has(key)) throw new Error(`"${rel}" already exists`);
+      files.set(key, "");
+    },
+    readFileRelative: async (root, rel) => files.get(`${root}/${rel}`) ?? null,
+    writeFileAbs: async (abs, content) => {
+      calls.push({ op: "writeFileAbs", args: [abs, content] });
+    },
+  };
+  return { calls, deps, files };
+}
+
+describe("multi-root filesystem tools (root-qualified paths)", () => {
+  it("app__read_file resolves the first segment to the named root", async () => {
+    const { deps, files } = depsWithTwoRootFs();
+    files.set("/ws/alpha/readme.md", "alpha copy");
+    files.set("/ws/beta/readme.md", "beta copy");
+    const tool = toolByName(deps, "app__read_file");
+    expect(await tool.execute({ path: "alpha/readme.md" })).toEqual({
+      content: "alpha copy",
+      path: "alpha/readme.md",
+    });
+    expect(await tool.execute({ path: "beta/readme.md" })).toEqual({
+      content: "beta copy",
+      path: "beta/readme.md",
+    });
+  });
+
+  it("an unqualified path gets an instructive error naming the open roots", async () => {
+    // Mutation: falling back to roots[0] would silently read the WRONG file
+    // whenever both workspaces hold the same name.
+    const { deps, files } = depsWithTwoRootFs();
+    files.set("/ws/alpha/readme.md", "alpha copy");
+    const res = await toolByName(deps, "app__read_file").execute({ path: "readme.md" });
+    expect(res).toEqual({
+      status: "error",
+      message: expect.stringContaining("Multiple workspaces are open: alpha/, beta/."),
+    });
+  });
+
+  it("a bare root name errors instead of reading the root as a file", async () => {
+    const { deps } = depsWithTwoRootFs();
+    const res = await toolByName(deps, "app__read_file").execute({ path: "beta" });
+    expect(res).toEqual({
+      status: "error",
+      message: expect.stringContaining("names a workspace root"),
+    });
+  });
+
+  it("app__create_file creates inside the named root and writes through its joined path", async () => {
+    const { calls, deps } = depsWithTwoRootFs();
+    const res = await toolByName(deps, "app__create_file").execute({
+      content: "# hi",
+      path: "beta/notes/new.md",
+    });
+    expect(res).toEqual({ status: "created", path: "beta/notes/new.md", bytes: 4 });
+    expect(calls).toEqual([
+      { op: "createFile", args: ["/ws/beta", "notes/new.md"] },
+      { op: "writeFileAbs", args: ["/ws/beta/notes/new.md", "# hi"] },
+    ]);
+  });
+
+  it("app__create_folder resolves the root and passes the remainder to the bridge", async () => {
+    const { calls, deps } = depsWithTwoRootFs();
+    const res = await toolByName(deps, "app__create_folder").execute({ path: "alpha/drafts/q2" });
+    expect(res).toEqual({ status: "created", path: "alpha/drafts/q2" });
+    expect(calls).toEqual([{ op: "createDir", args: ["/ws/alpha", "drafts/q2"] }]);
+  });
+
+  it("app__edit_file edits the file inside the named root", async () => {
+    const { calls, deps, files } = depsWithTwoRootFs();
+    files.set("/ws/beta/doc.md", "old text here");
+    const res = await toolByName(deps, "app__edit_file").execute({
+      find: "old",
+      path: "beta/doc.md",
+      replace: "new",
+    });
+    expect(res).toEqual({ path: "beta/doc.md", replacements: 1, status: "edited" });
+    expect(calls.at(-1)).toEqual({
+      op: "writeFileAbs",
+      args: ["/ws/beta/doc.md", "new text here"],
+    });
+  });
+
+  it("app__create_* and app__edit_file reject an unknown root instructively", async () => {
+    const { calls, deps } = depsWithTwoRootFs();
+    const attempts: Promise<unknown>[] = [
+      toolByName(deps, "app__create_file").execute({ path: "ghost/a.md" }),
+      toolByName(deps, "app__create_folder").execute({ path: "ghost/dir" }),
+      toolByName(deps, "app__edit_file").execute({ find: "a", path: "ghost/a.md", replace: "b" }),
+    ];
+    for (const res of await Promise.all(attempts)) {
+      expect(res).toEqual({
+        status: "error",
+        message: expect.stringContaining("alpha/, beta/"),
+      });
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it("basename collisions get -2 suffixes that resolve by open order", async () => {
+    const { deps, files } = depsWithTwoRootFs(["/x/docs", "/y/docs"]);
+    files.set("/x/docs/a.md", "first");
+    files.set("/y/docs/a.md", "second");
+    const tool = toolByName(deps, "app__read_file");
+    expect(await tool.execute({ path: "docs/a.md" })).toEqual({
+      content: "first",
+      path: "docs/a.md",
+    });
+    expect(await tool.execute({ path: "docs-2/a.md" })).toEqual({
+      content: "second",
+      path: "docs-2/a.md",
+    });
+  });
+
+  it("single root: reads serve the literal path when it exists — no prefix strip", async () => {
+    // Root "/ws" really containing a top-level folder "ws/": stripping would
+    // silently read the wrong file.
+    const { deps, files } = depsWithFsSpy(); // single root "/ws"
+    files.set("ws/readme.md", "nested copy");
+    files.set("readme.md", "top-level copy");
+    const res = await toolByName(deps, "app__read_file").execute({ path: "ws/readme.md" });
+    expect(res).toEqual({ content: "nested copy", path: "ws/readme.md" });
+  });
+
+  it("single root: a root-name prefix falls back (stripped) ONLY when the literal read misses", async () => {
+    // Back-compat: the model learned the multi-root namespace and the other
+    // roots have since closed — reads tolerate the stale prefix.
+    const { deps, files } = depsWithFsSpy(); // single root "/ws"
+    files.set("readme.md", "content");
+    const res = await toolByName(deps, "app__read_file").execute({ path: "ws/readme.md" });
+    expect(res).toEqual({ content: "content", path: "ws/readme.md" });
+  });
+
+  it("single root: app__edit_file's fallback writes back the file it actually read", async () => {
+    // Mutation: writing through the literal (missing) rel after a fallback
+    // read would create a phantom '/ws/ws/doc.md' instead of editing in place.
+    const { calls, deps, files } = depsWithFsSpy(); // single root "/ws"
+    files.set("doc.md", "old text");
+    const res = await toolByName(deps, "app__edit_file").execute({
+      find: "old",
+      path: "ws/doc.md",
+      replace: "new",
+    });
+    expect(res).toEqual({ path: "ws/doc.md", replacements: 1, status: "edited" });
+    expect(calls.at(-1)).toEqual({ op: "writeFileAbs", args: ["/ws/doc.md", "new text"] });
+  });
+
+  it("single root: creates never strip the prefix — they land exactly where addressed", async () => {
+    const { calls, deps } = depsWithFsSpy(); // single root "/ws"
+    const res = await toolByName(deps, "app__create_file").execute({ path: "ws/new.md" });
+    expect(res).toEqual({ status: "created", path: "ws/new.md", bytes: 0 });
+    expect(calls).toEqual([{ op: "createFile", args: ["/ws", "ws/new.md"] }]);
+  });
+});
+
+describe("app__list_files / app__search_workspace across roots", () => {
+  it("list aggregates every root, prefixing entries and naming the roots", async () => {
+    const { deps } = depsWithExcalidrawSpy();
+    deps.getWorkspaceRoots = () => ["/ws/alpha", "/ws/beta"];
+    invokeHandler = async (cmd, args) => {
+      expect(cmd).toBe("read_dir");
+      return args.path === "/ws/alpha"
+        ? [{ name: "a.md", kind: "file", path: "a.md" }]
+        : [{ name: "docs", kind: "directory", path: "docs" }];
+    };
+    const res = await toolByName(deps, "app__list_files").execute({});
+    expect(res).toEqual({
+      entries: [
+        { name: "a.md", kind: "file", path: "alpha/a.md" },
+        { name: "docs", kind: "directory", path: "beta/docs" },
+      ],
+      roots: ["alpha", "beta"],
+    });
+  });
+
+  it("list keeps today's single-root shape (root field, unprefixed paths)", async () => {
+    const { deps } = depsWithExcalidrawSpy();
+    deps.getWorkspaceRoots = () => ["/ws"];
+    invokeHandler = async () => [{ name: "a.md", kind: "file", path: "a.md" }];
+    const res = await toolByName(deps, "app__list_files").execute({});
+    expect(res).toEqual({
+      root: "/ws",
+      entries: [{ name: "a.md", kind: "file", path: "a.md" }],
+    });
+  });
+
+  it("search merges every root's matches with prefixed paths", async () => {
+    const { deps } = depsWithExcalidrawSpy();
+    deps.getWorkspaceRoots = () => ["/ws/alpha", "/ws/beta"];
+    invokeHandler = async (cmd, args) => {
+      expect(cmd).toBe("find_in_files");
+      return args.root === "/ws/alpha"
+        ? [{ path: "a.md", line_number: 3, line_text: "hit A" }]
+        : [{ path: "sub/b.md", line_number: 7, line_text: "hit B" }];
+    };
+    const res = await toolByName(deps, "app__search_workspace").execute({ query: "hit" });
+    expect(res).toEqual({
+      matches: [
+        { path: "alpha/a.md", line: 3, text: "hit A" },
+        { path: "beta/sub/b.md", line: 7, text: "hit B" },
+      ],
+      truncated: false,
+    });
+  });
+
+  it("search keeps today's single-root shape (unprefixed paths)", async () => {
+    const { deps } = depsWithExcalidrawSpy();
+    deps.getWorkspaceRoots = () => ["/ws"];
+    invokeHandler = async () => [{ path: "a.md", line_number: 1, line_text: "hit" }];
+    const res = await toolByName(deps, "app__search_workspace").execute({ query: "hit" });
+    expect(res).toEqual({
+      matches: [{ path: "a.md", line: 1, text: "hit" }],
+      truncated: false,
+    });
+  });
+
+  it("search caps the MERGED list at 50 and flags truncation", async () => {
+    // Mutation: capping per root would let two roots return up to 100 matches.
+    const { deps } = depsWithExcalidrawSpy();
+    deps.getWorkspaceRoots = () => ["/ws/alpha", "/ws/beta"];
+    invokeHandler = async () =>
+      Array.from({ length: 30 }, (_, i) => ({
+        path: `f${i}.md`,
+        line_number: i + 1,
+        line_text: "x",
+      }));
+    const mk = (rootName: string, i: number) => ({
+      path: `${rootName}/f${i}.md`,
+      line: i + 1,
+      text: "x",
+    });
+    const res = await toolByName(deps, "app__search_workspace").execute({ query: "x" });
+    expect(res).toEqual({
+      matches: [
+        ...Array.from({ length: 30 }, (_, i) => mk("alpha", i)),
+        ...Array.from({ length: 20 }, (_, i) => mk("beta", i)),
+      ],
+      truncated: true,
+    });
   });
 });
