@@ -496,6 +496,22 @@ export function AppShell(props: AppShellProps) {
     return entries;
   });
 
+  /** Focus the chat composer only once NO Kobalte menu remains mounted.
+   *  Kobalte keeps the menu (focus containment included) through its exit
+   *  animation, so focusing from — or shortly after — a menu item's onSelect
+   *  poisons the menu's restore target while the trap is still alive: the
+   *  trap pulls focus back, the restore pushes it out, and the UI thread
+   *  loops forever. A fixed setTimeout is NOT enough (the animation outlives
+   *  it); poll frames until the menu is gone, give up after ~1s. */
+  function focusComposerAfterMenusClose(attempt = 0): void {
+    if (!document.querySelector("[role='menu']")) {
+      s.focusAiComposer();
+      return;
+    }
+    if (attempt >= 60) return;
+    requestAnimationFrame(() => focusComposerAfterMenusClose(attempt + 1));
+  }
+
   // Symbol palette source: parse headings from the active file's editor
   // content, dispatched by extension. Computed lazily — only when the
   // overlay is open. Falls back to empty when no file is selected.
@@ -743,10 +759,7 @@ export function AppShell(props: AppShellProps) {
                     path: entry.path,
                     rootId,
                   });
-                  // Deferred OUT of the Kobalte menu's onSelect: focusing the
-                  // composer while the menu is still closing leaves its focus
-                  // trap and our focus fighting forever — a UI-thread freeze.
-                  setTimeout(() => s.focusAiComposer(), 0);
+                  focusComposerAfterMenusClose();
                 }}
                 onDoubleClickFile={props.onDoubleClickFile}
                 onToggleRootCollapsed={(id) => s.toggleRootCollapsed(id)}
