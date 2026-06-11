@@ -10,7 +10,12 @@ import type { FSEntry, QualifiedPath, WorkspaceRoot } from "@asciimark/core/type
 import { createPaneManager, type PaneManager } from "./create-pane-manager.ts";
 import { createAiChatSessions } from "./create-ai-chat-sessions.ts";
 import { createAiInlineStore } from "./create-ai-inline-store.ts";
-import { type AiContextItem, buildContextPreamble } from "./ai-context.ts";
+import {
+  type AiContextItem,
+  type AiInlineReference,
+  buildContextPreamble,
+  dedupeTokenLabel,
+} from "./ai-context.ts";
 import { getChatSessionsIndex } from "@asciimark/core/ai-chat-sessions.ts";
 import {
   getRightPanelTabsState,
@@ -552,20 +557,37 @@ export function createAppState(config: AppStateConfig) {
   function removeAiContext(id: string): void {
     setAiContextItems((prev) => prev.filter((i) => i.id !== id));
   }
-  /** Reorder the context for a send: items whose label is in `labels` (the
-   *  composer's inline @-mention tokens, in textual order) move to the END in
-   *  that order; everything else keeps its relative order, first. The context
-   *  preamble (buildContextPreamble via getContext below) injects items in
-   *  ARRAY order, so this is the order the model receives the references in. */
-  function reorderAiContext(labels: string[]): void {
+  /** Reorder the context for a send: items whose ID is in `ids` (the
+   *  composer's inline tokens — @-mentions and selection references — in
+   *  textual order) move to the END in that order; everything else keeps its
+   *  relative order, first. The context preamble (buildContextPreamble via
+   *  getContext below) injects items in ARRAY order, so this is the order the
+   *  model receives the references in. */
+  function reorderAiContext(ids: string[]): void {
     setAiContextItems((prev) => {
-      const rank = new Map(labels.map((label, i) => [label, i]));
-      const rest = prev.filter((item) => !rank.has(item.label));
-      const mentioned = prev
-        .filter((item) => rank.has(item.label))
-        .sort((a, b) => rank.get(a.label)! - rank.get(b.label)!);
-      return [...rest, ...mentioned];
+      const rank = new Map(ids.map((id, i) => [id, i]));
+      const rest = prev.filter((item) => !rank.has(item.id));
+      const tokened = prev
+        .filter((item) => rank.has(item.id))
+        .sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+      return [...rest, ...tokened];
     });
+  }
+
+  // Inline composer references: a selection chip becomes an inline "@token"
+  // in the chat composer with the same per-message lifecycle as @-mentions.
+  // The panel consumes this signal via its `inlineReference` prop.
+  const [aiInlineReference, setAiInlineReference] = createSignal<AiInlineReference | null>(null);
+  /** Ask the composer to insert an inline "@token" referencing `itemId`.
+   *  `seq` is monotonic so an identical reference still retriggers. */
+  function requestAiInlineReference(itemId: string, token: string): void {
+    setAiInlineReference((prev) => ({ itemId, seq: (prev?.seq ?? 0) + 1, token }));
+  }
+  /** Panel ack: the reference was consumed. Clearing (instead of letting it
+   *  linger) is what lets a freshly-MOUNTED panel treat any non-null value as
+   *  pending — ⌘I with the chat tab closed still inserts its token. */
+  function clearAiInlineReference(): void {
+    setAiInlineReference(null);
   }
   function dismissActiveFileContext(): void {
     setActiveFileContextDismissed(true);
@@ -582,35 +604,47 @@ export function createAppState(config: AppStateConfig) {
     | null
   >(null);
 
-  /** Add an editor selection to the chat as a context chip (labelled file:lines). */
+  /** Add an editor selection to the chat as a context chip (labelled
+   *  file:lines) and request its inline composer token. */
   function addSelectionToContext(sel: { from: number; to: number; text: string }): void {
     if (!sel.text.trim()) return;
     const file = selectedFile();
     const fileName = file?.name ?? "selection";
     const content = editorContent();
     const lineOf = (off: number) => content.slice(0, Math.max(0, off)).split("\n").length;
+    const id = `selection:${file?.path ?? ""}:${sel.from}-${sel.to}`;
+    const label = `${fileName}:${lineOf(sel.from)}-${lineOf(sel.to)}`;
     addAiContext({
-      id: `selection:${file?.path ?? ""}:${sel.from}-${sel.to}`,
+      id,
       kind: "selection",
-      label: `${fileName}:${lineOf(sel.from)}-${lineOf(sel.to)}`,
+      label,
       ...(file ? { path: file.path } : {}),
       content: sel.text,
     });
+    requestAiInlineReference(id, label);
   }
 
-  /** Add a rendered-preview (DOM) selection to the chat as a context chip.
-   *  No editor offsets exist for the rendered article, so the label is a
-   *  short snippet of the selected text instead of file:lines. */
+  /** Add a rendered-preview (DOM) selection to the chat as a context chip and
+   *  request its inline composer token. No editor offsets exist for the
+   *  rendered article, so the label is a short token-friendly
+   *  "<file>:sel"(-N) — the selected text itself lives in `content`. */
   function addPreviewSelectionToContext(text: string): void {
     const flat = text.trim().replace(/\s+/g, " ");
     if (!flat) return;
-    const label = flat.length > 30 ? `${flat.slice(0, 30)}…` : flat;
+    const id = `selection:preview:${flat.slice(0, 60)}:${text.length}`;
+    // Re-adding the SAME selection keeps its existing label, so the requested
+    // token matches the chip instead of deduping against itself.
+    const existing = aiContextItems().find((item) => item.id === id);
+    const label =
+      existing?.label ??
+      dedupeTokenLabel(`${selectedFile()?.name ?? "preview"}:sel`, aiContextItems());
     addAiContext({
-      id: `selection:preview:${flat.slice(0, 60)}:${text.length}`,
+      id,
       kind: "selection",
       label,
       content: text,
     });
+    requestAiInlineReference(id, label);
   }
 
   /** Attach a resolved file (or folder listing) to the chat as a context chip
@@ -1437,6 +1471,9 @@ export function createAppState(config: AppStateConfig) {
     addAiContext,
     removeAiContext,
     reorderAiContext,
+    aiInlineReference,
+    requestAiInlineReference,
+    clearAiInlineReference,
     dismissActiveFileContext,
     addSelectionToContext,
     addPreviewSelectionToContext,

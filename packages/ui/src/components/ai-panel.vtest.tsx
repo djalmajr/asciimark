@@ -5,7 +5,11 @@ import { createMockProvider } from "@asciimark/ai/mock-provider.ts";
 import type { SlashCommandDef } from "@asciimark/ai/slash-commands.ts";
 import type { AIMessage, AIProvider } from "@asciimark/ai/types.ts";
 import { createAiChatStore, type AiChatStore } from "../composables/create-ai-chat-store.ts";
-import { buildContextPreamble, type AiContextItem } from "../composables/ai-context.ts";
+import {
+  buildContextPreamble,
+  type AiContextItem,
+  type AiInlineReference,
+} from "../composables/ai-context.ts";
 import { AiPanel, type AiMentionEntry } from "./ai-panel.tsx";
 import { AiMessage } from "./ai-message.tsx";
 
@@ -824,10 +828,10 @@ describe("AiPanel — inline @-mention tokens (Cursor-style)", () => {
     pickMention(baseElement);
     expect(ta.value).toBe("@beta.md  @alpha.md ");
     fireEvent.keyDown(ta, { key: "Enter" });
-    // Sent text carries the tokens verbatim; the reorder (textual order)
-    // happened BEFORE the send so the preamble matches.
+    // Sent text carries the tokens verbatim; the reorder (item IDS in
+    // textual order) happened BEFORE the send so the preamble matches.
     expect(sendMessage).toHaveBeenCalledWith("@beta.md  @alpha.md ");
-    expect(onReorderContext).toHaveBeenCalledWith(["beta.md", "alpha.md"]);
+    expect(onReorderContext).toHaveBeenCalledWith(["mention:r:b/beta.md", "mention:r:a/alpha.md"]);
     expect(onReorderContext.mock.invocationCallOrder[0]!).toBeLessThan(
       sendMessage.mock.invocationCallOrder[0]!,
     );
@@ -1015,6 +1019,328 @@ describe("AiPanel — inline @-mention tokens (Cursor-style)", () => {
     expect(onRemoveContext).toHaveBeenCalledTimes(1);
     expect(items()).toEqual([TWIN_R1_ITEM]);
     expect(baseElement.querySelectorAll(".ai-context-chip")).toHaveLength(1);
+  });
+});
+
+describe("AiPanel — inline selection tokens (host-requested item refs)", () => {
+  const SEL_ITEM: AiContextItem = {
+    content: "selected text",
+    id: "selection:doc.md:10-20",
+    kind: "selection",
+    label: "doc.md:3-7",
+    path: "doc.md",
+  };
+  const OTHER_SEL_ITEM: AiContextItem = {
+    content: "other text",
+    id: "selection:other.md:0-5",
+    kind: "selection",
+    label: "other.md:1-2",
+    path: "other.md",
+  };
+  const ALPHA_FILE: AiMentionEntry = { label: "alpha.md", path: "a/alpha.md", rootId: "r" };
+  const ALPHA_ITEM: AiContextItem = {
+    content: "ALPHA",
+    id: "mention:r:a/alpha.md",
+    kind: "file",
+    label: "alpha.md",
+    path: "a/alpha.md",
+    rootId: "r",
+  };
+
+  function typeText(baseElement: HTMLElement, value: string, caret?: number): HTMLTextAreaElement {
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    ta.value = value;
+    const at = caret ?? value.length;
+    ta.setSelectionRange(at, at);
+    fireEvent.input(ta);
+    return ta;
+  }
+
+  /** Minimal AiChatStore stub so a test can control the sendMessage promise. */
+  function stubStore(over: Partial<AiChatStore> = {}): AiChatStore {
+    return {
+      cancel: () => {},
+      cancelQueued: () => {},
+      clear: () => {},
+      editAndResend: async () => {},
+      error: () => null,
+      listTools: async () => [],
+      messages: () => [],
+      providerReady: () => true,
+      queued: () => null,
+      retryLast: async () => {},
+      sendMessage: async () => {},
+      streaming: () => false,
+      streamingText: () => "",
+      systemPrompt: () => undefined,
+      toolActivity: () => [],
+      ...over,
+    };
+  }
+
+  function deferred(): { promise: Promise<void>; resolve: () => void } {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it("the trigger effect inserts '@token ' inline, shows the pill, and focuses the composer", async () => {
+    const store = readyStore();
+    const [ref, setRef] = createSignal<AiInlineReference | null>(null);
+    const { baseElement } = render(() => (
+      <AiPanel contextItems={[SEL_ITEM]} inlineReference={ref()} store={store} />
+    ));
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    setRef({ itemId: SEL_ITEM.id, seq: 1, token: SEL_ITEM.label });
+    expect(ta.value).toBe("@doc.md:3-7 ");
+    expect(baseElement.querySelector(".ai-inline-mention")?.textContent).toBe("@doc.md:3-7");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(ta);
+    });
+    expect(ta.selectionStart).toBe("@doc.md:3-7 ".length);
+  });
+
+  it("inserts a separating space after non-whitespace (focused caret and unfocused append)", () => {
+    const store = readyStore();
+    const [ref, setRef] = createSignal<AiInlineReference | null>(null);
+    const { baseElement } = render(() => (
+      <AiPanel
+        contextItems={[SEL_ITEM, OTHER_SEL_ITEM]}
+        inlineReference={ref()}
+        store={store}
+      />
+    ));
+    // The mount effect focuses the composer — the caret (end of the typed
+    // text) follows non-whitespace, so the token gets a separating space.
+    const ta = typeText(baseElement, "explain this");
+    setRef({ itemId: SEL_ITEM.id, seq: 1, token: SEL_ITEM.label });
+    expect(ta.value).toBe("explain this @doc.md:3-7 ");
+    // Unfocused: the stale caret is ignored — the next reference APPENDS
+    // (already after whitespace here, so no doubled space).
+    ta.blur();
+    ta.setSelectionRange(0, 0);
+    setRef({ itemId: OTHER_SEL_ITEM.id, seq: 2, token: OTHER_SEL_ITEM.label });
+    expect(ta.value).toBe("explain this @doc.md:3-7 @other.md:1-2 ");
+  });
+
+  it("the same seq never re-inserts, and a new seq for the same item only refocuses", () => {
+    const store = readyStore();
+    const [ref, setRef] = createSignal<AiInlineReference | null>(null);
+    const { baseElement } = render(() => (
+      <AiPanel contextItems={[SEL_ITEM]} inlineReference={ref()} store={store} />
+    ));
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    setRef({ itemId: SEL_ITEM.id, seq: 1, token: SEL_ITEM.label });
+    // The same reference re-set with the SAME seq is a no-op...
+    setRef({ itemId: SEL_ITEM.id, seq: 1, token: SEL_ITEM.label });
+    expect(ta.value).toBe("@doc.md:3-7 ");
+    // ...and a NEW seq for the same item+token refocuses without duplicating.
+    setRef({ itemId: SEL_ITEM.id, seq: 2, token: SEL_ITEM.label });
+    expect(ta.value).toBe("@doc.md:3-7 ");
+    expect(baseElement.querySelectorAll(".ai-inline-mention")).toHaveLength(1);
+  });
+
+  it("a panel that MOUNTS with a pending reference inserts it and acks the host", () => {
+    // ⌘I with the chat tab closed: the host requests the reference, then
+    // focusAiComposer creates the panel — the pending value must not be
+    // swallowed as stale. The ack is what makes that distinction safe.
+    const store = readyStore();
+    const onInlineReferenceHandled = vi.fn();
+    const { baseElement } = render(() => (
+      <AiPanel
+        contextItems={[SEL_ITEM]}
+        inlineReference={{ itemId: SEL_ITEM.id, seq: 7, token: SEL_ITEM.label }}
+        store={store}
+        onInlineReferenceHandled={onInlineReferenceHandled}
+      />
+    ));
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    expect(ta.value).toBe("@doc.md:3-7 ");
+    expect(onInlineReferenceHandled).toHaveBeenCalledTimes(1);
+  });
+
+  it("deleting the token text removes the selection item by its ID", () => {
+    const store = readyStore();
+    const onRemoveContext = vi.fn();
+    const [ref, setRef] = createSignal<AiInlineReference | null>(null);
+    const { baseElement } = render(() => (
+      <AiPanel
+        contextItems={[SEL_ITEM]}
+        inlineReference={ref()}
+        store={store}
+        onRemoveContext={onRemoveContext}
+      />
+    ));
+    setRef({ itemId: SEL_ITEM.id, seq: 1, token: SEL_ITEM.label });
+    // Gluing a character onto the token breaks its boundary → untracked.
+    typeText(baseElement, "@doc.md:3-7x");
+    expect(onRemoveContext).toHaveBeenCalledWith("selection:doc.md:10-20");
+    expect(baseElement.querySelector(".ai-inline-mention")).toBeNull();
+  });
+
+  it("the chips bar hides a tokened selection but keeps an untokened one showing", () => {
+    const store = readyStore();
+    const [ref, setRef] = createSignal<AiInlineReference | null>(null);
+    const { baseElement } = render(() => (
+      <AiPanel contextItems={[SEL_ITEM, OTHER_SEL_ITEM]} inlineReference={ref()} store={store} />
+    ));
+    expect(baseElement.querySelectorAll(".ai-context-chip")).toHaveLength(2);
+    setRef({ itemId: SEL_ITEM.id, seq: 1, token: SEL_ITEM.label });
+    const chips = [...baseElement.querySelectorAll(".ai-context-chip")];
+    expect(chips).toHaveLength(1);
+    expect(chips[0]!.textContent).toContain("other.md:1-2");
+  });
+
+  it("submit keeps the token verbatim, reorders cross-kind item IDS in textual order, and removes only after the send settles", async () => {
+    const send = deferred();
+    const sendMessage = vi.fn(() => send.promise);
+    const store = stubStore({ sendMessage });
+    const onRemoveContext = vi.fn();
+    const onReorderContext = vi.fn();
+    const [ref, setRef] = createSignal<AiInlineReference | null>(null);
+    const { baseElement } = render(() => (
+      <AiPanel
+        contextItems={[ALPHA_ITEM, SEL_ITEM]}
+        inlineReference={ref()}
+        mentionFiles={[ALPHA_FILE]}
+        store={store}
+        onRemoveContext={onRemoveContext}
+        onReorderContext={onReorderContext}
+      />
+    ));
+    // A mention token first, then the selection token appended after it —
+    // locks the cross-kind textual ordering.
+    typeText(baseElement, "@al");
+    fireEvent.mouseDown(baseElement.querySelector(".ai-mention-item")!);
+    setRef({ itemId: SEL_ITEM.id, seq: 1, token: SEL_ITEM.label });
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    expect(ta.value).toBe("@alpha.md @doc.md:3-7 ");
+    fireEvent.keyDown(ta, { key: "Enter" });
+    expect(sendMessage).toHaveBeenCalledWith("@alpha.md @doc.md:3-7 ");
+    expect(onReorderContext).toHaveBeenCalledWith([
+      "mention:r:a/alpha.md",
+      "selection:doc.md:10-20",
+    ]);
+    // Consumed-but-not-settled: nothing removed, chips stay hidden.
+    expect(onRemoveContext).not.toHaveBeenCalled();
+    expect(baseElement.querySelectorAll(".ai-context-chip")).toHaveLength(0);
+    send.resolve();
+    await waitFor(() => {
+      expect(onRemoveContext).toHaveBeenCalledWith("mention:r:a/alpha.md");
+      expect(onRemoveContext).toHaveBeenCalledWith("selection:doc.md:10-20");
+    });
+  });
+
+  it("a chat switch with a live selection token removes its item and empties the composer", async () => {
+    const [store, setStore] = createSignal(readyStore());
+    const onRemoveContext = vi.fn();
+    const [ref, setRef] = createSignal<AiInlineReference | null>(null);
+    const { baseElement } = render(() => (
+      <AiPanel
+        contextItems={[SEL_ITEM]}
+        inlineReference={ref()}
+        store={store()}
+        onRemoveContext={onRemoveContext}
+      />
+    ));
+    setRef({ itemId: SEL_ITEM.id, seq: 1, token: SEL_ITEM.label });
+    setStore(readyStore());
+    await waitFor(() => {
+      expect(onRemoveContext).toHaveBeenCalledWith("selection:doc.md:10-20");
+    });
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    expect(ta.value).toBe("");
+  });
+
+  it("closes an open @-mention list when the trigger fires, so Enter submits instead of selecting", () => {
+    const sendMessage = vi.fn(async () => {});
+    const store = stubStore({ sendMessage });
+    const onMention = vi.fn();
+    const [ref, setRef] = createSignal<AiInlineReference | null>(null);
+    const { baseElement } = render(() => (
+      <AiPanel
+        contextItems={[SEL_ITEM]}
+        inlineReference={ref()}
+        mentionFiles={[ALPHA_FILE]}
+        store={store}
+        onMention={onMention}
+      />
+    ));
+    const ta = typeText(baseElement, "@al");
+    expect(baseElement.querySelectorAll(".ai-mention-item")).toHaveLength(1);
+    // The insertion bypasses the textarea's input event — the popover belongs
+    // to the pre-insertion "@al" text and must close, or its Enter handler
+    // would run selectMention (a hidden, token-less mention) instead of send.
+    setRef({ itemId: SEL_ITEM.id, seq: 1, token: SEL_ITEM.label });
+    expect(baseElement.querySelectorAll(".ai-mention-item")).toHaveLength(0);
+    fireEvent.keyDown(ta, { key: "Enter" });
+    expect(onMention).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith("@al @doc.md:3-7 ");
+  });
+
+  it("closes an open slash list when the trigger fires, so Enter submits instead of selecting", () => {
+    const sendMessage = vi.fn(async () => {});
+    const store = stubStore({ sendMessage });
+    const [ref, setRef] = createSignal<AiInlineReference | null>(null);
+    const { baseElement } = render(() => (
+      <AiPanel
+        contextItems={[SEL_ITEM]}
+        inlineReference={ref()}
+        slashCommands={[
+          {
+            description: "Summarize the conversation",
+            name: "summarize",
+            source: "project",
+            template: "Summarize the conversation.",
+          },
+        ]}
+        store={store}
+      />
+    ));
+    const ta = typeText(baseElement, "/su");
+    expect(baseElement.querySelectorAll(".ai-slash-item")).toHaveLength(1);
+    // Left open, the stale list's Enter would run selectSlashCommand and wipe
+    // the just-inserted token text while its ref stayed tracked.
+    setRef({ itemId: SEL_ITEM.id, seq: 1, token: SEL_ITEM.label });
+    expect(baseElement.querySelectorAll(".ai-slash-item")).toHaveLength(0);
+    fireEvent.keyDown(ta, { key: "Enter" });
+    // "/su" matches no command, so the text passes through with the token intact.
+    expect(sendMessage).toHaveBeenCalledWith("/su @doc.md:3-7 ");
+  });
+
+  it("the same token text for two DIFFERENT items dedupes the second with '-2'", () => {
+    const store = readyStore();
+    const onRemoveContext = vi.fn();
+    const firstItem: AiContextItem = {
+      content: "A",
+      id: "excalidraw-selection:flow.excalidraw:e1",
+      kind: "selection",
+      label: "flow.excalidraw · 1 el",
+    };
+    const secondItem: AiContextItem = {
+      content: "B",
+      id: "excalidraw-selection:flow.excalidraw:e2",
+      kind: "selection",
+      label: "flow.excalidraw · 1 el-2",
+    };
+    const [ref, setRef] = createSignal<AiInlineReference | null>(null);
+    const { baseElement } = render(() => (
+      <AiPanel
+        contextItems={[firstItem, secondItem]}
+        inlineReference={ref()}
+        store={store}
+        onRemoveContext={onRemoveContext}
+      />
+    ));
+    setRef({ itemId: firstItem.id, seq: 1, token: "flow.excalidraw:sel" });
+    setRef({ itemId: secondItem.id, seq: 2, token: "flow.excalidraw:sel" });
+    const ta = baseElement.querySelector<HTMLTextAreaElement>(".ai-composer-input")!;
+    expect(ta.value).toBe("@flow.excalidraw:sel @flow.excalidraw:sel-2 ");
+    // Each token still maps to ITS item: deleting the deduped one removes
+    // only the second item.
+    typeText(baseElement, "@flow.excalidraw:sel ");
+    expect(onRemoveContext).toHaveBeenCalledTimes(1);
+    expect(onRemoveContext).toHaveBeenCalledWith("excalidraw-selection:flow.excalidraw:e2");
   });
 });
 

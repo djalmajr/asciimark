@@ -434,37 +434,70 @@ describe("AppState — AI multi-chat tab routing", () => {
     }, aiConfig);
   });
 
+  it("addSelectionToContext emits aiInlineReference with the chip label, bumping seq", () => {
+    withState((state) => {
+      expect(state.aiInlineReference()).toBeNull();
+      state.addSelectionToContext({ from: 0, to: 5, text: "hello" });
+      const first = state.aiContextItems()[0]!;
+      expect(state.aiInlineReference()).toEqual({
+        itemId: first.id,
+        seq: 1,
+        token: first.label,
+      });
+      // A second selection retriggers with a HIGHER seq (the panel keys its
+      // insertion effect on it).
+      state.addSelectionToContext({ from: 6, to: 8, text: "wo" });
+      const second = state.aiContextItems()[1]!;
+      expect(state.aiInlineReference()).toEqual({
+        itemId: second.id,
+        seq: 2,
+        token: second.label,
+      });
+    }, aiConfig);
+  });
+
   it("ignores a blank/whitespace selection", () => {
     withState((state) => {
       state.addSelectionToContext({ from: 0, to: 3, text: "   " });
       expect(state.aiContextItems()).toHaveLength(0);
+      expect(state.aiInlineReference()).toBeNull();
     }, aiConfig);
   });
 
-  it("addPreviewSelectionToContext adds a snippet-labelled chip (no editor offsets)", () => {
+  it("addPreviewSelectionToContext labels the chip '<file>:sel' with -2/-3 dedupe", () => {
     withState((state) => {
       const text = "This is a long preview selection that needs truncating";
       state.addPreviewSelectionToContext(text);
       const items = state.aiContextItems();
       expect(items).toHaveLength(1);
       expect(items[0]!.kind).toBe("selection");
+      // The selected text rides `content` untouched; the label is the short
+      // token-friendly form ("preview" — no active file in this stub).
       expect(items[0]!.content).toBe(text);
-      // Label is the first ~30 chars + an ellipsis, not file:lines.
-      expect(items[0]!.label).toBe("This is a long preview selecti…");
+      expect(items[0]!.label).toBe("preview:sel");
+      expect(state.aiInlineReference()).toEqual({
+        itemId: items[0]!.id,
+        seq: 1,
+        token: "preview:sel",
+      });
+      // A second, different selection dedupes against the existing label.
+      state.addPreviewSelectionToContext("another bit");
+      expect(state.aiContextItems()[1]!.label).toBe("preview:sel-2");
+      expect(state.aiInlineReference()?.token).toBe("preview:sel-2");
       // Whitespace-only selections are ignored.
       state.addPreviewSelectionToContext("   \n ");
-      expect(state.aiContextItems()).toHaveLength(1);
+      expect(state.aiContextItems()).toHaveLength(2);
     }, aiConfig);
   });
 
-  it("addSelectionContextFromPopover routes a preview-sourced popover to the snippet path", () => {
+  it("addSelectionContextFromPopover routes a preview-sourced popover to the preview path", () => {
     withState((state) => {
       state.setSelectionPopover({ bottom: 0, left: 0, source: "preview", text: "short text" });
       state.addSelectionContextFromPopover();
       const items = state.aiContextItems();
       expect(items).toHaveLength(1);
       expect(items[0]!.kind).toBe("selection");
-      expect(items[0]!.label).toBe("short text");
+      expect(items[0]!.label).toBe("preview:sel");
       expect(items[0]!.content).toBe("short text");
       // Same post-add behavior as the editor path: popover closes.
       expect(state.selectionPopover()).toBeNull();
@@ -485,21 +518,32 @@ describe("AppState — AI multi-chat tab routing", () => {
     }, aiConfig);
   });
 
-  it("reorderAiContext moves the mention labels to the END in textual order; others keep position first", () => {
+  it("reorderAiContext moves the tokened item IDS to the END in textual order; others keep position first", () => {
     withState((state) => {
-      // A non-mention item (selection) plus two mentions added in one order...
+      // An untokened item (a selection) plus two mentions added in one order...
       state.addSelectionToContext({ from: 0, to: 5, text: "hello" });
       state.addFileMention({ content: "A", label: "a.md", path: "a.md", rootId: "r" });
       state.addFileMention({ content: "B", label: "b.md", path: "b.md", rootId: "r" });
-      // ...reordered to the composer tokens' textual order (b before a). The
-      // context preamble is built in array order, so this IS the order the
-      // model receives the references in.
-      state.reorderAiContext(["b.md", "a.md"]);
+      // ...reordered by ID to the composer tokens' textual order (b before
+      // a). The context preamble is built in array order, so this IS the
+      // order the model receives the references in.
+      state.reorderAiContext(["mention:r:b.md", "mention:r:a.md"]);
       const labels = state.aiContextItems().map((i) => i.label);
       expect(labels).toHaveLength(3);
-      // The selection keeps its position, FIRST, before the mention block.
+      // The untokened selection keeps its position, FIRST, before the
+      // tokened block.
       expect(state.aiContextItems()[0]!.kind).toBe("selection");
       expect(labels.slice(1)).toEqual(["b.md", "a.md"]);
+    }, aiConfig);
+  });
+
+  it("reorderAiContext can move a tokened selection by its id too", () => {
+    withState((state) => {
+      state.addSelectionToContext({ from: 0, to: 5, text: "hello" });
+      const selectionId = state.aiContextItems()[0]!.id;
+      state.addFileMention({ content: "A", label: "a.md", path: "a.md", rootId: "r" });
+      state.reorderAiContext(["mention:r:a.md", selectionId]);
+      expect(state.aiContextItems().map((i) => i.id)).toEqual(["mention:r:a.md", selectionId]);
     }, aiConfig);
   });
 

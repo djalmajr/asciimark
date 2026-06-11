@@ -81,7 +81,7 @@ import {
   type ExcalidrawWriteInput,
 } from "./components/excalidraw-frame.tsx";
 import { fileKind, isSupportedFile } from "@asciimark/core/utils.ts";
-import { excalidrawSceneToOutline, excalidrawSelectionToContext } from "@asciimark/ui/composables/ai-context.ts";
+import { dedupeTokenLabel, excalidrawSceneToOutline, excalidrawSelectionToContext } from "@asciimark/ui/composables/ai-context.ts";
 import { buildBacklinkIndex } from "@asciimark/core/backlinks.ts";
 import { flattenWorkspace } from "@asciimark/core/file-index.ts";
 import { createDir, createFile, readFileByPath, readFileContent, writeFile } from "./lib/fs.ts";
@@ -1296,6 +1296,12 @@ export function App() {
     if (!item) return false;
     // Diagram text elements can carry pasted keys — scrub like any other chip.
     state.addAiContext({ ...item, content: scrubAi(item.content) });
+    // Inline composer token: the chip label ("name · N el") reads poorly as a
+    // token, so the reference uses the short "<file>:sel" form instead.
+    state.requestAiInlineReference(
+      item.id,
+      dedupeTokenLabel(`${file.name}:sel`, state.aiContextItems()),
+    );
     return true;
   }
 

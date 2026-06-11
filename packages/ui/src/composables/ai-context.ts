@@ -17,6 +17,29 @@ export interface AiContextItem {
   content: string;
 }
 
+/** A host request for the chat composer to materialize a context item as an
+ *  inline "@token" (selection chips ride the same per-message token lifecycle
+ *  as @-mentions). */
+export interface AiInlineReference {
+  /** The `AiContextItem.id` the token references (removal/reorder key). */
+  itemId: string;
+  /** Monotonic — retrigger even for an identical reference. */
+  seq: number;
+  /** Token text WITHOUT the "@" prefix. */
+  token: string;
+}
+
+/** Suffix `label` with "-2"/"-3"… until it collides with no existing item
+ *  label — keeps short selection tokens (e.g. "doc.md:sel") distinguishable
+ *  when several selections from the same source are attached. Pure. */
+export function dedupeTokenLabel(label: string, items: readonly { label: string }[]): string {
+  const taken = new Set(items.map((item) => item.label));
+  if (!taken.has(label)) return label;
+  let n = 2;
+  while (taken.has(`${label}-${n}`)) n += 1;
+  return `${label}-${n}`;
+}
+
 function escapeAttr(value: string): string {
   return value.replace(/"/g, "&quot;");
 }
