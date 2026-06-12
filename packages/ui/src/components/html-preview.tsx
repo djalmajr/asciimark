@@ -14,8 +14,13 @@ import {
  *  paths, ES modules, importmaps and hash routing work (full SPA support). The
  *  live editor buffer is pushed as an overlay so unsaved edits preview too. */
 export interface HtmlPreviewFolderRoot {
-  /** URI scheme, e.g. "asciimark-preview". */
-  scheme: string;
+  /** Platform-correct origin the iframe src is built on. WKWebView/WebKitGTK
+   *  navigate the bare scheme (`asciimark-preview://<token>`), but WebView2
+   *  can't — on Windows Tauri serves the scheme as
+   *  `http://asciimark-preview.localhost/<token>/...`, so the HOST decides:
+   *  e.g. "asciimark-preview:/" + "/<token>" vs
+   *  "http://asciimark-preview.localhost/<token>". */
+  baseOrigin: (token: string) => string;
   /** Register the current file's directory; resolves to its token + the entry
    *  file's path relative to that directory. Null when registration fails. */
   register: () => Promise<{ token: string; entryRel: string } | null>;
@@ -122,7 +127,7 @@ export function HtmlPreview(props: HtmlPreviewProps): JSX.Element {
     const fr = props.folderRoot;
     const v = version();
     if (!t || !fr || v < 0) return undefined;
-    return `${fr.scheme}://${t.token}/${encodeURIComponent(t.entryRel)}?v=${v}`;
+    return `${fr.baseOrigin(t.token)}/${encodeURIComponent(t.entryRel)}?v=${v}`;
   };
 
   return (

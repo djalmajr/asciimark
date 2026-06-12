@@ -75,7 +75,7 @@ describe("HtmlPreview", () => {
   describe("folderRoot (SPA) mode", () => {
     function makeHost(over: Partial<HtmlPreviewFolderRoot> = {}): HtmlPreviewFolderRoot {
       return {
-        scheme: "asciimark-preview",
+        baseOrigin: (token: string) => `asciimark-preview://${token}`,
         register: vi.fn(async () => ({ token: "r0", entryRel: "index.html" })),
         setOverlay: vi.fn(),
         clearOverlay: vi.fn(),

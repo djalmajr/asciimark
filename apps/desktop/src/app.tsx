@@ -1220,7 +1220,13 @@ export function App() {
   // rendering) and pushes the live editor buffer as an overlay. See
   // src-tauri/src/html_preview.rs for the isolation model.
   const htmlPreviewHost = {
-    scheme: "asciimark-preview",
+    // WebView2 can't navigate bare custom schemes — on Windows Tauri serves
+    // them as http://<scheme>.localhost and the token moves into the path
+    // (the Rust handler accepts both shapes).
+    baseOrigin: (token: string) =>
+      navigator.platform.startsWith("Win")
+        ? `http://asciimark-preview.localhost/${token}`
+        : `asciimark-preview://${token}`,
     async register(rootId: string, fileRelPath: string) {
       const rootPath = rootPaths().get(rootId);
       if (!rootPath) return null;

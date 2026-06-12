@@ -102,16 +102,37 @@ pub fn html_preview_clear_overlay(state: tauri::State<'_, HtmlPreviewState>, tok
     state.inner.lock().unwrap().overlay.remove(&token);
 }
 
-/// Serve one `asciimark-preview://<token>/<path>` request. Registered on the Tauri
-/// builder; runs on Tauri's protocol thread (blocking file IO is fine — preview
-/// assets are small and local).
+/// Split a cleaned path into (first segment, rest) — the Windows/WebView2
+/// request shape, where the custom scheme folds into a fixed host
+/// (`http://asciimark-preview.localhost/...` or plain `localhost`) and the
+/// preview token travels as the FIRST path segment instead of the host.
+fn token_from_path(cleaned: &str) -> (String, String) {
+    match cleaned.split_once('/') {
+        Some((token, rest)) => (token.to_string(), rest.to_string()),
+        None => (cleaned.to_string(), String::new()),
+    }
+}
+
+/// Serve one preview request. Two URL shapes reach this handler:
+/// macOS/Linux navigate the bare scheme (`asciimark-preview://<token>/<path>`,
+/// token = host), while Windows folds the scheme into a fixed host and moves
+/// the token into the path. Rather than sniffing host suffixes, the host is
+/// treated as the token ONLY when it is actually registered — anything else
+/// falls back to the path-first form. Registered on the Tauri builder; runs
+/// on Tauri's protocol thread (blocking file IO is fine — preview assets are
+/// small and local).
 pub fn serve<R: Runtime>(app: &AppHandle<R>, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     let state = app.state::<HtmlPreviewState>();
     let uri = request.uri();
-    let token = uri.host().unwrap_or("").to_string();
     // Path arrives percent-encoded; decode, then lexically strip `..`/`.`/root.
     let decoded = percent_decode_str(uri.path()).decode_utf8_lossy();
-    let mut rel = clean_rel(&decoded);
+    let host = uri.host().unwrap_or("");
+    let cleaned = clean_rel(&decoded);
+    let (token, mut rel) = if state.inner.lock().unwrap().by_token.contains_key(host) {
+        (host.to_string(), cleaned)
+    } else {
+        token_from_path(&cleaned)
+    };
     if rel.is_empty() {
         rel = "index.html".to_string();
     }
@@ -318,6 +339,23 @@ fn not_found() -> Response<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_from_path_splits_first_segment() {
+        // Windows folds the scheme into a fixed host and moves the token into
+        // the path — first segment is the token, the rest is the file path.
+        assert_eq!(
+            token_from_path("r0/index.html"),
+            ("r0".to_string(), "index.html".to_string())
+        );
+        assert_eq!(
+            token_from_path("r0/assets/app.js"),
+            ("r0".to_string(), "assets/app.js".to_string())
+        );
+        // Root request → empty rel (caller defaults to index.html).
+        assert_eq!(token_from_path("r0"), ("r0".to_string(), String::new()));
+        assert_eq!(token_from_path(""), (String::new(), String::new()));
+    }
 
     #[test]
     fn clean_rel_strips_traversal_and_roots() {
