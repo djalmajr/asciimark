@@ -137,17 +137,45 @@ describe("HtmlPreview", () => {
       expect(host.clearOverlay).toHaveBeenCalledWith("r0");
     });
 
-    it("falls back to srcdoc when registration fails (null target)", async () => {
+    it("renders nothing when registration fails (null target)", async () => {
       const host = makeHost({ register: vi.fn(async () => null) });
       const { container } = render(() => (
         <HtmlPreview content="<p>nope</p>" folderRoot={host} />
       ));
       await tick();
-      const iframe = frame(container);
-      // No usable src; the iframe stays without one (blank) rather than
-      // rendering an unrooted srcdoc that would mis-resolve assets.
-      expect(iframe.getAttribute("src")).toBeNull();
+      // No usable src → no iframe at all (blank pane) rather than an
+      // unrooted srcdoc that would mis-resolve assets.
+      expect(container.querySelector("iframe.html-preview-frame")).toBeNull();
       expect(host.setOverlay).not.toHaveBeenCalled();
+    });
+
+    it("unmounts the previous document the moment the file switches", async () => {
+      const hostA = makeHost();
+      let resolveB!: (v: { token: string; entryRel: string }) => void;
+      const hostB = makeHost({
+        register: vi.fn(() => new Promise<{ token: string; entryRel: string }>((r) => {
+          resolveB = r;
+        })),
+      });
+      const [folderRoot, setFolderRoot] = createSignal(hostA);
+      const { container } = render(() => (
+        <HtmlPreview content="<p>x</p>" folderRoot={folderRoot()} />
+      ));
+      await tick();
+      expect(frame(container).getAttribute("src")).toContain("am-token=r0");
+
+      // Switch files while the new registration is still in flight: the old
+      // iframe must be GONE immediately — the resource still hands out the
+      // stale target, so keeping the iframe would ghost the previous doc.
+      setFolderRoot(hostB);
+      await tick(0);
+      expect(container.querySelector("iframe.html-preview-frame")).toBeNull();
+
+      resolveB({ token: "r9", entryRel: "other.html" });
+      await tick();
+      expect(frame(container).getAttribute("src")).toBe(
+        "asciimark-preview://r9/?am-token=r9&am-entry=other.html&v=0",
+      );
     });
   });
 });

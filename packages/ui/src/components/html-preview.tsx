@@ -106,6 +106,13 @@ export function HtmlPreview(props: HtmlPreviewProps): JSX.Element {
     else overlayTimer = setTimeout(() => void run(), OVERLAY_DEBOUNCE_MS);
   }
 
+  // Drop the previous document the MOMENT the file switches: the resource
+  // still hands out the stale target while the new registration is in
+  // flight, so without this the old preview lingers as a "ghost" through
+  // the register + overlay round-trips until the new doc paints. version
+  // -1 → src() undefined → the <Show> below unmounts the iframe.
+  createEffect(on(() => props.folderRoot, () => setVersion(-1), { defer: true }));
+
   // First load when the file/dir (target) resolves.
   createEffect(
     on(target, (t) => {
@@ -148,7 +155,11 @@ export function HtmlPreview(props: HtmlPreviewProps): JSX.Element {
         />
       }
     >
-      <iframe class="html-preview-frame" title="HTML preview" sandbox={SANDBOX_FOLDER} src={src()} />
+      {/* Mounted only while there's a loadable src — clearing the src
+          ATTRIBUTE alone would leave the previous document rendered. */}
+      <Show when={src()}>
+        <iframe class="html-preview-frame" title="HTML preview" sandbox={SANDBOX_FOLDER} src={src()} />
+      </Show>
     </Show>
   );
 }
