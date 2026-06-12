@@ -15,6 +15,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx";
+import { Show } from "solid-js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx";
 
 type IndentMode = "tabs" | "spaces";
@@ -23,6 +24,9 @@ interface EditorToolbarProps {
   searchOpen: boolean;
   showInvisibles: boolean;
   showLineNumbers: boolean;
+  /** Sync scroll only pairs the editor with a visible preview, so the host
+   *  shows the toggle only in split mode — anywhere else it's a dead switch. */
+  showSyncScroll?: boolean;
   indentMode: IndentMode;
   indentSize: number;
   syncScroll: boolean;
@@ -120,18 +124,20 @@ export function EditorToolbar(props: EditorToolbarProps) {
         </TooltipTrigger>
         <TooltipContent>Wrap text</TooltipContent>
       </Tooltip>
-      <Tooltip>
-        <TooltipTrigger
-          as={Toggle}
-          size="sm"
-          pressed={props.syncScroll}
-          onChange={props.onToggleSyncScroll}
-          aria-label="Sync scroll"
-        >
-          <IconArrowUpDown width={14} height={14} />
-        </TooltipTrigger>
-        <TooltipContent>Sync scroll</TooltipContent>
-      </Tooltip>
+      <Show when={props.showSyncScroll}>
+        <Tooltip>
+          <TooltipTrigger
+            as={Toggle}
+            size="sm"
+            pressed={props.syncScroll}
+            onChange={props.onToggleSyncScroll}
+            aria-label="Sync scroll"
+          >
+            <IconArrowUpDown width={14} height={14} />
+          </TooltipTrigger>
+          <TooltipContent>Sync scroll</TooltipContent>
+        </Tooltip>
+      </Show>
       <Separator orientation="vertical" class="content-toolbar-separator" />
       <DropdownMenu>
         <Tooltip>

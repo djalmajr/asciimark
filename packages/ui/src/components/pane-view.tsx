@@ -386,6 +386,7 @@ export function PaneView(props: PaneViewProps) {
                 canUndo={canUndo()}
                 showInvisibles={s.showInvisibles()}
                 showLineNumbers={s.showLineNumbers()}
+                showSyncScroll={pane().editorMode() === "split"}
                 indentMode={s.indentMode()}
                 indentSize={s.indentSize()}
                 syncScroll={s.syncScroll()}

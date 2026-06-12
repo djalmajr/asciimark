@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, type JSX } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on, type JSX } from "solid-js";
 import { useDragOperation, useDraggable, useDroppable } from "@dnd-kit/solid";
 import IconListTree from "~icons/lucide/list-tree";
 import IconLink from "~icons/lucide/link";
@@ -204,6 +204,35 @@ export function RightPanelTabs(props: RightPanelTabsProps): JSX.Element {
       props.tabs,
       fromRpTabDndId(dragOperation.source()?.id),
       fromRpTabDndId(dragOperation.target()?.id),
+    ),
+  );
+
+  /** Keep the ACTIVE tab inside the strip viewport: on boot the restored
+   *  active tab can sit beyond the overflow, and programmatic fronting
+   *  (⌘L, fork, new chat) lands on tabs the user never scrolled to. The
+   *  scroll is done on the list element directly — scrollIntoView could
+   *  also scroll ancestor panels. */
+  function scrollActiveTabIntoView(behavior: ScrollBehavior): void {
+    const list = listRef;
+    if (!list || !props.activeId) return;
+    const el = list.querySelector<HTMLElement>(`[data-rp-tab="${CSS.escape(props.activeId)}"]`);
+    if (!el) return;
+    const left = el.offsetLeft;
+    const right = left + el.offsetWidth;
+    if (left < list.scrollLeft) list.scrollTo({ behavior, left });
+    else if (right > list.scrollLeft + list.clientWidth) {
+      list.scrollTo({ behavior, left: right - list.clientWidth });
+    }
+  }
+
+  createEffect(
+    on(
+      () => props.activeId,
+      (_id, prev) => {
+        // Microtask: the <For> row for a freshly-created tab renders in the
+        // same flush as the activeId change. Instant on mount, smooth after.
+        queueMicrotask(() => scrollActiveTabIntoView(prev === undefined ? "auto" : "smooth"));
+      },
     ),
   );
 
