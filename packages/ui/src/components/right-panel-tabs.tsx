@@ -1,7 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, on, type JSX } from "solid-js";
 import { useDragOperation, useDraggable, useDroppable } from "@dnd-kit/solid";
-import IconListTree from "~icons/lucide/list-tree";
-import IconLink from "~icons/lucide/link";
 import IconPin from "~icons/lucide/pin";
 import IconPlus from "~icons/lucide/plus";
 import IconEllipsis from "~icons/lucide/ellipsis";
@@ -293,12 +291,6 @@ export function RightPanelTabs(props: RightPanelTabsProps): JSX.Element {
         >
           <Show when={tab.pinned}>
             <IconPin width={11} height={11} class="rp-tab-pin" />
-          </Show>
-          <Show when={tab.kind === "toc"}>
-            <IconListTree width={13} height={13} class="rp-tab-icon" />
-          </Show>
-          <Show when={tab.kind === "backlinks"}>
-            <IconLink width={12} height={12} class="rp-tab-icon" />
           </Show>
           <Show when={tab.kind === "chat" && tab.streaming && !isActive(tab)}>
             <span class="rp-tab-dot" aria-hidden="true" />

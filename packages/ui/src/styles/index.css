@@ -1685,13 +1685,6 @@ body:has(.app.window-frame-toolbar) .workspace-root-header {
 .rp-tab-active .rp-tab-pin {
   color: hsl(var(--primary));
 }
-.rp-tab-icon {
-  color: hsl(var(--muted-foreground));
-  flex-shrink: 0;
-}
-.rp-tab-active .rp-tab-icon {
-  color: hsl(var(--primary));
-}
 .rp-tab-name {
   overflow: hidden;
   text-overflow: ellipsis;

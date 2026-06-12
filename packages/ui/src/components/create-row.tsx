@@ -1,4 +1,4 @@
-import { onMount, type JSX } from "solid-js";
+import { onCleanup, onMount, type JSX } from "solid-js";
 import * as m from "@asciimark/i18n";
 
 interface CreateRowProps {
@@ -26,11 +26,52 @@ export function CreateRow(props: CreateRowProps) {
   // it restores focus to its trigger, which blurs (and would otherwise cancel)
   // the freshly-focused input. Until the user actually interacts, treat any
   // blur as that spurious focus-restoration and reclaim focus instead of
-  // committing/cancelling. No timers — keeps the behaviour deterministic.
+  // committing/cancelling. The short burst of focus attempts covers dropdown
+  // implementations that restore focus after the row has already mounted.
   let interacted = false;
+  let frameId: number | undefined;
+  let timerIds: ReturnType<typeof setTimeout>[] = [];
+
+  function focusInput() {
+    if (done || interacted || !inputRef) return;
+    inputRef.focus();
+  }
+
+  function clearScheduledFocus() {
+    if (frameId !== undefined && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(frameId);
+      frameId = undefined;
+    }
+    for (const timerId of timerIds) {
+      clearTimeout(timerId);
+    }
+    timerIds = [];
+  }
+
+  function scheduleFocus() {
+    clearScheduledFocus();
+    queueMicrotask(focusInput);
+    if (typeof requestAnimationFrame === "function") {
+      frameId = requestAnimationFrame(() => {
+        frameId = undefined;
+        focusInput();
+      });
+    }
+    for (const delay of [0, 50, 150, 300]) {
+      const id = setTimeout(() => {
+        timerIds = timerIds.filter((timerId) => timerId !== id);
+        focusInput();
+      }, delay);
+      timerIds.push(id);
+    }
+  }
 
   onMount(() => {
-    queueMicrotask(() => inputRef?.focus());
+    scheduleFocus();
+  });
+
+  onCleanup(() => {
+    clearScheduledFocus();
   });
 
   function commit() {
@@ -49,7 +90,7 @@ export function CreateRow(props: CreateRowProps) {
     // Before the user has touched the input, a blur is the menu's close-time
     // focus restoration — reclaim focus rather than commit/cancel.
     if (!interacted) {
-      queueMicrotask(() => inputRef?.focus());
+      scheduleFocus();
       return;
     }
     commit();

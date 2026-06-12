@@ -46,9 +46,20 @@ describe("RightPanelTabs — tabs", () => {
     for (const t of tabs) expect(t.querySelector(".rp-tab-close")).not.toBeNull();
   });
 
-  it("gives specials an icon and chats none", () => {
-    const { baseElement } = render(() => <RightPanelTabs {...baseProps()} />);
-    expect(baseElement.querySelector('[data-rp-tab="toc"] .rp-tab-icon')).not.toBeNull();
+  it("renders special tabs without tab icons", () => {
+    const { baseElement } = render(() => (
+      <RightPanelTabs
+        {...baseProps({
+          tabs: [
+            { id: "toc", kind: "toc", title: "Outline" },
+            { id: "backlinks", kind: "backlinks", title: "References" },
+            { id: "s1", kind: "chat", title: "Chat one" },
+          ],
+        })}
+      />
+    ));
+    expect(baseElement.querySelector('[data-rp-tab="toc"] .rp-tab-icon')).toBeNull();
+    expect(baseElement.querySelector('[data-rp-tab="backlinks"] .rp-tab-icon')).toBeNull();
     expect(baseElement.querySelector('[data-rp-tab="chat:s1"] .rp-tab-icon')).toBeNull();
   });
 

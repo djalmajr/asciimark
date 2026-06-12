@@ -655,6 +655,9 @@ export function FileTreeItem(props: FileTreeItemProps) {
 
   const isVisible = () => props.visiblePaths().has(props.entry.path);
   const menuEnabled = () => props.showItemMenu !== false;
+  function keepFocusOnCreateRow(event: Event): void {
+    if (app.creatingAt()) event.preventDefault();
+  }
 
   return (
     <div
@@ -729,7 +732,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
               >
                 <IconEllipsisVertical width={14} height={14} />
               </DropdownMenuTrigger>
-              <DropdownMenuContent class="min-w-48">
+              <DropdownMenuContent class="min-w-48" onCloseAutoFocus={keepFocusOnCreateRow}>
                 <For each={menuEntries()}>
                   {(entry) => (
                     <>
@@ -760,7 +763,7 @@ export function FileTreeItem(props: FileTreeItemProps) {
          * instead of opening an empty Kobalte popover.
          */}
         <Show when={menuEnabled()}>
-          <ContextMenuContent class="tree-context-menu min-w-48">
+          <ContextMenuContent class="tree-context-menu min-w-48" onCloseAutoFocus={keepFocusOnCreateRow}>
             <For each={menuEntries()}>
               {(entry) => (
                 <>

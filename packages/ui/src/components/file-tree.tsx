@@ -238,6 +238,10 @@ export function FileTree(props: FileTreeProps) {
 
   const canReorderRoots = createMemo(() => !!props.onReorderRoots && props.roots.length > 1);
 
+  function keepFocusOnCreateRow(event: Event): void {
+    if (app.creatingAt()) event.preventDefault();
+  }
+
   // ── Root drag-and-drop reordering ──────────────────────────────────────
 
   function handleProviderDragStart(event: any) {
@@ -490,7 +494,7 @@ export function FileTree(props: FileTreeProps) {
               >
                 <IconEllipsisVertical width={14} height={14} />
               </DropdownMenuTrigger>
-              <DropdownMenuContent class="min-w-48">
+              <DropdownMenuContent class="min-w-48" onCloseAutoFocus={keepFocusOnCreateRow}>
                 <Show when={props.onCreate}>
                   <DropdownMenuItem
                     class="gap-2"
