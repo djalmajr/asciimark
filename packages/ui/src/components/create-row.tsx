@@ -1,4 +1,4 @@
-import { onMount, type JSX } from "solid-js";
+import { onCleanup, onMount, type JSX } from "solid-js";
 import * as m from "@asciimark/i18n";
 
 interface CreateRowProps {
@@ -26,11 +26,49 @@ export function CreateRow(props: CreateRowProps) {
   // it restores focus to its trigger, which blurs (and would otherwise cancel)
   // the freshly-focused input. Until the user actually interacts, treat any
   // blur as that spurious focus-restoration and reclaim focus instead of
-  // committing/cancelling. No timers — keeps the behaviour deterministic.
+  // committing/cancelling. The extra frame/tick focus attempts cover dropdown
+  // implementations that restore focus after the row has already mounted.
   let interacted = false;
+  let frameId: number | undefined;
+  let timerId: ReturnType<typeof setTimeout> | undefined;
+
+  function focusInput() {
+    if (done || !inputRef) return;
+    inputRef.focus();
+  }
+
+  function clearScheduledFocus() {
+    if (frameId !== undefined && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(frameId);
+      frameId = undefined;
+    }
+    if (timerId !== undefined) {
+      clearTimeout(timerId);
+      timerId = undefined;
+    }
+  }
+
+  function scheduleFocus() {
+    clearScheduledFocus();
+    queueMicrotask(focusInput);
+    if (typeof requestAnimationFrame === "function") {
+      frameId = requestAnimationFrame(() => {
+        frameId = undefined;
+        focusInput();
+      });
+    }
+    timerId = setTimeout(() => {
+      timerId = undefined;
+      focusInput();
+    }, 0);
+  }
 
   onMount(() => {
-    queueMicrotask(() => inputRef?.focus());
+    scheduleFocus();
+  });
+
+  onCleanup(() => {
+    clearScheduledFocus();
   });
 
   function commit() {
@@ -49,7 +87,7 @@ export function CreateRow(props: CreateRowProps) {
     // Before the user has touched the input, a blur is the menu's close-time
     // focus restoration — reclaim focus rather than commit/cancel.
     if (!interacted) {
-      queueMicrotask(() => inputRef?.focus());
+      scheduleFocus();
       return;
     }
     commit();

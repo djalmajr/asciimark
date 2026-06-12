@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render } from "@solidjs/testing-library";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render } from "@solidjs/testing-library";
 import { CreateRow } from "./create-row.tsx";
+
+afterEach(cleanup);
 
 // CreateRow is opened from a Kobalte menu item. When that menu closes it
 // restores focus to its trigger, which blurs the freshly-focused input. The
@@ -8,6 +10,28 @@ import { CreateRow } from "./create-row.tsx";
 // it made "New File / New Folder" appear to do nothing (the input flashed and
 // vanished before the user could type). These tests lock that behaviour.
 describe("CreateRow", () => {
+  it("keeps focus on the input when a menu trigger steals focus after mount", async () => {
+    const trigger = document.createElement("button");
+    document.body.appendChild(trigger);
+    try {
+      const { container } = render(() => (
+        <CreateRow kind="file" indent={8} icon={<span />} onCommit={() => {}} onCancel={() => {}} />
+      ));
+      const input = container.querySelector<HTMLInputElement>(".tree-create-input")!;
+
+      trigger.focus();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement).toBe(input);
+
+      trigger.focus();
+      fireEvent.blur(input);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement).toBe(input);
+    } finally {
+      trigger.remove();
+    }
+  });
+
   it("does NOT cancel on the focus-restoration blur that fires before it arms", () => {
     const onCancel = vi.fn();
     const onCommit = vi.fn();
