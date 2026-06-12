@@ -21,11 +21,17 @@ LOG_DIR="$(mktemp -d -t asciimark-e2e-XXXXXX)"
 DEV_LOG="$LOG_DIR/dev.log"
 DEV_PID=""
 
-# Probe the bridge port. `nc -z` succeeds the moment the plugin's
-# tokio listener is bound — that is the same condition `connectBridge`
-# checks against, so a successful probe means specs can connect.
+# Probe the bridge port — success the moment the plugin's tokio listener is
+# bound, the same condition `connectBridge` checks against. Git Bash on
+# Windows ships no netcat, so fall back to bash's built-in /dev/tcp (the
+# subshell closes the fd on exit); without the fallback the probe fails
+# forever and the 90s wait times out with the bridge already listening.
 probe_bridge() {
-  nc -z -w 1 "$BRIDGE_HOST" "$BRIDGE_PORT" >/dev/null 2>&1
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 1 "$BRIDGE_HOST" "$BRIDGE_PORT" >/dev/null 2>&1
+  else
+    (exec 3<>"/dev/tcp/${BRIDGE_HOST}/${BRIDGE_PORT}") >/dev/null 2>&1
+  fi
 }
 
 cleanup() {

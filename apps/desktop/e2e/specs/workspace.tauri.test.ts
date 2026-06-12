@@ -5,13 +5,32 @@
 // Skipped automatically when the bridge port is not reachable so devs who
 // don't have `tauri dev` running locally don't see noisy failures.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdir, rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { connectBridge, type Bridge } from "../bridge.ts";
 
 const FIXTURE = resolve(import.meta.dir, "../fixtures/sample-workspace");
 let bridge: Bridge | null = null;
 
+// The hidden/bulky-directory assertions need a `.git` and a `node_modules`
+// INSIDE the fixture — neither can be committed (git refuses nested .git
+// dirs, node_modules is ignored), so they are created ephemerally here and
+// removed afterwards. Only what this run created is cleaned up.
+const EPHEMERAL_DIRS = [".git", "node_modules"];
+const createdDirs: string[] = [];
+
 beforeAll(async () => {
+  for (const name of EPHEMERAL_DIRS) {
+    const dir = resolve(FIXTURE, name);
+    const exists = await stat(dir).then(
+      () => true,
+      () => false,
+    );
+    if (!exists) {
+      await mkdir(dir, { recursive: true });
+      createdDirs.push(dir);
+    }
+  }
   try {
     bridge = await connectBridge();
   } catch (err) {
@@ -21,8 +40,11 @@ beforeAll(async () => {
   }
 });
 
-afterAll(() => {
+afterAll(async () => {
   bridge?.close();
+  for (const dir of createdDirs) {
+    await rm(dir, { force: true, recursive: true });
+  }
 });
 
 interface DirEntry {
