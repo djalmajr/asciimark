@@ -26,14 +26,14 @@ export function CreateRow(props: CreateRowProps) {
   // it restores focus to its trigger, which blurs (and would otherwise cancel)
   // the freshly-focused input. Until the user actually interacts, treat any
   // blur as that spurious focus-restoration and reclaim focus instead of
-  // committing/cancelling. The extra frame/tick focus attempts cover dropdown
+  // committing/cancelling. The short burst of focus attempts covers dropdown
   // implementations that restore focus after the row has already mounted.
   let interacted = false;
   let frameId: number | undefined;
-  let timerId: ReturnType<typeof setTimeout> | undefined;
+  let timerIds: ReturnType<typeof setTimeout>[] = [];
 
   function focusInput() {
-    if (done || !inputRef) return;
+    if (done || interacted || !inputRef) return;
     inputRef.focus();
   }
 
@@ -42,10 +42,10 @@ export function CreateRow(props: CreateRowProps) {
       cancelAnimationFrame(frameId);
       frameId = undefined;
     }
-    if (timerId !== undefined) {
+    for (const timerId of timerIds) {
       clearTimeout(timerId);
-      timerId = undefined;
     }
+    timerIds = [];
   }
 
   function scheduleFocus() {
@@ -57,10 +57,13 @@ export function CreateRow(props: CreateRowProps) {
         focusInput();
       });
     }
-    timerId = setTimeout(() => {
-      timerId = undefined;
-      focusInput();
-    }, 0);
+    for (const delay of [0, 50, 150, 300]) {
+      const id = setTimeout(() => {
+        timerIds = timerIds.filter((timerId) => timerId !== id);
+        focusInput();
+      }, delay);
+      timerIds.push(id);
+    }
   }
 
   onMount(() => {
