@@ -22,7 +22,8 @@ import {
   indentUnit,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { isSupportedFile } from "@asciimark/core/utils.ts";
+import { isAdocFile, isMdFile } from "@asciimark/core/utils.ts";
+import { asciidoc } from "../lib/adoc-language.ts";
 
 /** The markdown language config used for .md/.adoc buffers (and as the
  *  fallback for unknown extensions): fence info strings resolve against the
@@ -205,8 +206,17 @@ export function Editor(props: EditorProps) {
       if (generation !== languageGeneration || !view) return;
       view.dispatch({ effects: languageCompartment.reconfigure(extension) });
     };
-    if (!name || isSupportedFile(name.toLowerCase())) {
+    const lower = name?.toLowerCase() ?? "";
+    // Markdown goes through OUR config (registry-backed fences), not the
+    // registry's bare markdown entry; no name keeps the historical default.
+    if (!name || isMdFile(lower)) {
       apply(markdownLanguage());
+      return;
+    }
+    // AsciiDoc gets the hand-rolled stream highlighter — no grammar exists in
+    // the registry, and the markdown parser misses every adoc construct.
+    if (isAdocFile(lower)) {
+      apply(asciidoc());
       return;
     }
     const desc = LanguageDescription.matchFilename(knownLanguages, name);
