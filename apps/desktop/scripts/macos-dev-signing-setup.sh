@@ -61,7 +61,10 @@ openssl pkcs12 -export -legacy -out "$tmp/id.p12" -inkey "$tmp/key.pem" -in "$tm
 # import + partition-list non-interactively — so macOS doesn't pop a dialog
 # for each step.
 echo "→ This needs your macOS login (keychain) password ONCE:"
-read -rsp "  Password: " KPW
+# Read from the controlling terminal, not stdin — `bun run` (esp. with --filter)
+# doesn't forward a TTY to the script's stdin, which would make a plain `read`
+# fail (and abort under `set -e`).
+read -rsp "  Password: " KPW </dev/tty
 echo
 if ! security unlock-keychain -p "$KPW" "$KEYCHAIN" >/dev/null 2>&1; then
   echo "  ⚠ Could not unlock the keychain (wrong password?). Re-run this script."
