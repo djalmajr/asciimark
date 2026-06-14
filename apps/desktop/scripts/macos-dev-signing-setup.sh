@@ -50,18 +50,27 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
   -addext "keyUsage=critical,digitalSignature" \
   -addext "extendedKeyUsage=critical,codeSigning" >/dev/null 2>&1
 
-# Import cert + key as separate PEMs. (PKCS#12 from OpenSSL 3 trips macOS's
-# importer with "MAC verification failed"; separate PEMs sidestep that.)
-echo "→ Importing into your login keychain (codesign-only access)…"
-security import "$tmp/cert.pem" -k "$KEYCHAIN" -T /usr/bin/codesign >/dev/null
-security import "$tmp/key.pem"  -k "$KEYCHAIN" -T /usr/bin/codesign >/dev/null
+# Bundle cert + key into a SINGLE PKCS#12 so the keychain import is one
+# operation → one authorization (importing two separate PEMs prompts twice).
+# `-legacy` makes OpenSSL 3 emit a MAC/PBE that macOS's importer accepts
+# (without it the import fails with "MAC verification failed").
+openssl pkcs12 -export -legacy -out "$tmp/id.p12" -inkey "$tmp/key.pem" -in "$tmp/cert.pem" \
+  -name "$NAME" -passout pass:asciimark >/dev/null 2>&1
 
-echo "→ Authorizing codesign to use the key without future prompts."
-echo "  Enter your macOS login (keychain) password:"
+# Ask for the keychain password ONCE up front, unlock with it, then run the
+# import + partition-list non-interactively — so macOS doesn't pop a dialog
+# for each step.
+echo "→ This needs your macOS login (keychain) password ONCE:"
 read -rsp "  Password: " KPW
 echo
+if ! security unlock-keychain -p "$KPW" "$KEYCHAIN" >/dev/null 2>&1; then
+  echo "  ⚠ Could not unlock the keychain (wrong password?). Re-run this script."
+  exit 1
+fi
+echo "→ Importing the identity (codesign-only access)…"
+security import "$tmp/id.p12" -k "$KEYCHAIN" -P asciimark -T /usr/bin/codesign >/dev/null
 if ! security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KPW" "$KEYCHAIN" >/dev/null 2>&1; then
-  echo "  ⚠ set-key-partition-list failed (wrong password?). Re-run this script."
+  echo "  ⚠ set-key-partition-list failed. Re-run this script."
   exit 1
 fi
 
